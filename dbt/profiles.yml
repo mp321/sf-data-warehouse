@@ -1,0 +1,20 @@
+# This profile is committed on purpose: it contains no secrets.
+# Everything sensitive comes from environment variables, so the exact
+# same file works on your laptop and in GitHub Actions.
+#
+# Run dbt from this folder with:
+#   export DBT_PROFILES_DIR="$(pwd)"
+# (SETUP.md walks through this.)
+
+sf_data_warehouse:
+  target: dev
+  outputs:
+    dev:
+      type: bigquery
+      method: service-account
+      keyfile: "{{ env_var('GOOGLE_APPLICATION_CREDENTIALS') }}"
+      project: "{{ env_var('GCP_PROJECT_ID') }}"
+      dataset: dbt_dev
+      threads: 4
+      location: "{{ env_var('BQ_LOCATION', 'US') }}"
+      job_execution_timeout_seconds: 600

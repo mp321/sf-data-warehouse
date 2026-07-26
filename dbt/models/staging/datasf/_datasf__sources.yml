@@ -1,0 +1,33 @@
+version: 2
+
+sources:
+  - name: raw_datasf
+    description: >
+      Raw landing zone loaded by ingestion/ingest.py. Every column is a
+      STRING on purpose; all typing happens in staging models. Tables are
+      append-only, so the same record can appear multiple times as it is
+      updated at the source. Staging deduplicates to the latest version.
+    schema: raw_datasf
+    tables:
+      - name: raw_311_cases
+        description: SF311 service requests, appended incrementally each day.
+        loaded_at_field: "cast(_socrata_updated_at as timestamp)"
+        freshness:
+          warn_after: {count: 2, period: day}
+          error_after: {count: 7, period: day}
+
+      - name: raw_building_permits
+        description: Building permit applications, appended incrementally each day.
+        loaded_at_field: "cast(_socrata_updated_at as timestamp)"
+        freshness:
+          warn_after: {count: 7, period: day}
+
+      - name: raw_city_budget
+        description: >
+          City budget line items. Updated roughly annually at the source,
+          so no freshness check is configured.
+
+      - name: raw_film_locations
+        description: >
+          Films and TV shows shot in San Francisco, including location and
+          fun facts. Small, updated occasionally, no freshness check.

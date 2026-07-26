@@ -1,0 +1,43 @@
+name: dbt
+
+on:
+  schedule:
+    # 10:23 UTC every Monday, an hour after the daily ingestion window.
+    - cron: "23 10 * * 1"
+  workflow_dispatch: {}
+
+jobs:
+  dbt:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: dbt
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dbt
+        run: pip install dbt-bigquery
+
+      - name: Write service account key
+        env:
+          GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
+        run: printf '%s' "$GCP_SA_KEY" > "$RUNNER_TEMP/sa.json"
+
+      - name: Build and test all models
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/sa.json
+          DBT_PROFILES_DIR: "."
+        run: dbt build
+
+      - name: Check source freshness
+        continue-on-error: true
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/sa.json
+          DBT_PROFILES_DIR: "."
+        run: dbt source freshness

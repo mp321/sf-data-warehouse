@@ -1,0 +1,36 @@
+version: 2
+
+models:
+  - name: stg_datasf__311_cases
+    description: >
+      One row per 311 case, deduplicated to the latest version of each
+      case. Columns are renamed and cast to proper types; no business
+      logic lives here. Downstream marts should select from this model,
+      never from the raw source.
+    columns:
+      - name: case_id
+        description: Unique identifier for the service request.
+        tests:
+          - unique
+          - not_null
+
+      - name: opened_at
+        description: When the case was opened.
+        tests:
+          - not_null
+
+      - name: status
+        description: Current case status as reported by SF311.
+        tests:
+          - accepted_values:
+              values: ["Open", "Closed"]
+              config:
+                # warn rather than fail: if DataSF introduces a new status
+                # we want to notice it, not break the pipeline
+                severity: warn
+
+      - name: closed_at
+        description: When the case was closed. Null while the case is open.
+
+      - name: service_category
+        description: Top-level request type, e.g. Street and Sidewalk Cleaning.

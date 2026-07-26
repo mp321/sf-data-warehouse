@@ -1,0 +1,33 @@
+name: ingest
+
+on:
+  schedule:
+    # 09:17 UTC daily. Odd minute on purpose: exact-hour crons queue
+    # behind everyone else's on GitHub's shared runners.
+    - cron: "17 9 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Write service account key
+        env:
+          GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
+        run: printf '%s' "$GCP_SA_KEY" > "$RUNNER_TEMP/sa.json"
+
+      - name: Run ingestion
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/sa.json
+          SOCRATA_APP_TOKEN: ${{ secrets.SOCRATA_APP_TOKEN }}
+        run: python ingestion/ingest.py --all

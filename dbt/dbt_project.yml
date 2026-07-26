@@ -1,0 +1,24 @@
+name: "sf_data_warehouse"
+version: "1.0.0"
+config-version: 2
+
+profile: "sf_data_warehouse"
+
+model-paths: ["models"]
+test-paths: ["tests"]
+macro-paths: ["macros"]
+seed-paths: ["seeds"]
+
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+models:
+  sf_data_warehouse:
+    staging:
+      # Staging models are views: cheap, always fresh, one per source table.
+      # Their job is renaming, typing, and light cleanup only.
+      +materialized: view
+    marts:
+      # Marts are tables: the analysis-ready layer that queries hit.
+      +materialized: table
