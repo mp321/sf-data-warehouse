@@ -96,7 +96,7 @@ def get_watermark(client: bigquery.Client, table_ref: str, start_date: str) -> s
 def fetch_page(session: requests.Session, socrata_id: str, watermark: str,
                offset: int, app_token: str) -> list:
     params = {
-        "$select": ":id,:created_at,:updated_at,*",
+        "$select": "*,:id,:created_at,:updated_at",
         "$where": f":updated_at > '{watermark}'",
         "$order": ":updated_at",
         "$limit": PAGE_SIZE,
