@@ -1,0 +1,63 @@
+# Ruff config. Kept in its own file rather than pyproject.toml because this
+# repo is not a Python package and adding a pyproject.toml would imply it is.
+
+line-length = 100
+target-version = "py310"
+
+exclude = [
+    ".venv",
+    "dbt/target",
+    "dbt/dbt_packages",
+]
+
+[lint]
+select = [
+    "E",    # pycodestyle errors
+    "F",    # pyflakes
+    "I",    # import sorting
+    "UP",   # pyupgrade
+    "B",    # bugbear
+    "C4",   # comprehensions
+    "PL",   # pylint subset
+    "RUF",  # ruff-specific
+]
+
+ignore = [
+    "PLR0913",  # too many arguments: ingest_one legitimately takes several
+    "PLR2004",  # magic value comparison: noisy on retry and page-size logic
+]
+
+[lint.per-file-ignores]
+# ---------------------------------------------------------------------------
+# Deliberate, temporary exemptions for the pre-existing ingestion module.
+#
+# These are real findings, not false positives. They are exempted because the
+# session that introduced linting was explicitly not allowed to refactor
+# ingestion, and turning CI red on day one to report problems nobody was
+# authorised to fix helps no one. Removing these exemptions is
+# docs/plans/plan-2-ingestion-lint.md.
+#
+# Do not add to this list. Add to the plan instead.
+# ---------------------------------------------------------------------------
+
+# I001: "from datasets import DATASETS" is a bare sibling import that works
+# only because Python puts the script's own directory on sys.path. Sorting it
+# is trivial; the underlying fragility, that it shadows and is shadowed by the
+# HuggingFace `datasets` package, is not, and both should be fixed together.
+#
+# PLR0917: ingest_one takes 7 positional arguments. Genuinely too many, and
+# the fix is a config object, which is an ingestion refactor.
+"ingestion/ingest.py" = ["I001", "PLR0917"]
+
+# E501: one dataset description runs to 107 characters. Rewrapping it is a
+# one-line change, but it lives in the dataset registry and ADR-3 is
+# actively reconsidering those entries, so leave it until that settles.
+"ingestion/datasets.py" = ["E501"]
+
+[format]
+quote-style = "double"
+
+# Same reasoning as the per-file-ignores above: the formatter would rewrite
+# ingest.py's argparse block and its call signatures, producing a large diff
+# in the one file this session was told to leave alone. Tracked in PLAN-2.
+exclude = ["ingestion/ingest.py"]

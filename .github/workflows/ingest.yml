@@ -1,11 +1,19 @@
 name: ingest
 
+# Daily ingestion into BigQuery. Unchanged in behaviour: this is the job
+# that keeps the raw zone current and it is deliberately left alone.
+# See ADR-1 for why the raw zone is moving to Parquet, and
+# docs/plans/plan-1-duckdb-parquet.md for the sequencing.
+
 on:
   schedule:
     # 09:17 UTC daily. Odd minute on purpose: exact-hour crons queue
     # behind everyone else's on GitHub's shared runners.
     - cron: "17 9 * * *"
   workflow_dispatch: {}
+
+permissions:
+  contents: read
 
 jobs:
   ingest:
@@ -31,3 +39,7 @@ jobs:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/sa.json
           SOCRATA_APP_TOKEN: ${{ secrets.SOCRATA_APP_TOKEN }}
         run: python ingestion/ingest.py --all
+
+      - name: Remove service account key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/sa.json"

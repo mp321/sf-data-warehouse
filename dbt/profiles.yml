@@ -4,17 +4,58 @@
 #
 # Run dbt from this folder with:
 #   export DBT_PROFILES_DIR="$(pwd)"
-# (SETUP.md walks through this.)
+# (SETUP.md walks through this. The Makefile does it for you.)
+#
+# Two targets, per ADR-1 (docs/decisions/adr-1-warehouse-targets.md):
+#
+#   dev      BigQuery. The default today. Needs real credentials.
+#   duckdb   Local DuckDB. No credentials, no network. This is what CI
+#            compiles against on every pull request, and what ADR-1
+#            intends to make the default once the Parquet raw zone is
+#            wired up.
+#
+# Pick one with: dbt build --target duckdb
+#
+# Note on the env_var defaults below: dbt renders this entire file before
+# it picks a target, so a bare env_var('X') with no default would blow up
+# on the BigQuery block even when you are running against DuckDB. The
+# empty-string defaults keep the DuckDB path credential-free. If you run
+# the BigQuery target without setting them, dbt fails at connection time
+# with a clear message instead of at parse time with a confusing one.
 
 sf_data_warehouse:
   target: dev
   outputs:
+
     dev:
       type: bigquery
       method: service-account
-      keyfile: "{{ env_var('GOOGLE_APPLICATION_CREDENTIALS') }}"
-      project: "{{ env_var('GCP_PROJECT_ID') }}"
+      keyfile: "{{ env_var('GOOGLE_APPLICATION_CREDENTIALS', '') }}"
+      project: "{{ env_var('GCP_PROJECT_ID', '') }}"
       dataset: dbt_dev
       threads: 4
       location: "{{ env_var('BQ_LOCATION', 'US') }}"
       job_execution_timeout_seconds: 600
+
+    duckdb:
+      type: duckdb
+      # Relative to this folder (dbt/). Gitignored via *.duckdb.
+      path: "{{ env_var('DUCKDB_PATH', '../data/sf.duckdb') }}"
+      threads: 4
+      schema: main
+      # Parquet raw zone, per ADR-1. Left commented until
+      # ingestion writes Parquet directly; today it is populated by the
+      # opt-in ingestion/export_parquet.py dump. To use it, uncomment and
+      # add a matching external_location to the source in
+      # models/staging/datasf/_datasf__sources.yml:
+      #
+      #   sources:
+      #     - name: raw_datasf
+      #       meta:
+      #         external_location: "read_parquet('../data/{name}.parquet')"
+      #
+      # See docs/plans/plan-1-duckdb-parquet.md for the full path.
+      #
+      # extensions:
+      #   - httpfs
+      #   - parquet

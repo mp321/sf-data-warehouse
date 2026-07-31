@@ -1,4 +1,21 @@
+# Runtime dependencies.
+#
+# Two dbt adapters on purpose, per ADR 0001: DuckDB is the canonical engine
+# and BigQuery is the secondary one. Both are needed because model SQL must
+# compile on both.
+
 requests>=2.31
 google-cloud-bigquery>=3.14
-dbt-bigquery>=1.8
 google-api-core>=2.11
+
+# Upper bounds are load bearing. A bare ">=1.8" resolves to a dbt-core 2.0
+# alpha whose build downloads a wheel from GitHub releases during metadata
+# generation, which fails on any machine that cannot reach github.com and
+# breaks `make setup` with an error that looks nothing like a version
+# problem. Raise these deliberately, not accidentally.
+dbt-core>=1.8,<2.0
+dbt-bigquery>=1.8,<2.0
+dbt-duckdb>=1.8,<2.0
+
+# Used by ingestion/export_parquet.py and by dbt-duckdb's Parquet reads.
+pyarrow>=15.0

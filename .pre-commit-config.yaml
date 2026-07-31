@@ -1,0 +1,54 @@
+# Install with: pre-commit install  (make setup does this for you)
+# Run against everything once: pre-commit run --all-files
+#
+# Keep this in sync with the lint job in .github/workflows/ci.yml. If they
+# drift, CI becomes something people discover rather than something they
+# pre-empt.
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-added-large-files
+        args: ["--maxkb=1024"]
+      - id: check-merge-conflict
+      - id: check-yaml
+        # dbt yml files are plain yaml, so this is safe. profiles.yml uses
+        # Jinja inside quoted strings, which the parser handles fine.
+      - id: check-json
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: detect-private-key
+      - id: no-commit-to-branch
+        args: ["--branch", "main"]
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.6
+    hooks:
+      - id: ruff
+        args: ["--fix"]
+      - id: ruff-format
+
+  - repo: https://github.com/sqlfluff/sqlfluff
+    rev: 3.3.0
+    hooks:
+      - id: sqlfluff-lint
+        # Only the dbt models. Anything else that ends in .sql here is a
+        # macro, and sqlfluff on bare Jinja macros is more noise than signal.
+        files: ^dbt/models/.*\.sql$
+        additional_dependencies:
+          - dbt-core==1.9.1
+          - dbt-duckdb==1.9.1
+          - sqlfluff-templater-dbt==3.3.0
+
+  # Local hooks run from the repo, not downloaded. leak-check is ours and
+  # has to stay ours: a hook that scans for our credential shapes cannot be
+  # outsourced to a pinned third-party rev.
+  - repo: local
+    hooks:
+      - id: leak-check
+        name: leak-check (credential scan)
+        entry: bash scripts/leak-check.sh --staged
+        language: system
+        pass_filenames: false
+        always_run: true

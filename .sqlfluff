@@ -1,0 +1,62 @@
+# sqlfluff config.
+#
+# Dialect is duckdb because ADR 0001 makes DuckDB the canonical engine. The
+# dbt templater compiles models against the duckdb target, which needs no
+# credentials, so linting works on a fresh clone and in CI on fork PRs.
+#
+# If a rule here fights a cross_engine macro, fix the macro, not the rule.
+
+[sqlfluff]
+templater = dbt
+dialect = duckdb
+max_line_length = 100
+
+# This file is INI, not YAML or TOML, so lists are a single comma separated
+# line. A multi-line list here fails with a configparser ParsingError that
+# does not mention sqlfluff at all.
+#
+# LT02  layout indentation. Staging models align aliases in a column for
+#       readability, which this rule wants to undo.
+# AM04  requires a known column list, which `select *` in the source CTE
+#       cannot provide. That `select *` is deliberate: raw schemas drift.
+# RF02  requires qualified references. Single table CTEs do not benefit.
+exclude_rules = LT02,AM04,RF02
+
+[sqlfluff:templater:dbt]
+project_dir = dbt
+profiles_dir = dbt
+profile = sf_data_warehouse
+target = duckdb
+
+[sqlfluff:indentation]
+indented_joins = false
+indented_ctes = false
+template_blocks_indent = false
+
+# Note on alias alignment: the original staging model lined its `as <alias>`
+# up in a column. That stopped being maintainable once casts became macro
+# calls, because sqlfluff lints the rendered SQL and macro expansions are not
+# the same width as the source text, so source-aligned code arrives at the
+# linter misaligned. Single space before `as` is the rule now. Do not try to
+# reinstate column alignment by hand; it will pass locally and fail in CI.
+
+[sqlfluff:rules:capitalisation.keywords]
+capitalisation_policy = lower
+
+[sqlfluff:rules:capitalisation.functions]
+extended_capitalisation_policy = lower
+
+[sqlfluff:rules:capitalisation.literals]
+capitalisation_policy = lower
+
+[sqlfluff:rules:capitalisation.types]
+extended_capitalisation_policy = lower
+
+[sqlfluff:rules:aliasing.table]
+aliasing = explicit
+
+[sqlfluff:rules:aliasing.column]
+aliasing = explicit
+
+[sqlfluff:rules:ambiguous.column_references]
+group_by_and_order_by_style = explicit

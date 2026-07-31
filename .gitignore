@@ -1,0 +1,65 @@
+# NOTE: an earlier version of this file listed itself, plus README.md,
+# SETUP.md, PLAN.md and .env.example, which meant none of them were ever
+# committed. A fresh clone therefore had no .gitignore at all and nothing
+# stopping the next person from committing keys/sa.json. Do not re-add
+# entries for tracked project files here.
+
+# ---------------------------------------------------------------------------
+# secrets: never commit credentials
+# ---------------------------------------------------------------------------
+keys/
+.env
+.env.*
+!.env.example
+
+# service account keys and similar, wherever they end up
+*sa.json
+*service-account*.json
+*credentials*.json
+*client_secret*.json
+gha-creds-*.json
+*.pem
+*.p12
+*.pfx
+*.key
+
+# ---------------------------------------------------------------------------
+# python
+# ---------------------------------------------------------------------------
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# ---------------------------------------------------------------------------
+# dbt build artifacts
+# ---------------------------------------------------------------------------
+target/
+dbt_packages/
+logs/
+.user.yml
+
+# ---------------------------------------------------------------------------
+# local data and warehouses (ADR 0001: the Parquet raw zone is local and
+# is never committed, regardless of how small it looks)
+# ---------------------------------------------------------------------------
+data/
+*.duckdb
+*.duckdb.wal
+*.db
+*.sqlite
+*.parquet
+
+# ---------------------------------------------------------------------------
+# os and editor noise
+# ---------------------------------------------------------------------------
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
