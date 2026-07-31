@@ -48,6 +48,10 @@ make build     dbt run + test                 no network, no credentials
 make publish   warehouse -> published/        no network, no credentials
 ```
 
+`make all` runs the first four in order. Running `ingest` without `spatial`
+leaves the new rows with no geography, so `make build` checks that
+`data/derived` is not behind `data/raw` before it runs anything.
+
 `make ci-build` runs all of it from committed fixtures with no network at all.
 
 ## Data sources

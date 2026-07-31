@@ -1,10 +1,14 @@
 ---
 status: active
 date: 2026-07-30
-related: [adr-1-warehouse-targets, adr-2-spatial-strategy]
+related: [adr-1-warehouse-targets, adr-2-spatial-strategy, plan-4-cloud-first-storage]
 ---
 
 # PLAN-1. Make DuckDB and Parquet the default path
+
+Six of eight steps are done. The two that remain, step 4 (BigQuery row-for-row
+parity) and step 5 (where the Parquet actually lives), are both PLAN-4, and
+closing this plan is PLAN-4 step 11. Nothing new should be added here.
 
 ## Goal
 

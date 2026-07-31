@@ -9,12 +9,10 @@ wins and the other should be corrected.
 - **Never run `git commit`, `git push`, `git merge`, `git rebase`, `git reset`
   or anything else that writes to git history or a remote. Not even when asked
   to "finish up", "ship it", or "commit this". Leave every change in the
-  working tree and say what is there.** Committing is the human's call, and it
-  is the one action in this repo that cannot be reviewed after the fact.
-  Staging files with `git add` is also out. Reading git (`status`, `diff`,
+  working tree and say what is there.** Committing is the human's call.
+  Never stage files with `git add`. Reading git (`status`, `diff`,
   `log`, `show`) is fine and encouraged.
-- Plans live in `docs/plans/`, decisions in `docs/decisions/`, session notes in
-  `docs/dev-notes/`. When we agree on a plan, write it to `docs/plans/` as a
+- Plans live in `docs/plans/`, decisions in `docs/decisions/`, session notes in `docs/dev-notes/`. When we agree on a plan, write it to `docs/plans/` as a
   numbered file rather than leaving it in chat. Refer to documents as `ADR-1`
   and `PLAN-2`; see `docs/README.md` for the conventions.
 - ADRs are immutable once accepted. To change a decision, write a new ADR and
@@ -91,6 +89,15 @@ make publish   warehouse -> published/             no network, no credentials
 error**: the spatial models build empty, and the marts come out with no rows.
 `load.py` prints a warning naming the step when the derived zone is missing.
 
+The worse version of that mistake is a derived zone that exists and is behind,
+which is what `make ingest` then `make build` leaves. The new rows reach
+staging with null geography, because `join_point_geography` is a LEFT join, and
+the first symptom is a `not_null` test failing several models downstream.
+`make build` therefore runs `make check-derived` first: `spatial.py` records the
+raw row count it read per dataset in `data/derived/_manifest.json`, and
+`check_derived.py` compares that against the raw zone as it is now. Override
+with `make build DERIVED_CHECK=0` if you mean it.
+
 The derived zone is a pure function of the raw zone plus `spatial.py`, so
 unlike `data/raw` it is always safe to delete: `make clean-derived` then
 `make spatial`.
@@ -112,6 +119,7 @@ make docs             # dbt docs generate, refresh docs/dbt/ artifacts
 make lint             # ruff + sqlfluff
 make leak-check       # scripts/leak-check.sh, exits nonzero on a hit
 make check            # everything CI runs on a PR
+make check-derived    # is data/derived current with data/raw? Nonzero if not.
 make clean-derived    # delete data/derived. Always safe; make spatial rebuilds it.
 make load-bigquery    # (creds) load both zones into BigQuery
 make build-bigquery   # (creds) dbt build --target bigquery
@@ -152,8 +160,9 @@ ingestion/          datasets.py is the dataset registry. raw_zone.py owns the
                     Parquet layout and is the only thing that reads it;
                     derived_zone.py is its sibling for data/derived.
                     ingest.py writes the raw zone, census.py is its TIGERweb
-                    transport, spatial.py computes the derived zone, and
-                    load.py loads both into a warehouse. geometry.py is
+                    transport, spatial.py computes the derived zone,
+                    check_derived.py asserts the derived zone is not behind the
+                    raw one, and load.py loads both into a warehouse. geometry.py is
                     pure-Python point-in-polygon and area, used only by
                     spatial.py and never at query time.
 publish/            export.py writes marts to published/ with a manifest.

@@ -57,7 +57,14 @@ export DUCKDB_PATH := $(CURDIR)/$(DATA_DIR)/sf.duckdb
 
 .PHONY: help setup all ingest spatial load load-bigquery build build-bigquery \
         publish test docs docs-serve lint fmt leak-check compile-duckdb compile-bigquery \
-        ci-build rebuild clean clean-warehouse clean-derived check
+        ci-build rebuild clean clean-warehouse clean-derived check check-derived
+
+# `make build` refuses to run against a derived zone that is behind the raw
+# zone. Set DERIVED_CHECK=0 to build anyway, which is worth doing only when you
+# already know the geography is incomplete and are building for some other
+# reason. See ingestion/check_derived.py for what the check compares.
+DERIVED_CHECK ?= 1
+BUILD_PREREQS  := $(if $(filter-out 0,$(DERIVED_CHECK)),check-derived,)
 
 help: ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -101,6 +108,14 @@ ingest: ## Pull every dataset from DataSF and TIGERweb into data/raw as Parquet
 spatial: ## Compute H3 cells and boundary membership into data/derived
 	$(PY) ingestion/spatial.py --all
 
+# The other half of "forgetting spatial does not error". spatial.py records the
+# raw row count it read per dataset in data/derived/_manifest.json, and this
+# compares that against the raw zone now. It is a prerequisite of `make build`
+# rather than advice, because the failure it replaces was four not_null
+# failures and fifty-one skips, none of which named the step that was skipped.
+check-derived: ## Check data/derived is current with data/raw. Nonzero if stale.
+	@$(PY) ingestion/check_derived.py --strict
+
 # ---------------------------------------------------------------------------
 # Load: both zones -> warehouse. Idempotent, so re-running is always safe.
 # ---------------------------------------------------------------------------
@@ -115,10 +130,10 @@ load-bigquery: ## (creds) Load data/raw into BigQuery
 # dbt. DuckDB is the default target (ADR-1); BigQuery is the named one.
 # ---------------------------------------------------------------------------
 
-build: ## dbt build against DuckDB: run + test in dependency order
+build: $(BUILD_PREREQS) ## dbt build against DuckDB: run + test in dependency order
 	cd $(DBT_DIR) && $(DBT) build
 
-build-bigquery: ## (creds) dbt build against BigQuery
+build-bigquery: $(BUILD_PREREQS) ## (creds) dbt build against BigQuery
 	cd $(DBT_DIR) && $(DBT) build --target bigquery
 
 test: ## dbt test only, against DuckDB
@@ -204,6 +219,8 @@ ci-build: ## Full pipeline from fixtures, isolated. No network, no creds.
 	RAW_ZONE_DIR=$(CI_RAW) DERIVED_ZONE_DIR=$(CI_DERIVED) $(PY) ingestion/spatial.py --all
 	RAW_ZONE_DIR=$(CI_RAW) DERIVED_ZONE_DIR=$(CI_DERIVED) DUCKDB_PATH=$(CI_DB) \
 		$(PY) ingestion/load.py --all --target duckdb
+	RAW_ZONE_DIR=$(CI_RAW) DERIVED_ZONE_DIR=$(CI_DERIVED) \
+		$(PY) ingestion/check_derived.py --strict
 	cd $(DBT_DIR) && DUCKDB_PATH=$(CI_DB) $(DBT) build
 	PUBLISH_DIR=$(CI_PUBLISHED) DUCKDB_PATH=$(CI_DB) $(PY) publish/export.py --all
 	@echo ""

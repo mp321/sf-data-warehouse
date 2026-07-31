@@ -118,6 +118,37 @@ def _dedup_sql(inner: str, key: str) -> str:
     """
 
 
+def raw_input_state(con, root: Path | None) -> dict:
+    """What the raw zone held for every dataset this step reads.
+
+    Per raw table: the deduplicated row count and the newest watermark. The
+    count goes through `_dedup_sql`, so it is the number of rows a staging
+    model has, not the number of files' worth of appends behind them, and a
+    later comparison against it means "does the derived zone still cover every
+    row that exists" rather than "has anything been appended".
+
+    Recorded for polygon datasets too. A new neighbourhood boundary does not
+    leave a point without geography, so nothing downstream fails loudly, but
+    every assignment in the zone was computed against the old boundaries and
+    is silently one version behind. That is worth reporting.
+    """
+    state: dict = {}
+    for cfg in {**point_datasets(), **polygon_datasets()}.values():
+        table = cfg["table"]
+        if not raw_zone.has_data(table, root):
+            continue
+        inner = (
+            f"select {cfg['grain_key']} as row_key, _socrata_updated_at, _ingested_at "
+            f"from {raw_zone.read_sql(table, root)}"
+        )
+        rows = con.execute(f"select count(*) from ({_dedup_sql(inner, 'row_key')})").fetchone()[0]
+        state[table] = {
+            "rows": rows,
+            "watermark": raw_zone.read_watermark(table, root),
+        }
+    return state
+
+
 def _point_expressions(cfg: dict) -> tuple[str, str]:
     """SQL for the latitude and longitude columns of one point dataset.
 
@@ -842,6 +873,12 @@ def main() -> None:
         print(f"WARNING: no raw data for boundary dataset(s): {', '.join(missing)}")
 
     with raw_zone.connect() as con:
+        # Read before building, not after. Taking the counts afterwards would
+        # record a raw zone that an `ingest` running alongside this could have
+        # already moved past, and the manifest would then claim coverage the
+        # zone does not have. Reading first can only understate.
+        raw_inputs = raw_input_state(con, args.raw_root)
+
         print("Boundaries:")
         boundary_rows, bridge_rows, boundary_stats = build_boundaries(con, args.raw_root)
         print("\nPoints:")
@@ -874,6 +911,7 @@ def main() -> None:
     derived_zone.write_manifest(
         [*entries, {"coordinate_quality": point_stats, "boundary_coverage": boundary_stats}],
         args.derived_root,
+        raw_inputs=raw_inputs,
     )
     print("\nDerived zone updated. Load it into a warehouse with:")
     print("  python ingestion/load.py --all --target duckdb")

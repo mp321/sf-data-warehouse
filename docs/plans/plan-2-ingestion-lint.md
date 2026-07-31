@@ -1,10 +1,16 @@
 ---
 status: draft
 date: 2026-07-30
-related: [plan-1-duckdb-parquet]
+related: [plan-1-duckdb-parquet, plan-5-narrow-and-polish]
 ---
 
 # PLAN-2. Remove the ruff exemptions on the ingestion module
+
+Mostly closed by side effect on 2026-07-31: the exemptions are gone because
+the underlying findings were fixed rather than silenced. One item remains, the
+`datasets.py` module-shadowing hazard that `known-first-party` silenced
+without fixing, and it is PLAN-5 step 7. Closing this plan is part of that
+step.
 
 ## Goal
 

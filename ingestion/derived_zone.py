@@ -23,7 +23,9 @@ Three consequences worth knowing:
     function of the raw zone plus the code, so "resume from where we were" is
     not a question that arises. `_manifest.json` records what was built and
     from how many input rows, for the same reason ADR-4 wanted run manifests:
-    so an empty table can be told apart from a step that never ran.
+    so an empty table can be told apart from a step that never ran. The input
+    counts are also what make the zone's staleness checkable without
+    recomputing it; `check_derived.py` compares them against the raw zone.
   - Types are real. `h3_r9` is a BIGINT, not a string of digits. The
     all-STRING contract exists so that the raw zone cannot silently lose
     information the API sent; it buys nothing for a column we computed.
@@ -39,6 +41,13 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 MANIFEST_NAME = "_manifest.json"
+
+# Top-level manifest key holding what the raw zone looked like when this zone
+# was built: per raw table, the deduplicated row count and the watermark.
+# Separate from the `tables` list, which is about what came out, because this
+# is about what went in, and it is the only thing that makes staleness
+# detectable. See check_derived.py.
+RAW_INPUTS_KEY = "raw_inputs"
 
 
 def derived_root() -> Path:
@@ -84,19 +93,42 @@ def write_table(table: str, rows: list[dict], schema: pa.Schema, root: Path | No
     return destination
 
 
-def write_manifest(entries: list[dict], root: Path | None = None) -> Path:
-    """Record what this run of spatial.py built, next to what it built."""
+def write_manifest(
+    entries: list[dict], root: Path | None = None, raw_inputs: dict | None = None
+) -> Path:
+    """Record what this run of spatial.py built, next to what it built.
+
+    `raw_inputs` is what it was built from. Omitted rather than written empty
+    when a caller has nothing to record, so `read_manifest` can tell "built by
+    a spatial.py that did not record its inputs" apart from "built from an
+    empty raw zone". The first cannot be checked for staleness; the second can.
+    """
     directory = root or derived_root()
     directory.mkdir(parents=True, exist_ok=True)
     destination = directory / MANIFEST_NAME
-    destination.write_text(
-        json.dumps(
-            {
-                "generated_at": datetime.now(timezone.utc).isoformat(),
-                "tables": entries,
-            },
-            indent=2,
-        )
-        + "\n"
-    )
+    payload: dict = {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "tables": entries,
+    }
+    if raw_inputs is not None:
+        payload[RAW_INPUTS_KEY] = raw_inputs
+    destination.write_text(json.dumps(payload, indent=2) + "\n")
     return destination
+
+
+def read_manifest(root: Path | None = None) -> dict | None:
+    """The manifest this zone was written with, or None if there is not one.
+
+    None covers both "the zone was never built" and "the directory exists but
+    the manifest does not", which are the same answer to every caller: there
+    is nothing here to compare against.
+    """
+    path = (root or derived_root()) / MANIFEST_NAME
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text())
+    except ValueError:
+        # A truncated manifest is a half-finished `make spatial`, so treat it
+        # as absent rather than crashing the caller. Rebuilding fixes it.
+        return None

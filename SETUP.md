@@ -65,6 +65,146 @@ Actions all use.
 Checkpoint: you have a `.json` key file downloaded. Treat it like a
 password.
 
+### 1.3 Cloud Storage bucket and IAM (PLAN-4)
+
+This is where the Parquet raw zone lives once PLAN-4 lands. Until then it
+is optional and nothing breaks without it.
+
+Everything below assumes `set -a; source .env; set +a` has been run, so
+`GCP_PROJECT_ID` is set. Substitute your own bucket name for
+`sf-data-bucket-mp`.
+
+**Bucket settings that matter for staying free.** Always-free Cloud
+Storage is 5 GB-month of Standard storage, 5,000 Class A and 50,000 Class
+B operations per month, and it applies only to the `us-central1`,
+`us-west1` and `us-east1` single regions. A multi-region location such as
+`US` is not covered, so check the bucket is a single region and not the
+multi-region that the console offers first.
+
+```bash
+# Confirm what you actually created. Location should read US-CENTRAL1,
+# storage class STANDARD, and uniform bucket-level access true.
+gcloud storage buckets describe gs://sf-data-bucket-mp \
+  --format="yaml(location,locationType,storageClass,uniformBucketLevelAccess,softDeletePolicy,versioning)"
+```
+
+Three settings to correct if they are not already right:
+
+```bash
+# 1. Soft delete is ON by default with 7 days of retention, and
+#    soft-deleted objects keep billing for those 7 days. This pipeline
+#    deletes and rewrites objects routinely: `ingest.py --full-refresh`
+#    swaps whole trees and `make publish` rewrites every mart directory.
+#    With soft delete on, a rewrite temporarily doubles stored bytes,
+#    which is how a 1 GB zone quietly becomes 2 GB against a 5 GB
+#    allowance. Set retention to zero.
+gcloud storage buckets update gs://sf-data-bucket-mp --clear-soft-delete
+
+# 2. Object versioning must stay off, for the same reason, more so.
+gcloud storage buckets update gs://sf-data-bucket-mp --no-versioning
+
+# 3. Uniform bucket-level access and public access prevention on.
+gcloud storage buckets update gs://sf-data-bucket-mp \
+  --uniform-bucket-level-access --public-access-prevention
+```
+
+**IAM: grant at the bucket, not the project.** The service account needs
+to create, read, list and delete objects in this one bucket, and needs
+nothing else in Cloud Storage.
+
+```bash
+SA=$(gcloud iam service-accounts list \
+  --project "$GCP_PROJECT_ID" --format="value(email)" | head -1)
+echo "$SA"   # sanity check before granting anything
+
+gcloud storage buckets add-iam-policy-binding gs://sf-data-bucket-mp \
+  --member="serviceAccount:$SA" --role="roles/storage.objectUser"
+```
+
+`roles/storage.objectUser` covers create, delete, get and list without
+granting the ability to change the bucket's IAM. `roles/storage.objectAdmin`
+also works and is the older equivalent. Do not grant `roles/storage.admin`.
+
+**BigQuery roles.** SETUP.md section 1.2 above suggests BigQuery Admin as
+the simplest option. Tighten it now, because external tables do not need
+it:
+
+```bash
+gcloud projects add-iam-policy-binding "$GCP_PROJECT_ID" \
+  --member="serviceAccount:$SA" --role="roles/bigquery.user"
+gcloud projects add-iam-policy-binding "$GCP_PROJECT_ID" \
+  --member="serviceAccount:$SA" --role="roles/bigquery.dataEditor"
+
+# then remove the broad one
+gcloud projects remove-iam-policy-binding "$GCP_PROJECT_ID" \
+  --member="serviceAccount:$SA" --role="roles/bigquery.admin"
+```
+
+`bigquery.user` runs jobs and creates datasets; `bigquery.dataEditor`
+creates and replaces tables inside them. A BigQuery external table over
+GCS is read with the querying identity's own credentials, so the
+`storage.objectUser` binding above is what lets BigQuery read the
+Parquet. No BigQuery connection resource and no BigLake setup is needed
+for plain external tables.
+
+**APIs.** Both are normally on already; enabling twice is harmless.
+
+```bash
+gcloud services enable bigquery.googleapis.com storage.googleapis.com \
+  --project "$GCP_PROJECT_ID"
+```
+
+**Verify end to end before trusting any of it.** Authenticate as the
+service account using the key from section 1.2. This is the same
+credential path `load.py` and `publish/export.py` use, so a green probe
+here means the pipeline will work, which impersonation does not prove.
+
+```bash
+gcloud auth activate-service-account \
+  --key-file="$GOOGLE_APPLICATION_CREDENTIALS"
+
+echo hello > /tmp/probe.txt
+gcloud storage cp /tmp/probe.txt gs://sf-data-bucket-mp/probe.txt
+gcloud storage rm gs://sf-data-bucket-mp/probe.txt
+
+gcloud config set account YOUR_EMAIL@example.com   # switch back
+```
+
+That last line matters. `activate-service-account` changes the active
+gcloud account globally, not just for this shell, so every later gcloud
+command runs as the robot until you switch back. Run `gcloud auth list`
+if you are unsure which account is active.
+
+Impersonation (`--impersonate-service-account="$SA"`) is the other way
+to run the probe, but it needs a grant on *your* account that nothing
+above gives you, and it fails with `iam.serviceAccounts.getAccessToken
+denied` without it. The bucket binding grants the service account access
+to the bucket; it does not grant you the right to act as the service
+account. If you want impersonation anyway:
+
+```bash
+gcloud iam service-accounts add-iam-policy-binding "$SA" \
+  --member="user:YOUR_EMAIL@example.com" \
+  --role="roles/iam.serviceAccountTokenCreator" \
+  --project="$GCP_PROJECT_ID"
+```
+
+Allow about a minute for the binding to propagate before retrying. This
+needs Owner or Service Account Admin on the project; if the command
+itself is denied, check `gcloud auth list` against the account that
+created the project, because a mismatch there is the usual cause.
+
+Add the bucket to `.env` and `.env.example`:
+
+```
+GCS_BUCKET=sf-data-bucket-mp
+RAW_ZONE_URI=gs://sf-data-bucket-mp/raw
+```
+
+Checkpoint: the probe file uploads and deletes as the service account,
+`softDeletePolicy` reports zero retention, and the location is a single
+region.
+
 ---
 
 ## Phase 2: Local setup
@@ -242,6 +382,13 @@ warm-up.
 - 403 or permission errors from BigQuery: the service account is missing
   the BigQuery Admin role, or `GOOGLE_APPLICATION_CREDENTIALS` points to
   the wrong path.
+- `Failed to impersonate ... iam.serviceAccounts.getAccessToken denied`:
+  your user account lacks `roles/iam.serviceAccountTokenCreator` on the
+  service account. See the end of section 1.3; the key-based probe there
+  avoids impersonation entirely.
+- gcloud commands unexpectedly running as the service account: you ran
+  `gcloud auth activate-service-account` and did not switch back. Fix
+  with `gcloud config set account YOUR_EMAIL@example.com`.
 - dbt cannot find the profile: you are not in the `dbt/` folder, or
   `DBT_PROFILES_DIR` is not set to it.
 - Socrata 429 responses: you are being rate limited; add a free
