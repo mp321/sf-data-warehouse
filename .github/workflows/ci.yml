@@ -67,6 +67,14 @@ jobs:
       - name: Create local data directory
         run: mkdir -p data/raw
 
+      # Before the linters, not after. If the pinned ruff and the installed
+      # ruff have come apart, every result below this point is being produced
+      # by a different linter than the one the contributor ran, and that is
+      # worth saying plainly rather than leaving someone to infer it from a
+      # rule code they cannot reproduce locally.
+      - name: check lint pins
+        run: bash scripts/check-lint-pins.sh
+
       - name: ruff check
         run: ruff check .
 

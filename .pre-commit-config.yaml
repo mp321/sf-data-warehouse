@@ -4,6 +4,12 @@
 # Keep this in sync with the lint job in .github/workflows/ci.yml. If they
 # drift, CI becomes something people discover rather than something they
 # pre-empt.
+#
+# That sync is manual for every hook that pins a `rev`, and those pins are a
+# second toolchain that requirements-dev.txt does not constrain. sqlfluff used
+# to be one of them and is not any more: it runs from the venv now, for the
+# reason recorded above the local hooks. ruff is still pinned here and floats
+# in requirements-dev.txt, so bumping one means bumping the other.
 
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
@@ -22,10 +28,24 @@ repos:
       - id: no-commit-to-branch
         args: ["--branch", "main"]
 
+  # Ruff keeps its own isolated environment, unlike sqlfluff below. That is
+  # the approach ruff upstream recommends and it is safe here for a reason
+  # that does not apply to sqlfluff: ruff is a self-contained binary with no
+  # dependency graph, so this rev cannot fail to resolve the way a pinned
+  # dbt-core did. The only risk it carries is being a different version from
+  # the one CI installs.
+  #
+  # So this rev and `ruff==` in requirements-dev.txt must be the same version.
+  # The check-lint-pins hook below fails the commit if they are not. Bumping
+  # ruff means editing both lines; the check exists because the last time they
+  # disagreed, the hook was green locally while CI was red on a rule the hook
+  # had never heard of.
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.8.6
+    rev: v0.16.1
     hooks:
-      - id: ruff
+      # `ruff-check`, not `ruff`. The latter still works but is a legacy alias
+      # as of the 0.16 hooks and announces itself as one on every run.
+      - id: ruff-check
         args: ["--fix"]
       - id: ruff-format
 
@@ -44,6 +64,15 @@ repos:
   # is the price of a hook that cannot drift.
   - repo: local
     hooks:
+      - id: check-lint-pins
+        name: check lint pins (ruff, config vs requirements)
+        entry: bash scripts/check-lint-pins.sh
+        language: system
+        # Cheap and only meaningful when one of the two files it compares has
+        # changed, which is the only way they can come apart.
+        files: ^(requirements-dev\.txt|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+
       - id: sqlfluff-lint
         name: sqlfluff lint (dbt models)
         entry: bash scripts/sqlfluff-lint.sh

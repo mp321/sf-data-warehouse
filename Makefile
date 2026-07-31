@@ -140,10 +140,16 @@ docs-serve: docs ## Generate docs and serve the browsable site locally
 # Quality gates
 # ---------------------------------------------------------------------------
 
+# The sqlfluff line delegates to the script rather than spelling the command
+# out, so `make lint` and the pre-commit hook cannot disagree about which
+# models get linted or with which options. The script sets DBT_PROFILES_DIR
+# and DUCKDB_PATH itself and honours the ones exported above, so running it
+# from here is the same run either way.
 lint: ## Run ruff and sqlfluff
+	@bash scripts/check-lint-pins.sh
 	$(VENV)/bin/ruff check .
 	$(VENV)/bin/ruff format --check .
-	$(VENV)/bin/sqlfluff lint $(DBT_DIR)/models --processes 4
+	bash scripts/sqlfluff-lint.sh
 
 fmt: ## Auto-fix what ruff and sqlfluff can fix
 	$(VENV)/bin/ruff check --fix .

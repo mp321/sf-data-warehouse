@@ -126,7 +126,13 @@ def _empty_runs_ddl() -> str:
 
 
 def load_bigquery(names: list[str], root: Path | None) -> None:
-    from google.cloud import bigquery
+    # Deferred on purpose, so importing this module costs nothing on the
+    # DuckDB path, which is the one that runs on every PR and every local
+    # build. Module-scope would make the credential-free path import the
+    # google stack to not use it. PLC0415 wants top-level imports and is
+    # right nearly everywhere, hence the local silence rather than a repo
+    # wide ignore in ruff.toml.
+    from google.cloud import bigquery  # noqa: PLC0415
 
     project = require_env("GCP_PROJECT_ID")
     require_env("GOOGLE_APPLICATION_CREDENTIALS")
@@ -172,7 +178,7 @@ def _upload(client, reader, table_ref: str, query: str, staged: Path, *, label: 
     schema from the file, and every column is a STRING there, so the raw
     contract survives the round trip without a schema being declared twice.
     """
-    from google.cloud import bigquery
+    from google.cloud import bigquery  # noqa: PLC0415  (see load_bigquery)
 
     reader.execute(f"copy ({query}) to '{staged}' (format parquet, compression snappy)")
     config = bigquery.LoadJobConfig(

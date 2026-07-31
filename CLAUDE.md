@@ -136,7 +136,13 @@ docs/decisions/     adr-<n>-<slug>.md, one decision each, immutable once accepte
 docs/dev-notes/     YYYY-MM-DD.md, append-only session log.
 docs/dbt/           committed manifest.json and catalog.json. Refresh: make docs.
 tests/fixtures/     committed Socrata JSON so CI can run without network.
-scripts/            leak-check.sh and other repo hygiene scripts.
+scripts/            leak-check.sh, sqlfluff-lint.sh, check-lint-pins.sh.
+                    These are the real implementation; pre-commit, the
+                    Makefile and CI call them rather than restating the
+                    command, so a hook and a make target cannot disagree
+                    about what the check is. check-lint-pins.sh is the
+                    exception that proves it: ruff genuinely is installed
+                    twice, so something has to assert the two agree.
 data/raw/           local Parquet raw zone. Gitignored, never committed.
 keys/               service account keys. Gitignored, never committed.
 ```

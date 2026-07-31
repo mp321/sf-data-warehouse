@@ -3,7 +3,21 @@
 
 -r requirements.txt
 
-ruff>=0.8
+# Ruff is pinned exactly, not floated. It is pre-1.0 and stabilises new rules
+# in minor releases, so ">=" means the lint rules change under you on an
+# unrelated day. That already happened once: this file said ">=0.8" while
+# .pre-commit-config.yaml pinned v0.8.6, pip resolved 0.16.1, 0.16 stabilised
+# PLC0415, and CI went red on a commit that passed pre-commit locally.
+#
+# This version and the ruff rev in .pre-commit-config.yaml must match.!!
+# scripts/check-lint-pins.sh enforces it, and runs as a hook and in CI.
+# To upgrade: change both, then run `make lint` before committing.
+ruff==0.16.1
+
+# sqlfluff is not pinned here. It has no second copy to disagree with, because
+# the sqlfluff hook resolves it from this file via scripts/sqlfluff-lint.sh
+# rather than pinning its own. A float still means new rules can arrive
+# unannounced; pin it too if that ever costs a debugging session.
 sqlfluff>=3.3
 sqlfluff-templater-dbt>=3.3
 pre-commit>=4.0
