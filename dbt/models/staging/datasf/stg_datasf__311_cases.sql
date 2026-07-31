@@ -77,16 +77,10 @@ renamed as (
         -- null every value here. Typed rather than passed through as a
         -- string so it joins to the other staging models, which is the whole
         -- point of having a district column on both.
-        {{ x_safe_int('supervisor_district') }} as supervisor_district,
+        {{ x_safe_int('supervisor_district') }} as upstream_supervisor_district,
+        analysis_neighborhood as upstream_analysis_neighborhood,
         police_district,
         source as request_source,
-
-        -- geography
-        -- Point coordinates only for now. ADR-2 adds an H3 cell id here
-        -- once the precompute step exists; district assignment will then
-        -- come from a cell join rather than the upstream string above.
-        {{ x_safe_cast('lat', 'float') }} as latitude,
-        {{ x_safe_cast('long', 'float') }} as longitude,
 
         -- pipeline metadata
         {{ x_safe_cast('_socrata_updated_at', 'timestamp') }} as socrata_updated_at,
@@ -94,6 +88,18 @@ renamed as (
 
     from deduplicated
 
+),
+
+final as (
+
+    -- Geography arrives from stg_spatial__point_geography rather than being
+    -- parsed here: coordinates, H3 cells at r8/r9/r10, and the neighborhood
+    -- and district the case is exactly inside. This is ADR-2 landing, three
+    -- ADRs later than it was written, and it is why the two upstream
+    -- district columns above are now prefixed upstream_. They are kept for
+    -- comparison and are not the answer; ADR-2 explains why they cannot be.
+    {{ join_point_geography('renamed', 'raw_311_cases', 'case_id') }}
+
 )
 
-select * from renamed
+select * from final

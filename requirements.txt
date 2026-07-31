@@ -22,3 +22,21 @@ dbt-duckdb>=1.8,<2.0
 # than inherited. See ingestion/raw_zone.py for why the two split that way.
 pyarrow>=15.0
 duckdb>=1.0
+
+# H3, and the reason it is here rather than as a DuckDB extension. BigQuery
+# has no H3 support of any kind, so an H3 call in a dbt model cannot compile
+# on both targets, which ADR-1 requires of every model. ingestion/spatial.py
+# computes the cells once in Python and both engines read the resulting
+# BIGINTs. ADR-5 has the full argument.
+#
+# Major-version pinned because the v3 to v4 rename changed every function
+# name in the library (geo_to_h3 became latlng_to_cell, and so on), so a
+# major bump is a rewrite of spatial.py rather than an upgrade.
+h3>=4.0,<5.0
+
+# numpy is already present transitively via pyarrow, and is pinned here
+# because ingestion/geometry.py imports it directly for the vectorised
+# point-in-polygon test. Point by point in pure Python that step took
+# minutes; batched through numpy it takes seconds, which is the difference
+# between exact boundary assignment being affordable and not.
+numpy>=1.24

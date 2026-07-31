@@ -81,7 +81,7 @@ repos:
         # thing linted, but a macro or a sources yml can change what a model
         # compiles to, so a change to either has to re-run the lint. Anything
         # under dbt/ that a model can reach is in scope for triggering.
-        files: ^dbt/(models|macros)/.*\.(sql|yml)$
+        files: ^dbt/(models|macros|tests)/.*\.(sql|yml)$
         # The script lints dbt/models as a whole, the same command CI runs.
         # Passing staged filenames would lint a subset for no saving, since
         # the dbt templater compiles the entire project either way.

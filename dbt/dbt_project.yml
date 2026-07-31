@@ -50,6 +50,34 @@ vars:
       staging_model: stg_datasf__building_permits
       tier: core
       stale_after_hours: 168
+    - name: business_locations
+      source_table: raw_business_locations
+      staging_model: stg_datasf__business_locations
+      tier: core
+      stale_after_hours: 168
+    - name: street_trees
+      source_table: raw_street_trees
+      staging_model: stg_datasf__street_trees
+      tier: core
+      stale_after_hours: 720
+    # Reference boundary sets. They change every several years, so staleness
+    # is not a signal and they carry no SLA, but they are not demoted either:
+    # every spatial mart depends on them, which is what `reference` means.
+    - name: analysis_neighborhoods
+      source_table: raw_analysis_neighborhoods
+      staging_model: stg_datasf__analysis_neighborhoods
+      tier: reference
+      stale_after_hours: null
+    - name: supervisor_districts
+      source_table: raw_supervisor_districts
+      staging_model: stg_datasf__supervisor_districts
+      tier: reference
+      stale_after_hours: null
+    - name: census_block_groups
+      source_table: raw_census_block_groups
+      staging_model: stg_census__block_groups
+      tier: reference
+      stale_after_hours: null
     - name: city_budget
       source_table: raw_city_budget
       staging_model: stg_datasf__city_budget
@@ -61,11 +89,41 @@ vars:
       tier: demoted
       stale_after_hours: null
 
+  # ---------------------------------------------------------------------
+  # Spatial settings. These have to agree with RESOLUTIONS and
+  # MEMBERSHIP_RESOLUTION in ingestion/spatial.py, which is the code that
+  # actually computes the cells; nothing here can conjure a resolution the
+  # derived zone does not hold. Changing either of the first two means
+  # re-running `make spatial`, not just rebuilding dbt.
+  # ---------------------------------------------------------------------
+
+  # The resolution boundary membership is decided at. Finest available, since
+  # membership error scales with cell size.
+  h3_membership_resolution: 10
+
+  # The resolution mart_activity_by_h3 aggregates to. Coarser than membership
+  # on purpose: a city map at r10 is 40,000 hexagons, at r9 it is 4,000.
+  h3_mart_resolution: 9
+
+  # Average hexagon area in square kilometres, per resolution. Constants from
+  # the H3 specification, kept here because a density needs an area and the
+  # engines have no h3 function to ask (ADR-5). Keys are strings so that
+  # var(...)[resolution | string] works in a model.
+  h3_cell_area_sq_km:
+    "8": 0.7373275976
+    "9": 0.1053325134
+    "10": 0.0150475019
+
 models:
   sf_data_warehouse:
     staging:
       # Staging models are views: cheap, always fresh, one per source table.
       # Their job is renaming, typing, and light cleanup only.
+      +materialized: view
+    intermediate:
+      # Intermediate models are views too. They exist to be selected from by
+      # marts, not to be queried, so materialising them would pay for storage
+      # nobody reads. int_point_activity is the only one.
       +materialized: view
     marts:
       # Marts are tables: the analysis-ready layer that queries hit.

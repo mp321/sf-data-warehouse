@@ -217,3 +217,53 @@
 {%- macro bigquery__x_utc_now() -%}
     {{- 'current_timestamp()' -}}
 {%- endmacro -%}
+
+
+{# ---------------------------------------------------------------------------
+   First day of the month containing a timestamp, as a DATE.
+
+   Three differences at once, which is why this is a macro rather than a
+   convention. DuckDB is date_trunc('month', x) with the part as a quoted
+   string first; BigQuery is date_trunc(x, MONTH) with the part as a bare
+   keyword second. And BigQuery's DATE_TRUNC over a TIMESTAMP returns a
+   TIMESTAMP interpreted in UTC, while DuckDB's returns a TIMESTAMP, so the
+   two would agree on the instant but disagree on the column type, and a mart
+   grouped by it would come out with a different schema on each engine.
+
+   Casting to DATE first settles all three: both engines then truncate a DATE
+   and return a DATE. Every month bucket in the marts goes through this, so
+   that "2026-07" means one thing warehouse-wide.
+   --------------------------------------------------------------------------- #}
+
+{%- macro x_month_start(timestamp_expression) -%}
+    {{- adapter.dispatch('x_month_start', 'sf_data_warehouse')(timestamp_expression) -}}
+{%- endmacro -%}
+
+
+{%- macro default__x_month_start(timestamp_expression) -%}
+    {{- "date_trunc('month', " ~ x_safe_cast(timestamp_expression, 'date') ~ ')' -}}
+{%- endmacro -%}
+
+
+{%- macro bigquery__x_month_start(timestamp_expression) -%}
+    {{- 'date_trunc(' ~ x_safe_cast(timestamp_expression, 'date') ~ ', month)' -}}
+{%- endmacro -%}
+
+
+{# ---------------------------------------------------------------------------
+   Division that yields null rather than erroring or infinity when the
+   denominator is zero.
+
+   Every normalised measure in the marts is a rate over a population, an area
+   or a count, and all three are legitimately zero: a cell over the bay has no
+   residents, and dividing 40 street-cleaning requests by them should say
+   "not applicable" rather than "infinity" or "divide by zero".
+
+   Not dispatched. nullif is standard on both engines and the point of
+   wrapping it is that a rate is never written as a bare `/` anywhere in this
+   project, so nobody has to remember which denominators can be zero.
+   --------------------------------------------------------------------------- #}
+
+{%- macro x_safe_divide(numerator, denominator) -%}
+    {{- '(' ~ numerator ~ ') / nullif(' ~ denominator ~ ', 0)' -}}
+{%- endmacro -%}

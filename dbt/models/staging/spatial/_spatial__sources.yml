@@ -1,0 +1,61 @@
+version: 2
+
+sources:
+  - name: derived_spatial
+    description: >
+      The derived zone: H3 cells and boundary assignments computed by
+      ingestion/spatial.py from the raw zone, materialised by
+      ingestion/load.py on both engines (ADR-5, ADR-6).
+
+      Deliberately not part of raw_datasf. Nothing here came from an API, so
+      the all-STRING raw contract does not apply and would be actively
+      misleading: h3_r9 is a BIGINT because it is a number this project
+      computed, not text some API sent. Keeping the two schemas apart is what
+      lets "everything in raw_datasf is a STRING from upstream" stay true
+      with no exceptions to remember.
+
+      Every table here is replaced wholesale by `make spatial` and can be
+      rebuilt from the raw zone at any time. If these are empty, that step
+      has not been run.
+    schema: derived_spatial
+    tables:
+      - name: derived_point_h3
+        description: >
+          One row per point-bearing raw row: its parsed coordinates, a status
+          saying whether they are usable, and its H3 cell at resolutions 8, 9
+          and 10 as BIGINTs. Rows with unusable coordinates are present with
+          null cells rather than absent, so the drop rate is measurable.
+
+      - name: derived_boundary
+        description: >
+          One row per polygon across every boundary set, with its name, its
+          spherical area in square kilometres, its GeoJSON, and population
+          and housing units where the source carries them (block groups only).
+
+      - name: derived_polygon_h3
+        description: >
+          The bridge table. One row per (boundary, resolution, covering cell),
+          flagged three ways: is_interior for cells entirely inside the
+          boundary, is_primary for the single boundary that owns a cell, and
+          is_allocation_cell for measure interpolation. This is what turns
+          polygon membership into an integer join.
+
+      - name: derived_point_boundary
+        description: >
+          One row per (point, boundary set): the boundary the point is
+          exactly inside, and whether that was decided by the cell alone or
+          by a point-in-polygon test. Exact, not approximate.
+
+      - name: derived_h3_population
+        description: >
+          One row per (resolution, cell): population and housing units areally
+          interpolated from block groups. Totals to the 2020 city population
+          at every resolution, which spatial.py asserts rather than assumes.
+
+      - name: derived_pip_sample
+        description: >
+          Exact point-in-polygon answers for a deterministic sample of points,
+          computed by an implementation separate from the one that builds
+          derived_point_boundary. The oracle for
+          tests/assert_h3_membership_matches_exact_pip.sql, and an input to
+          nothing else. Not a mart source.

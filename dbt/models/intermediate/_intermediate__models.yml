@@ -1,0 +1,63 @@
+version: 2
+
+models:
+  - name: int_point_activity
+    description: >
+      One row per dated event, across every point dataset that has a date.
+      The spine both activity marts are built on: what happened, when, what
+      kind of thing it was, and where.
+
+      The event date per dataset is a modelling choice and not a given. 311
+      uses when the case was opened, permits use when the application was
+      filed rather than issued (filing is the demand signal; issuing is the
+      city's response, and mixing them makes a permitting backlog look like a
+      construction slowdown), businesses use when the location opened, trees
+      use the plant date. film_locations is absent because it has only a
+      release year, and a release year is not when the shoot happened.
+
+      Undated rows are dropped here, which is why this model's row count is
+      lower than the sum of its staging models. Most of the gap is street
+      trees: the city inherited the majority of its tree inventory without
+      planting records.
+    columns:
+      - name: dataset
+        description: Registry name of the source, e.g. 311_cases.
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["311_cases", "building_permits", "business_locations", "street_trees"]
+
+      - name: event_id
+        description: >
+          The event's key in its own dataset. Unique within a dataset but not
+          across them, so the grain is the pair with dataset.
+        tests:
+          - not_null
+
+      - name: event_month
+        description: >
+          First day of the month the event happened, as a DATE on both
+          engines via x_month_start. Never null: undated rows are excluded.
+        tests:
+          - not_null
+
+      - name: category
+        description: >
+          The dataset's own category dimension: service type for 311, permit
+          type for permits, licence description for businesses, plant type
+          for trees. Coalesced to 'Unknown' rather than left null, so that
+          grouping by it never silently drops rows.
+        tests:
+          - not_null
+
+      - name: analysis_neighborhood
+        description: >
+          Exact neighborhood membership. Null means outside every
+          neighborhood, mostly the registered businesses located outside
+          San Francisco.
+
+    tests:
+      - unique:
+          arguments:
+            column_name: "dataset || '|' || event_id"

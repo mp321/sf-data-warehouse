@@ -11,10 +11,12 @@
 -- there is nothing to deduplicate them by and collapsing them would be a
 -- guess. The grain key is Socrata's row id.
 --
--- Demoted source under ADR-3: this is the pipeline canary. It is small
--- enough to ingest end to end in seconds, which is what makes it the smoke
--- test in SETUP.md. Its locations are free text, so ADR-2 does not apply
--- even though it happens to carry coordinates.
+-- The pipeline canary, small enough to ingest end to end in seconds, which
+-- is what makes it the smoke test in SETUP.md. ADR-3 demoted it partly on
+-- the grounds that "its locations are free text, so ADR-2 does not apply".
+-- The free-text `locations` column is real, but the dataset also publishes
+-- flat latitude and longitude, populated on 96 percent of rows, so ADR-2 does
+-- apply and always did. ADR-7 corrects that and promotes it to a demo mart.
 --
 -- Follows the shape of stg_datasf__311_cases: source / deduplicated /
 -- renamed. See that model for why this header is wrapped in {% raw %}.
@@ -64,13 +66,8 @@ renamed as (
         -- "1201 California St. at Jones St.", so it does not join to
         -- anything and is not an address.
         locations as location_description,
-        analysis_neighborhood,
-        {{ x_safe_int('supervisor_district') }} as supervisor_district,
-
-        -- Flat lat/long columns exist here, unlike permits, so no JSON
-        -- extraction is needed. They are null for roughly one row in twenty.
-        {{ x_safe_cast('latitude', 'float') }} as latitude,
-        {{ x_safe_cast('longitude', 'float') }} as longitude,
+        analysis_neighborhood as upstream_analysis_neighborhood,
+        {{ x_safe_int('supervisor_district') }} as upstream_supervisor_district,
 
         -- the reason this dataset is in scope at all
         fun_facts,
@@ -81,6 +78,16 @@ renamed as (
 
     from deduplicated
 
+),
+
+final as (
+
+    -- This dataset does carry flat latitude and longitude columns, usable on
+    -- 2,127 of 2,214 rows. ADR-3 asserted it did not and excluded it from
+    -- ADR-2 on that basis; ADR-7 corrects the record. No geocoding decision
+    -- was needed, because there was nothing to geocode.
+    {{ join_point_geography('renamed', 'raw_film_locations', 'film_location_id') }}
+
 )
 
-select * from renamed
+select * from final

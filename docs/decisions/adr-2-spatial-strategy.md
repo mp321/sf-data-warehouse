@@ -1,7 +1,7 @@
 ---
-status: active
+status: superseded
 date: 2026-07-30
-related: [adr-1-warehouse-targets]
+related: [adr-1-warehouse-targets, adr-6-polygon-membership]
 ---
 
 # ADR-2. Spatial strategy: H3 coarse filter, exact geometry only on boundaries

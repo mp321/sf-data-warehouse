@@ -63,4 +63,4 @@ else
     exit 2
 fi
 
-exec "$SQLFLUFF" lint dbt/models --processes 4
+exec "$SQLFLUFF" lint dbt/models dbt/tests --processes 4

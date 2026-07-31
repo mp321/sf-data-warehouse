@@ -4,6 +4,24 @@ version: 2
 # That sentence is the contract: it is what the unique test on this file
 # enforces, and it is the first thing that stops being true when an upstream
 # schema changes. If you cannot write the sentence, the model is not finished.
+#
+# Every point-bearing model below carries the same block of geography tests,
+# and the pattern is worth reading once rather than five times:
+#
+#   1. accepted_range on latitude and longitude with Earth-sized bounds and
+#      no `where`. This asserts a coordinate is a coordinate. It fires on
+#      State Plane feet leaking into a degree column, which is the failure
+#      that produced this test.
+#   2. accepted_range with San Francisco bounds and `where:
+#      is_usable_coordinate`. This asserts the classifier in
+#      ingestion/spatial.py agrees with itself: anything it called usable
+#      really is inside the box it claims to have checked. Without the
+#      `where` it would fail on the 18 percent of registered businesses that
+#      are correctly located outside the city.
+#   3. relationships from analysis_neighborhood to dim_neighborhood. Nulls
+#      pass, which is the point: a null means "outside every neighborhood",
+#      and a non-null that is not a real neighborhood means the bridge
+#      produced a name from nowhere.
 
 models:
   - name: stg_datasf__311_cases
@@ -43,10 +61,75 @@ models:
       - name: service_category
         description: Top-level request type, e.g. Street and Sidewalk Cleaning.
 
-      - name: supervisor_district
+      - name: upstream_supervisor_district
         description: >
-          Supervisor district number, 1 to 11. Published as "9.00000" and
-          cast to an integer here so it joins to the other staging models.
+          Supervisor district as DataSF stamped it, 1 to 11. Renamed from
+          supervisor_district when the computed geography arrived: it is
+          assigned at report time rather than recomputed when boundaries
+          move, and ADR-2 rejected it as the answer. Kept for comparison.
+          Join on supervisor_district_id instead.
+
+      # The two anchors below are defined here and aliased by every other
+      # point model in this file with `*latitude_tests`. Standard YAML, which
+      # dbt parses before it sees any of this, and it is what guarantees the
+      # five point models are tested identically rather than nearly so.
+      - name: latitude
+        description: Latitude, parsed in ingestion/spatial.py. Null where unusable.
+        tests: &latitude_tests
+          - accepted_range:
+              arguments: {min_value: -90, max_value: 90}
+          - accepted_range:
+              arguments:
+                min_value: 37.60
+                max_value: 37.93
+                where: "is_usable_coordinate"
+
+      - name: longitude
+        description: Longitude, parsed in ingestion/spatial.py. Null where unusable.
+        tests: &longitude_tests
+          - accepted_range:
+              arguments: {min_value: -180, max_value: 180}
+          - accepted_range:
+              arguments:
+                min_value: -123.20
+                max_value: -122.28
+                where: "is_usable_coordinate"
+
+      - name: is_usable_coordinate
+        description: >
+          Whether the coordinate parsed and landed inside the San Francisco
+          bounding box. False covers four different situations; read
+          coordinate_status to tell them apart.
+        tests:
+          - not_null
+
+      - name: coordinate_status
+        description: >
+          One of ok, missing, unparseable, impossible, out_of_bounds.
+          The last two are worth separating: impossible means the value is
+          not a coordinate at all, out_of_bounds means it is a real place
+          that is not in San Francisco.
+        tests: &coordinate_status_values
+          - accepted_values:
+              arguments:
+                values: ["ok", "missing", "unparseable", "impossible", "out_of_bounds"]
+          - not_null
+
+      - name: h3_r9
+        description: >
+          H3 cell at resolution 9, as a BIGINT. Null unless the coordinate
+          parsed. Computed in ingestion/spatial.py, not by the engine (ADR-5).
+
+      - name: analysis_neighborhood
+        description: >
+          The neighborhood this case is exactly inside, from ADR-6's cell
+          lookup plus point-in-polygon refinement. Null means outside every
+          neighborhood, which is a real answer for a case in the bay.
+        tests: &neighborhood_relationship
+          - relationships:
+              arguments:
+                to: ref('dim_neighborhood')
+                field: analysis_neighborhood
 
   - name: stg_datasf__building_permits
     description: >
@@ -111,17 +194,33 @@ models:
           estimated_cost often enough that the two should not be used
           interchangeably.
 
-      - name: supervisor_district
-        description: Supervisor district number, 1 to 11. Null where the address did not geocode.
-
-      - name: latitude
-        description: Latitude extracted from the location GeoJSON point. Null where absent.
-
-      - name: longitude
-        description: Longitude extracted from the location GeoJSON point. Null where absent.
+      - name: upstream_supervisor_district
+        description: >
+          Supervisor district as DataSF stamped it. Null where the address
+          did not geocode. Kept for comparison; join on
+          supervisor_district_id.
 
       - name: is_adu
         description: Whether the permit covers an accessory dwelling unit.
+
+      - name: latitude
+        description: >
+          Latitude. Previously extracted from the location GeoJSON in this
+          model; now parsed once in ingestion/spatial.py so that it and the
+          H3 cell beside it cannot come from different places.
+        tests: *latitude_tests
+
+      - name: longitude
+        description: Longitude, parsed in ingestion/spatial.py.
+        tests: *longitude_tests
+
+      - name: coordinate_status
+        description: Why a coordinate is unusable, where it is.
+        tests: *coordinate_status_values
+
+      - name: analysis_neighborhood
+        description: The neighborhood this permit is exactly inside (ADR-6).
+        tests: *neighborhood_relationship
 
   - name: stg_datasf__city_budget
     description: >
@@ -196,10 +295,212 @@ models:
           not a join key.
 
       - name: latitude
-        description: Latitude where published. Null for roughly one row in twenty.
+        description: >
+          Latitude where published, usable on 2,127 of 2,214 rows. ADR-3
+          asserted this dataset carried no coordinates; ADR-7 corrects that.
+        tests: *latitude_tests
 
       - name: longitude
         description: Longitude where published. Null for roughly one row in twenty.
+        tests: *longitude_tests
+
+      - name: coordinate_status
+        description: Why a coordinate is unusable, where it is.
+        tests: *coordinate_status_values
+
+      - name: analysis_neighborhood
+        description: The neighborhood this shoot location is exactly inside (ADR-6).
+        tests: *neighborhood_relationship
 
       - name: fun_facts
         description: Trivia about the shoot. Null on most rows.
+
+  - name: stg_datasf__business_locations
+    description: >
+      One row per registered business location. Not one row per business:
+      uniqueid concatenates certificate number, location sequence and
+      ownership sequence, so a business that moves or changes hands
+      accumulates a row per location it has held. Count distinct
+      certificate_number for businesses.
+
+      Both a subject and a denominator, and the only dataset here that says
+      where commercial activity is. About 18 percent of rows carry
+      coordinates outside San Francisco, which is correct data rather than
+      dirty data and is why the San Francisco range tests are conditioned on
+      is_usable_coordinate.
+    columns:
+      - name: business_location_id
+        description: uniqueid upstream. The grain of this model.
+        tests:
+          - unique
+          - not_null
+
+      - name: certificate_number
+        description: >
+          The business tax certificate. Deliberately not unique: one business
+          accumulates a row per location it has held.
+        tests:
+          - not_null
+
+      - name: business_name
+        description: Trading name (dba_name upstream). Null on a small number of rows.
+
+      - name: business_category
+        description: >
+          Business activity from the licence code, e.g. "Retail Trade". The
+          category dimension of the activity marts for this dataset.
+
+      - name: location_started_at
+        description: >
+          When this location opened. The event date the activity marts count
+          on, and not the same as dba_started_at, which is the trading name's
+          life rather than the location's.
+
+      - name: is_active
+        description: >
+          Whether the location has no end date. Roughly a third of rows are
+          active; the rest are closed registrations that are still worth
+          counting for a historical rate and not for a current one.
+        tests:
+          - not_null
+
+      - name: latitude
+        description: Latitude, parsed in ingestion/spatial.py.
+        tests: *latitude_tests
+
+      - name: longitude
+        description: Longitude, parsed in ingestion/spatial.py.
+        tests: *longitude_tests
+
+      - name: coordinate_status
+        description: >
+          Why a coordinate is unusable, where it is. out_of_bounds is the
+          common one here and is not an error.
+        tests: *coordinate_status_values
+
+      - name: analysis_neighborhood
+        description: >
+          The neighborhood this location is exactly inside (ADR-6). Null for
+          the businesses registered here and located elsewhere.
+        tests: *neighborhood_relationship
+
+  - name: stg_datasf__street_trees
+    description: >
+      One row per tree site. A site is a planting location, not necessarily a
+      living tree: legal_status separates a DPW-maintained tree from a
+      significant tree from an empty plot, and plant_type separates trees
+      from landscaping. Filter on both before saying "trees".
+
+      Nearly 200,000 rows spread evenly across the city, which makes this the
+      most useful dataset here for checking the H3 machinery: 311 and permits
+      cluster hard enough that a broken cell assignment could hide in them.
+    columns:
+      - name: tree_id
+        description: treeid upstream. The grain of this model.
+        tests:
+          - unique
+          - not_null
+
+      - name: species
+        description: >
+          "Genus species :: Common Name" in one string, published that way.
+          Splitting it is a mart's job.
+
+      - name: plant_type
+        description: Tree or Landscaping. The category dimension for this dataset.
+
+      - name: legal_status
+        description: >
+          Who is responsible for the tree, e.g. DPW Maintained, Permitted
+          Site, Undocumented. Not a lifecycle: an empty plot and a mature
+          tree can share a status.
+
+      - name: planted_at
+        description: >
+          When it was planted. Null on well over half the rows, because the
+          city inherited most of this inventory without planting records, so
+          the activity marts see only the dated minority.
+
+      - name: diameter_at_breast_height_in
+        description: >
+          Trunk diameter in inches, clamped at both ends in the model. Zero
+          upstream means not measured rather than no trunk. Four rows carry
+          9999, 3030, 1920 and 1530, which are not measurements; the widest
+          tree trunk ever recorded is about 38 feet, so anything above 240
+          inches is nulled. This test guards the cleaned column, and it is
+          the test that found those four rows.
+        tests:
+          - accepted_range:
+              arguments: {min_value: 0, max_value: 240}
+
+      - name: latitude
+        description: Latitude, parsed in ingestion/spatial.py.
+        tests: *latitude_tests
+
+      - name: longitude
+        description: Longitude, parsed in ingestion/spatial.py.
+        tests: *longitude_tests
+
+      - name: coordinate_status
+        description: Why a coordinate is unusable, where it is.
+        tests: *coordinate_status_values
+
+      - name: analysis_neighborhood
+        description: The neighborhood this tree is exactly inside (ADR-6).
+        tests: *neighborhood_relationship
+
+  - name: stg_datasf__analysis_neighborhoods
+    description: >
+      One row per analysis neighborhood, 41 of them. The authoritative list
+      of neighborhood names, and a reference boundary set rather than an
+      event source: it changes every several years, so it carries no
+      freshness SLA.
+
+      The name is also the key. There is no numeric id upstream, so a rename
+      at DataSF is a breaking change to every join in this warehouse.
+    columns:
+      - name: analysis_neighborhood
+        description: Neighborhood name. The grain of this model, and the join key.
+        tests:
+          - unique
+          - not_null
+
+      - name: published_area_sq_mi
+        description: >
+          Area as DataSF publishes it. Carried as an independent check on the
+          spherical area computed in ingestion/geometry.py, not as an
+          alternative to it.
+
+      - name: geojson
+        description: >
+          The MultiPolygon as text. Nothing joins on this and by ADR-6
+          nothing should; it is here so a map has a shape to draw.
+        tests:
+          - not_null
+
+  - name: stg_datasf__supervisor_districts
+    description: >
+      One row per supervisor district, 11 of them, as drawn in the 2022
+      redistricting. Event rows from before 2022 carry an
+      upstream_supervisor_district assigned under the 2012 boundaries, so the
+      upstream column and the computed one will disagree for historical
+      reasons rather than because either is wrong.
+    columns:
+      - name: supervisor_district
+        description: District number, 1 to 11. The grain of this model.
+        tests:
+          - unique
+          - not_null
+          - accepted_range:
+              arguments: {min_value: 1, max_value: 11}
+
+      - name: supervisor_name
+        description: >
+          Sitting supervisor when DataSF last published the boundary file.
+          A person, so it goes out of date on an election cycle rather than
+          on a data cycle.
+
+      - name: geojson
+        description: The MultiPolygon as text.
+        tests:
+          - not_null

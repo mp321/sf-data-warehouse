@@ -43,6 +43,7 @@ from pathlib import Path
 import requests
 
 import raw_zone
+from census import census_pages
 from datasets import DATASETS
 
 SOCRATA_DOMAIN = "https://data.sfgov.org"
@@ -155,6 +156,22 @@ def fixture_pages(fixture_dir: Path, name: str, watermark: str):
         yield matching[start : start + PAGE_SIZE]
 
 
+def _pages_for(name: str, cfg: dict, args: argparse.Namespace, watermark: str, app_token: str):
+    """Pick the transport for one dataset.
+
+    Three of them now, and the choice is the only thing that varies: each
+    yields pages of raw records filtered to the watermark, and everything
+    downstream of here is shared. `--fixtures` wins over the registry so that
+    a fixture run exercises the same buffering, flushing and manifest code for
+    every dataset, including the Census one, without any network at all.
+    """
+    if args.fixtures:
+        return fixture_pages(args.fixtures, name, watermark)
+    if cfg.get("api") == "tigerweb":
+        return census_pages(cfg, watermark)
+    return socrata_pages(cfg["socrata_id"], watermark, app_token)
+
+
 def resolve_watermark(cfg: dict, args: argparse.Namespace) -> str:
     """--since beats --full-refresh beats what is already on disk."""
     if args.since:
@@ -182,10 +199,7 @@ def ingest_one(name: str, args: argparse.Namespace, app_token: str) -> dict:
     mode = "fixtures" if args.fixtures else ("full-refresh" if args.full_refresh else "incremental")
     print(f"[{name}] {mode}: fetching rows with :updated_at > {watermark}")
 
-    if args.fixtures:
-        pages = fixture_pages(args.fixtures, name, watermark)
-    else:
-        pages = socrata_pages(cfg["socrata_id"], watermark, app_token)
+    pages = _pages_for(name, cfg, args, watermark, app_token)
 
     manifest = {
         "run_id": run_id,

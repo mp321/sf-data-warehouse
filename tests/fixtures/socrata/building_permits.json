@@ -1351,8 +1351,10 @@
     "street_suffix": "Av",
     "structural_notification": "Y",
     "supervisor_district": "1",
+    "tidf_compliance": "E",
     "unit": "0",
     "unit_suffix": "C",
+    "voluntary_soft_story_retrofit": "Y",
     "zipcode": "94118"
   },
   {

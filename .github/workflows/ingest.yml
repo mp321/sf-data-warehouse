@@ -65,6 +65,16 @@ jobs:
           SOCRATA_APP_TOKEN: ${{ secrets.SOCRATA_APP_TOKEN }}
         run: python ingestion/ingest.py --all
 
+      # Rebuilt from scratch every run rather than cached alongside the raw
+      # zone. The derived zone is a pure function of data/raw plus
+      # spatial.py, so caching it would only create a way for the two to
+      # disagree: a cache hit carrying cells computed by last week's code is
+      # indistinguishable from a fresh one, and the disagreement would surface
+      # as boundary assignments that quietly stopped matching the boundaries.
+      # It costs a few minutes and buys not having to think about that.
+      - name: Precompute H3 cells and boundary membership
+        run: python ingestion/spatial.py --all
+
       - name: Write service account key
         env:
           GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}

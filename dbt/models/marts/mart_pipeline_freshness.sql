@@ -89,6 +89,35 @@ latest_run as (
 
 ),
 
+geo_quality as (
+
+    -- Coordinate quality per point source, from the derived zone. This is
+    -- the third departure from the marts rules and it is the same one as
+    -- (1): it reads a source rather than a staging model, because the whole
+    -- point is to report on rows that the spatial step could not place, and
+    -- a staging model that dropped them would have nothing to report.
+    --
+    -- The drop rate is split rather than totalled because the two halves
+    -- mean opposite things. `missing` and `out_of_bounds` are properties of
+    -- the world and are expected to be nonzero forever: a 311 case with no
+    -- location, a business registered here and located in Oakland.
+    -- `unparseable` and `impossible` are properties of the pipeline and
+    -- should be zero; either of them moving off zero means an upstream
+    -- column changed shape, which is a thing to be woken up for.
+    select
+        source_table,
+        count(*) as point_count,
+        sum(case when is_usable_coordinate then 1 else 0 end) as usable_point_count,
+        sum(case when coordinate_status = 'missing' then 1 else 0 end) as missing_coordinate_count,
+        sum(case when coordinate_status = 'out_of_bounds' then 1 else 0 end)
+            as out_of_bounds_count,
+        sum(case when coordinate_status in ('unparseable', 'impossible') then 1 else 0 end)
+            as malformed_coordinate_count
+    from {{ source('derived_spatial', 'derived_point_h3') }}
+    group by source_table
+
+),
+
 latest_test_run as (
 
     -- One invocation id: the most recent completed dbt run. Isolated in its
@@ -157,6 +186,19 @@ final as (
                 > registry.stale_after_hours
         end as is_stale,
 
+        -- geography. Null on sources that carry no points at all, which is
+        -- how a non-spatial source is told apart from a spatial one whose
+        -- coordinates all failed.
+        geo_quality.point_count,
+        geo_quality.usable_point_count,
+        geo_quality.missing_coordinate_count,
+        geo_quality.out_of_bounds_count,
+        geo_quality.malformed_coordinate_count,
+        100.0 * {{ x_safe_divide(
+            'geo_quality.point_count - geo_quality.usable_point_count',
+            'geo_quality.point_count'
+        ) }} as coordinate_drop_rate_pct,
+
         -- tests, from the most recent completed dbt run. Zero rather than
         -- null when a source has never been tested, so that summing these
         -- columns across sources works without a coalesce at every call site.
@@ -173,6 +215,10 @@ final as (
                 and latest_run.last_run_status <> 'success' then false
             when coalesce(test_results.tests_failed, 0) > 0 then false
             when coalesce(test_results.tests_errored, 0) > 0 then false
+            -- A malformed coordinate is a pipeline fault, unlike a missing
+            -- or out-of-city one, so it counts against health where the
+            -- other two deliberately do not.
+            when coalesce(geo_quality.malformed_coordinate_count, 0) > 0 then false
             when registry.stale_after_hours is null then true
             when row_counts.last_load_at is null then false
             else {{ x_hours_between('row_counts.last_load_at', x_utc_now()) }}
@@ -183,6 +229,7 @@ final as (
     left join row_counts on registry.source_name = row_counts.source_name
     left join latest_run on registry.source_name = latest_run.source_name
     left join test_results on registry.staging_model = test_results.tested_model
+    left join geo_quality on registry.source_table = geo_quality.source_table
 
 )
 

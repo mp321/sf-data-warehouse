@@ -112,18 +112,14 @@ renamed as (
         coalesce(structural_notification = 'Y', false) as needs_structural_review,
         coalesce(primary_address_flag = 'Y', false) as is_primary_address,
 
-        -- geography
-        -- Unlike 311, permits carry no flat lat/long columns; the coordinates
-        -- live inside the `location` GeoJSON point, which normalize_record
-        -- stored as JSON text. GeoJSON orders coordinates [longitude,
-        -- latitude], the reverse of how they are usually spoken, so index 0
-        -- is the longitude. ADR-2's H3 cell id attaches here later.
-        {{ x_safe_cast(x_json_extract_scalar('location', '$.coordinates[1]'), 'float') }}
-            as latitude,
-        {{ x_safe_cast(x_json_extract_scalar('location', '$.coordinates[0]'), 'float') }}
-            as longitude,
-        {{ x_safe_int('supervisor_district') }} as supervisor_district,
-        neighborhoods_analysis_boundaries as analysis_neighborhood,
+        -- geography, as published. The coordinates are no longer extracted
+        -- here: they live inside the `location` GeoJSON point, and
+        -- ingestion/spatial.py now does that extraction once so that the
+        -- latitude on this row and the H3 cell on this row cannot come from
+        -- different places. These two columns are the upstream labels, kept
+        -- for comparison and not used as the answer (ADR-2).
+        {{ x_safe_int('supervisor_district') }} as upstream_supervisor_district,
+        neighborhoods_analysis_boundaries as upstream_analysis_neighborhood,
 
         -- pipeline metadata
         {{ x_safe_cast('_socrata_updated_at', 'timestamp') }} as socrata_updated_at,
@@ -131,6 +127,12 @@ renamed as (
 
     from deduplicated
 
+),
+
+final as (
+
+    {{ join_point_geography('renamed', 'raw_building_permits', 'permit_record_id') }}
+
 )
 
-select * from renamed
+select * from final

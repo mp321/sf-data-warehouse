@@ -6,7 +6,7 @@ instead of calling the API, which is how CI runs the entire pipeline with no
 network and no credentials:
 
 ```
-make ci-build     # ingest-fixtures -> load -> dbt build
+make ci-build     # ingest-fixtures -> spatial -> load -> dbt build -> publish
 ```
 
 Everything downstream of the fetch is the production code path. Only the
@@ -23,7 +23,7 @@ in git, and need an exception to the `*.parquet` ignore rule. Starting from
 JSON means CI builds the Parquet zone the same way production does, and a
 change to the fixtures is reviewable in a diff.
 
-## Two invariants, both learned the hard way
+## Three invariants, all learned the hard way
 
 **Every column the staging models reference must appear somewhere in the
 file.** Socrata omits null fields per record rather than sending nulls, so a
@@ -32,12 +32,34 @@ Parquet file then has no such column at all. The model fails with "Referenced
 column not found". That failure is correct in production, where a column
 disappearing upstream should stop the build rather than quietly become NULL,
 but it makes a naively sampled fixture useless. `make_fixtures.py` therefore
-appends one synthetic coverage record carrying every field seen in a 400-row
-scan, with values borrowed from the rows that had them.
+appends one synthetic coverage record carrying every field the dataset
+publishes, with values borrowed from real rows.
+
+That record is built from the dataset's metadata, not from the scan, and the
+difference matters. The scan is ordered by `:updated_at`, so a column only
+populated on recently-touched rows is invisible in the oldest 400. Not one of
+the 400 oldest street trees carries `latitude`, `longitude`, `location`,
+`xcoord` or `ycoord`, so the first fixture built from a scan alone produced a
+tree dataset with no coordinates at all and broke `make spatial`. The
+generator now reads the column list from `/api/views/<id>.json` and fetches a
+real value for anything the scan missed.
 
 **The fixtures must pass the tests.** Adversarial values go only on columns
 with no `not_null` test. A fixture that breaks a test to make a point stops CI
 being able to prove anything else.
+
+**Boundary fixtures are real polygons, not placeholders.** The spatial step is
+the largest piece of machinery in the project, and a fixture run that stubbed
+it would leave the H3 bridge, the exact refinement and the population
+interpolation untested. So all 41 neighborhoods, all 11 supervisor districts
+and all 681 block groups are here, complete, with their vertices thinned to
+every fourth and rounded to five decimal places. That takes them from about
+3 MB to a few hundred KB.
+
+Thinning is lossy: it moves a boundary by tens of metres in places, so the
+cell counts a fixture run produces are not the cell counts real data produces.
+That is the intended split. CI proves the machinery runs and the tests hold;
+the numbers quoted in ADR-6 come from `make spatial` on the real zone.
 
 ## What is deliberately nasty in here
 
@@ -47,6 +69,19 @@ being able to prove anything else.
   to null them rather than error.
 - A permit with no `location`, so the JSON coordinate extraction has to cope
   with a missing document.
-- A negative budget amount, which is legitimate and must survive.
+- A negative budget amount, which is legitimate and must survive, and an
+  unparseable one, which makes a whole department-year group sum to NULL. That
+  is the only reason `mart_budget_by_department_year.budget_amount` is
+  nullable, and the model's header argues why NULL beats zero there.
 - A film with no release year and one with no coordinates, both of which exist
   upstream.
+- A business located in Georgia, which is correct data and must come out
+  `out_of_bounds` rather than being dropped or accepted as a San Francisco
+  address.
+- A business whose coordinates are State Plane feet in a degree column, which
+  must come out `impossible`. This is what the Earth-bounds `accepted_range`
+  test on latitude and longitude exists to catch.
+- A street tree with a diameter of 9999 inches, the classic not-recorded
+  sentinel, which the staging model has to null rather than average in.
+- A street tree with no plant date, which is most of them upstream and which
+  `int_point_activity` therefore has to drop rather than bucket into a month.

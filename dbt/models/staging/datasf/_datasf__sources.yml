@@ -24,6 +24,48 @@ sources:
         freshness:
           warn_after: {count: 7, period: day}
 
+      - name: raw_business_locations
+        description: >
+          Registered business locations, one row per business location
+          registration. Point-bearing, and the source of the "per 1000
+          businesses" denominator. About a fifth of rows carry coordinates
+          outside San Francisco, which is correct data rather than dirty
+          data: the registry records where a business is, and plenty of
+          businesses registered here are located elsewhere.
+        loaded_at_field: "cast(_socrata_updated_at as timestamp)"
+        freshness:
+          warn_after: {count: 7, period: day}
+
+      - name: raw_street_trees
+        description: >
+          Every street tree DPW maintains or knows about. Point-bearing,
+          dense and evenly spread across the city, which makes it the best
+          stress test available for the H3 machinery.
+        loaded_at_field: "cast(_socrata_updated_at as timestamp)"
+        freshness:
+          warn_after: {count: 30, period: day}
+
+      - name: raw_analysis_neighborhoods
+        description: >
+          The 41 analysis neighborhoods as MultiPolygons, in the_geom. A
+          reference boundary set: 41 rows that change every several years,
+          so there is no freshness SLA and staleness is not a signal.
+
+      - name: raw_supervisor_districts
+        description: >
+          The 11 supervisor districts as drawn in 2022, as MultiPolygons in
+          the `polygon` column. Note that rows in the event datasets carrying
+          a supervisor_district from before 2022 were stamped under the
+          previous boundaries and will not agree with a fresh assignment.
+
+      - name: raw_census_block_groups
+        description: >
+          The 681 San Francisco census block groups from the 2020 Census,
+          with POP100 and HU100. The only source here that is not DataSF: it
+          comes from the Census TIGERweb service, because api.census.gov now
+          requires an API key and ADR-1 keeps credentials off the ingestion
+          path. See ingestion/census.py and ADR-7.
+
       - name: raw_city_budget
         description: >
           City budget line items. Updated roughly annually at the source,

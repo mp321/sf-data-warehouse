@@ -3,11 +3,19 @@
 # Entry point for every routine task. See CLAUDE.md for context and
 # docs/decisions/ for why things are the way they are.
 #
-# The pipeline is three steps, and they are separate on purpose (ADR-4):
+# The pipeline is five steps, and they are separate on purpose (ADR-4, ADR-5):
 #
-#   make ingest    Socrata  -> data/raw/*.parquet    needs network, no creds
-#   make load      data/raw -> DuckDB or BigQuery    needs neither (DuckDB)
+#   make ingest    APIs     -> data/raw/*.parquet    needs network, no creds
+#   make spatial   data/raw -> data/derived          needs neither
+#   make load      both     -> DuckDB or BigQuery    needs neither (DuckDB)
 #   make build     dbt run + test on the warehouse   needs neither (DuckDB)
+#   make publish   warehouse -> published/           needs neither (local)
+#
+# `spatial` sits between ingest and load because it reads the Parquet zone
+# and writes another one. Forgetting it does not break the build: the spatial
+# models come out empty and the marts come out with no rows, which is a
+# quieter failure than it sounds, so `make all` exists to run the four in
+# order.
 #
 # Only the BigQuery targets need Google Cloud credentials, and they are
 # marked (creds). Load them with:
@@ -30,9 +38,11 @@ DOCS_ARTIFACTS := docs/dbt
 # appends fixture rows to data/raw, which is a slow-acting mess: the rows are
 # plausible, they survive into every later build, and nothing points at where
 # they came from.
-CI_DIR      := $(CURDIR)/$(DATA_DIR)/ci
-CI_RAW      := $(CI_DIR)/raw
-CI_DB       := $(CI_DIR)/sf.duckdb
+CI_DIR        := $(CURDIR)/$(DATA_DIR)/ci
+CI_RAW        := $(CI_DIR)/raw
+CI_DERIVED    := $(CI_DIR)/derived
+CI_DB         := $(CI_DIR)/sf.duckdb
+CI_PUBLISHED  := $(CI_DIR)/published
 
 # dbt reads profiles.yml from here; every dbt target sets it explicitly so
 # these work regardless of what is in your shell.
@@ -45,9 +55,9 @@ export DBT_PROFILES_DIR := $(CURDIR)/$(DBT_DIR)
 # absolute value here means every tool opens the same file.
 export DUCKDB_PATH := $(CURDIR)/$(DATA_DIR)/sf.duckdb
 
-.PHONY: help setup ingest load load-bigquery build build-bigquery \
-        test docs docs-serve lint fmt leak-check compile-duckdb compile-bigquery \
-        ci-build rebuild clean clean-warehouse check
+.PHONY: help setup all ingest spatial load load-bigquery build build-bigquery \
+        publish test docs docs-serve lint fmt leak-check compile-duckdb compile-bigquery \
+        ci-build rebuild clean clean-warehouse clean-derived check
 
 help: ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -77,14 +87,25 @@ setup: ## Create venv, install deps, install dbt packages and git hooks
 # Ingestion: Socrata -> Parquet. Needs network, but no credentials.
 # ---------------------------------------------------------------------------
 
-ingest: ## Pull every dataset from DataSF into data/raw as Parquet
+ingest: ## Pull every dataset from DataSF and TIGERweb into data/raw as Parquet
 	$(PY) ingestion/ingest.py --all
 
 # ---------------------------------------------------------------------------
-# Load: Parquet -> warehouse. Idempotent, so re-running is always safe.
+# Spatial precompute: raw zone -> derived zone (ADR-5, ADR-6).
+#
+# Pure function of data/raw plus ingestion/spatial.py, so it is always safe to
+# delete data/derived and re-run. Takes a few minutes on the full raw zone,
+# most of it in the exact point-in-polygon refinement and the oracle sample.
 # ---------------------------------------------------------------------------
 
-load: ## Load data/raw into the local DuckDB file
+spatial: ## Compute H3 cells and boundary membership into data/derived
+	$(PY) ingestion/spatial.py --all
+
+# ---------------------------------------------------------------------------
+# Load: both zones -> warehouse. Idempotent, so re-running is always safe.
+# ---------------------------------------------------------------------------
+
+load: ## Load data/raw and data/derived into the local DuckDB file
 	$(PY) ingestion/load.py --all --target duckdb
 
 load-bigquery: ## (creds) Load data/raw into BigQuery
@@ -102,6 +123,19 @@ build-bigquery: ## (creds) dbt build against BigQuery
 
 test: ## dbt test only, against DuckDB
 	cd $(DBT_DIR) && $(DBT) test
+
+# ---------------------------------------------------------------------------
+# Publish: warehouse -> partitioned Parquet plus a manifest (ADR-8).
+#
+# Local by default and blocked on nothing. Add a bucket with:
+#   make publish PUBLISH_DEST=r2://my-bucket/sf
+# ---------------------------------------------------------------------------
+
+PUBLISH_DEST ?=
+
+publish: ## Export marts to published/ as partitioned Parquet with a manifest
+	$(PY) publish/export.py --all \
+		$(if $(PUBLISH_DEST),--destination $(PUBLISH_DEST),)
 
 # compile renders every model to real SQL without touching a warehouse, which
 # is what catches engine-specific syntax that slipped past the cross_engine
@@ -167,12 +201,16 @@ ci-build: ## Full pipeline from fixtures, isolated. No network, no creds.
 	rm -rf $(CI_DIR)
 	mkdir -p $(CI_RAW)
 	RAW_ZONE_DIR=$(CI_RAW) $(PY) ingestion/ingest.py --all --fixtures tests/fixtures/socrata
-	RAW_ZONE_DIR=$(CI_RAW) DUCKDB_PATH=$(CI_DB) $(PY) ingestion/load.py --all --target duckdb
+	RAW_ZONE_DIR=$(CI_RAW) DERIVED_ZONE_DIR=$(CI_DERIVED) $(PY) ingestion/spatial.py --all
+	RAW_ZONE_DIR=$(CI_RAW) DERIVED_ZONE_DIR=$(CI_DERIVED) DUCKDB_PATH=$(CI_DB) \
+		$(PY) ingestion/load.py --all --target duckdb
 	cd $(DBT_DIR) && DUCKDB_PATH=$(CI_DB) $(DBT) build
+	PUBLISH_DIR=$(CI_PUBLISHED) DUCKDB_PATH=$(CI_DB) $(PY) publish/export.py --all
 	@echo ""
-	@echo "Dropping the warehouse and rebuilding from Parquet alone..."
+	@echo "Dropping the warehouse and rebuilding from the zones alone..."
 	rm -f $(CI_DB) $(CI_DB).wal
-	RAW_ZONE_DIR=$(CI_RAW) DUCKDB_PATH=$(CI_DB) $(PY) ingestion/load.py --all --target duckdb
+	RAW_ZONE_DIR=$(CI_RAW) DERIVED_ZONE_DIR=$(CI_DERIVED) DUCKDB_PATH=$(CI_DB) \
+		$(PY) ingestion/load.py --all --target duckdb
 	cd $(DBT_DIR) && DUCKDB_PATH=$(CI_DB) $(DBT) build
 
 check: lint leak-check compile-bigquery ci-build ## Everything CI runs on a PR, locally
@@ -184,10 +222,19 @@ check: lint leak-check compile-bigquery ci-build ## Everything CI runs on a PR, 
 # The point of the split raw zone: this drops the warehouse and rebuilds every
 # model from Parquet, without going near the API. If it does not reproduce
 # what you had, the raw zone is not the source of truth it claims to be.
-rebuild: clean-warehouse load build ## Rebuild the warehouse from data/raw. No network.
+rebuild: clean-warehouse spatial load build ## Rebuild the warehouse from data/raw. No network.
+
+# The whole pipeline in order, for when you want the lot and do not want to
+# remember which step feeds which.
+all: ingest spatial load build ## ingest, spatial, load, build. Needs network for the first.
 
 clean-warehouse: ## Delete the DuckDB file. Leaves data/raw alone.
 	rm -f $(DATA_DIR)/*.duckdb $(DATA_DIR)/*.duckdb.wal
+
+# The derived zone is a pure function of the raw zone, so unlike data/raw it
+# is always safe to delete: `make spatial` reproduces it exactly.
+clean-derived: ## Delete data/derived. Recreate it with `make spatial`.
+	rm -rf $(DATA_DIR)/derived
 
 clean: clean-warehouse ## Remove build artifacts, the venv, and the local DuckDB file
 	rm -rf $(VENV)

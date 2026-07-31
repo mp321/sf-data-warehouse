@@ -1,5 +1,17 @@
-Goal1: give the warehouse the geography it needs for polygon queries, and
-publish query-ready marts.
+Goal1: DONE 2026-07-31. Promoted to `docs/plans/plan-3-geography-and-marts.md`
+and executed there; see `docs/dev-notes/2026-07-31.md` for what happened and
+ADR-5 through ADR-8 for the decisions it forced. Kept below as written, since
+the plan text is what the ADRs argue against.
+
+Two things in it turned out not to be possible as specified. The DuckDB h3
+extension could not be used, because BigQuery has no H3 support at all and
+ADR-1 requires both targets to compile, so cells are computed in Python
+(ADR-5). And rates per parcel or per street mile need a dataset that is not in
+scope, so the marts normalise by residents, housing units, businesses and area
+instead (ADR-7).
+
+The film locations question resolved in the affirmative: it does carry usable
+coordinates on 2,127 of 2,214 rows, so no geocoding decision was needed.
 
 Read first: CLAUDE.md, docs/decisions/0002 and 0003.
 

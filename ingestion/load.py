@@ -43,12 +43,28 @@ from pathlib import Path
 
 import duckdb
 
+import derived_zone
 import raw_zone
 from datasets import DATASETS
 
 # Schema the dbt sources point at, on both engines. Keeping the name identical
 # across warehouses is what lets one set of models build against either.
 RAW_SCHEMA = "raw_datasf"
+
+# The derived zone lands in its own schema rather than beside the raw tables.
+# Two reasons, and the second is the one that matters: it keeps "everything in
+# raw_datasf is a STRING and came from an API" true with no exceptions, and it
+# makes the H3 tables obviously computed, so nobody goes looking for the
+# upstream field that produced them. ingestion/spatial.py writes the zone.
+DERIVED_SCHEMA = "derived_spatial"
+DERIVED_TABLES = (
+    "derived_point_h3",
+    "derived_boundary",
+    "derived_polygon_h3",
+    "derived_point_boundary",
+    "derived_h3_population",
+    "derived_pip_sample",
+)
 
 # Ingestion run manifests land here so mart_pipeline_freshness can read them
 # as an ordinary table. It is metadata rather than DataSF data, so it is the
@@ -72,10 +88,13 @@ def _select_all(table: str, root: Path | None) -> str:
 # ---------------------------------------------------------------------------
 
 
-def load_duckdb(names: list[str], root: Path | None, duckdb_path: Path) -> None:
+def load_duckdb(
+    names: list[str], root: Path | None, duckdb_path: Path, derived_root: Path | None = None
+) -> None:
     duckdb_path.parent.mkdir(parents=True, exist_ok=True)
     with duckdb.connect(str(duckdb_path)) as con:
         con.execute(f"create schema if not exists {RAW_SCHEMA}")
+        con.execute(f"create schema if not exists {DERIVED_SCHEMA}")
         for name in names:
             table = DATASETS[name]["table"]
             if not raw_zone.has_data(table, root):
@@ -90,7 +109,36 @@ def load_duckdb(names: list[str], root: Path | None, duckdb_path: Path) -> None:
             print(f"[{name}] {count} rows in {RAW_SCHEMA}.{table}")
 
         _load_runs_duckdb(con, root)
+        _load_derived_duckdb(con, derived_root)
     print(f"\nLoaded into {duckdb_path}")
+
+
+def _load_derived_duckdb(con: duckdb.DuckDBPyConnection, derived_root: Path | None) -> None:
+    """Materialise the derived zone, or empty tables shaped like it.
+
+    Empty rather than absent when `make spatial` has not run: every spatial
+    model references these, so a missing relation fails the whole dbt build
+    with a message about a table nobody has heard of. An empty one fails the
+    same build with zero rows in a mart, which points at the step that was
+    skipped. `derived_spatial` is dropped and recreated so a table removed
+    from spatial.py does not linger.
+    """
+    for table in DERIVED_TABLES:
+        if not derived_zone.has_data(table, derived_root):
+            continue
+        con.execute(
+            f"create or replace table {DERIVED_SCHEMA}.{table} as "
+            f"select * from {derived_zone.read_sql(table, derived_root)}"
+        )
+        count = con.execute(f"select count(*) from {DERIVED_SCHEMA}.{table}").fetchone()[0]
+        print(f"[spatial] {count} rows in {DERIVED_SCHEMA}.{table}")
+
+    missing = [table for table in DERIVED_TABLES if not derived_zone.has_data(table, derived_root)]
+    if missing:
+        print(
+            f"[spatial] no derived zone for {', '.join(missing)}. "
+            "Run `make spatial`; spatial models will build empty until you do."
+        )
 
 
 def _load_runs_duckdb(con: duckdb.DuckDBPyConnection, root: Path | None) -> None:
@@ -125,7 +173,7 @@ def _empty_runs_ddl() -> str:
 # ---------------------------------------------------------------------------
 
 
-def load_bigquery(names: list[str], root: Path | None) -> None:
+def load_bigquery(names: list[str], root: Path | None, derived_root: Path | None = None) -> None:
     # Deferred on purpose, so importing this module costs nothing on the
     # DuckDB path, which is the one that runs on every PR and every local
     # build. Module-scope would make the credential-free path import the
@@ -138,10 +186,14 @@ def load_bigquery(names: list[str], root: Path | None) -> None:
     require_env("GOOGLE_APPLICATION_CREDENTIALS")
     raw_dataset = os.environ.get("BQ_RAW_DATASET", RAW_SCHEMA)
 
+    derived_dataset = os.environ.get("BQ_DERIVED_DATASET", DERIVED_SCHEMA)
+
     client = bigquery.Client(project=project)
-    dataset = bigquery.Dataset(f"{project}.{raw_dataset}")
-    dataset.location = os.environ.get("BQ_LOCATION", "US")
-    client.create_dataset(dataset, exists_ok=True)
+    location = os.environ.get("BQ_LOCATION", "US")
+    for name in (raw_dataset, derived_dataset):
+        dataset = bigquery.Dataset(f"{project}.{name}")
+        dataset.location = location
+        client.create_dataset(dataset, exists_ok=True)
 
     with raw_zone.connect() as reader, tempfile.TemporaryDirectory() as tmp:
         for name in names:
@@ -166,6 +218,19 @@ def load_bigquery(names: list[str], root: Path | None) -> None:
                 f"select * from {raw_zone.runs_read_sql(root)}",
                 Path(tmp) / f"{RUNS_TABLE}.parquet",
                 label="_runs",
+            )
+
+        for table in DERIVED_TABLES:
+            if not derived_zone.has_data(table, derived_root):
+                print(f"[spatial] no derived zone for {table}; skipped. Run `make spatial`.")
+                continue
+            _upload(
+                client,
+                reader,
+                f"{project}.{derived_dataset}.{table}",
+                f"select * from {derived_zone.read_sql(table, derived_root)}",
+                Path(tmp) / f"{table}.parquet",
+                label="spatial",
             )
 
 
@@ -213,6 +278,12 @@ def main() -> None:
         default=None,
         help="root of the raw zone (default: $RAW_ZONE_DIR or data/raw)",
     )
+    parser.add_argument(
+        "--derived-root",
+        type=Path,
+        default=None,
+        help="root of the derived zone (default: $DERIVED_ZONE_DIR or data/derived)",
+    )
     args = parser.parse_args()
 
     names = list(DATASETS) if args.all else args.datasets
@@ -224,9 +295,9 @@ def main() -> None:
 
     if args.target == "duckdb":
         path = args.duckdb_path or Path(os.environ.get("DUCKDB_PATH", "data/sf.duckdb"))
-        load_duckdb(names, args.raw_root, path)
+        load_duckdb(names, args.raw_root, path, args.derived_root)
     else:
-        load_bigquery(names, args.raw_root)
+        load_bigquery(names, args.raw_root, args.derived_root)
 
 
 if __name__ == "__main__":

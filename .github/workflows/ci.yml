@@ -82,7 +82,7 @@ jobs:
         run: ruff format --check .
 
       - name: sqlfluff lint
-        run: sqlfluff lint dbt/models --processes 4
+        run: sqlfluff lint dbt/models dbt/tests --processes 4
 
   dbt-duckdb:
     name: dbt (duckdb, end to end)
@@ -91,6 +91,8 @@ jobs:
       DBT_PROFILES_DIR: ${{ github.workspace }}/dbt
       DUCKDB_PATH: ${{ github.workspace }}/data/sf.duckdb
       RAW_ZONE_DIR: ${{ github.workspace }}/data/raw
+      DERIVED_ZONE_DIR: ${{ github.workspace }}/data/derived
+      PUBLISH_DIR: ${{ github.workspace }}/published
     steps:
       - uses: actions/checkout@v4
 
@@ -113,18 +115,40 @@ jobs:
       - name: Build the Parquet raw zone from fixtures
         run: python ingestion/ingest.py --all --fixtures tests/fixtures/socrata
 
-      - name: Load Parquet into DuckDB
+      # The H3 precompute (ADR-5, ADR-6). Runs on the committed boundary
+      # fixtures, which are real polygons with thinned vertices, so this
+      # genuinely exercises the covering-cell classifier, the exact
+      # point-in-polygon refinement and the population interpolation rather
+      # than stubbing them. Its internal assertions, that population is
+      # conserved at every resolution and that the two point-in-polygon
+      # implementations agree on the sample, fail the build here.
+      - name: Precompute H3 cells and boundary membership
+        run: python ingestion/spatial.py --all
+
+      - name: Load both zones into DuckDB
         run: python ingestion/load.py --all --target duckdb
 
       - name: dbt build
         working-directory: dbt
         run: dbt build
 
-      # Proves the claim in the Makefile and in ADR-4: the Parquet zone is the
+      # The published export is part of the gate, not an afterthought. It is
+      # the only step that reads every mart at once, so a mart that builds but
+      # cannot be serialised fails here rather than in whatever consumes the
+      # bucket. Local destination only: no bucket, no credentials.
+      - name: Export published marts
+        run: python publish/export.py --all
+
+      # Proves the claim in the Makefile and in ADR-4: the zones are the
       # source of truth, so dropping the warehouse entirely and reloading
       # reproduces every model. If this step ever fails, something has crept
-      # into the warehouse that the raw zone cannot regenerate.
-      - name: Rebuild from Parquet after dropping the warehouse
+      # into the warehouse that the zones cannot regenerate.
+      #
+      # Note that data/derived is deliberately NOT rebuilt here. It is a pure
+      # function of data/raw, and reloading it from the files spatial.py
+      # already wrote is what proves the load step is idempotent. Re-running
+      # spatial.py instead would test a different claim.
+      - name: Rebuild from the zones after dropping the warehouse
         run: |
           rm -f data/sf.duckdb data/sf.duckdb.wal
           python ingestion/load.py --all --target duckdb
