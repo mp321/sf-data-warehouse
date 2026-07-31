@@ -36,24 +36,33 @@ non-durable and keeps the silent-full-backfill failure mode live.
 
 1. Add `dbt-duckdb` to `requirements.txt` and confirm `make compile-duckdb`
    passes on a clean checkout. (Done 2026-07-30.)
-2. Run `python ingestion/export_parquet.py --all` and confirm the files land
-   in `data/` with the row counts BigQuery reports.
-3. Add `external_location` meta to `raw_datasf` in
-   `_datasf__sources.yml` and uncomment the DuckDB extensions block in
-   `dbt/profiles.yml`. Confirm `dbt build --target duckdb` builds and tests
-   `stg_datasf__311_cases` against the Parquet files.
+2. ~~Run `python ingestion/export_parquet.py --all`~~ Superseded by step 6:
+   `ingest.py` writes Parquet directly, so there is nothing to export.
+   (Dropped 2026-07-31.)
+3. ~~Add `external_location` meta to `raw_datasf`~~ Rejected 2026-07-31. It
+   makes the DuckDB and BigQuery source definitions structurally different,
+   which defeats the point of ADR-1. `load.py` materialises a `raw_datasf`
+   schema on both engines instead, and the models are identical. Reasoning is
+   in the header of `dbt/profiles.yml`.
 4. Compare the DuckDB and BigQuery outputs of `stg_datasf__311_cases` row for
    row. Any disagreement is a cross-engine bug and must be fixed with a macro,
-   not by tolerating a diff.
+   not by tolerating a diff. (Still open: needs credentials.)
 5. Decide where Parquet actually lives long term. `data/` is gitignored and
    therefore durable against BigQuery expiry but not against losing the
    laptop. Candidates: a GCS bucket on the free tier, or Cloudflare R2. This
-   step needs its own ADR.
+   step needs its own ADR. (Still open. The scheduled workflow now caches the
+   zone between runs, which is a mitigation with a 7 day eviction and a 10 GB
+   ceiling, not an answer. See ADR-4.)
 6. Teach `ingest.py` to write Parquet as its output of record, with BigQuery
-   becoming a load target fed from those files. Own commit, own dev note.
+   becoming a load target fed from those files. (Done 2026-07-31, ADR-4. The
+   load became its own command, `ingestion/load.py`, rather than a mode of
+   ingestion.)
 7. Flip `target:` in `dbt/profiles.yml` from `dev` to `duckdb`, and change CI
-   from `compile` to a full `dbt build --target duckdb`.
-8. Delete `ingestion/export_parquet.py`. It exists only to bridge this gap.
+   from `compile` to a full `dbt build --target duckdb`. (Done 2026-07-31. The
+   BigQuery output was renamed from `dev` to `bigquery` at the same time. CI
+   also compiles against BigQuery, which needs no credentials and catches
+   dialect leaks the DuckDB build cannot see.)
+8. Delete `ingestion/export_parquet.py`. (Done 2026-07-31.)
 
 ## Out of scope
 
@@ -64,17 +73,31 @@ non-durable and keeps the silent-full-backfill failure mode live.
 
 ## Done when
 
-- [ ] `make build` succeeds on a clean clone with no credentials in the env.
-- [ ] `stg_datasf__311_cases` returns identical rows on both targets.
-- [ ] The scheduled BigQuery workflow still goes green untouched.
+- [x] `make build` succeeds on a clean clone with no credentials in the env.
+      `make ci-build` does the whole pipeline from fixtures; `make ingest`
+      needs network but no credentials.
+- [ ] `stg_datasf__311_cases` returns identical rows on both targets. Not
+      verified: no credentials in the sessions that built this. CI compiles
+      against BigQuery, which proves the SQL is valid there but not that it
+      returns the same rows.
+- [ ] The scheduled BigQuery workflow still goes green untouched. It was not
+      left untouched: `ingest.yml` had to change, because ingestion no longer
+      writes to BigQuery, and a workflow that silently does nothing is worse
+      than one that fails.
 - [ ] Parquet files live somewhere that survives losing this machine.
-- [ ] `ingestion/export_parquet.py` is deleted.
+- [x] `ingestion/export_parquet.py` is deleted.
 
 ## Open questions
 
-- Where does the Parquet actually live (step 5)? Needs an ADR.
-- Does `get_watermark` read from Parquet or stay on BigQuery during the
-  transition? Reading from both risks two watermarks drifting apart, which
-  would double-load or silently skip rows.
-- Partitioning scheme for the Parquet zone. One file per table is fine now and
-  will not be at 311 volumes over multiple years.
+- Where does the Parquet actually live (step 5)? Needs an ADR. Still the one
+  thing blocking this plan from closing.
+- ~~Does `get_watermark` read from Parquet or stay on BigQuery?~~ Answered by
+  ADR-4: Parquet, and only Parquet. The zone is the record, so it holds the
+  position, and there is never a second watermark to drift from.
+- ~~Partitioning scheme for the Parquet zone.~~ Answered by ADR-4:
+  hive-partitioned by ingest date, one file per buffered batch. Note the
+  choice of ingest date over event date is itself a tradeoff recorded there.
+- New, from doing the work: does anything reconcile the run manifests against
+  the data? Today nothing does, and `mart_pipeline_freshness` is built so a
+  disagreement is visible rather than averaged away, which is not the same as
+  catching it.

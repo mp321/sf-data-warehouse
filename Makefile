@@ -3,7 +3,14 @@
 # Entry point for every routine task. See CLAUDE.md for context and
 # docs/decisions/ for why things are the way they are.
 #
-# Targets that need Google Cloud credentials are marked. Load them with:
+# The pipeline is three steps, and they are separate on purpose (ADR-4):
+#
+#   make ingest    Socrata  -> data/raw/*.parquet    needs network, no creds
+#   make load      data/raw -> DuckDB or BigQuery    needs neither (DuckDB)
+#   make build     dbt run + test on the warehouse   needs neither (DuckDB)
+#
+# Only the BigQuery targets need Google Cloud credentials, and they are
+# marked (creds). Load them with:
 #   set -a; source .env; set +a
 
 .DEFAULT_GOAL := help
@@ -14,12 +21,33 @@ PIP         := $(VENV)/bin/pip
 DBT         := $(CURDIR)/$(VENV)/bin/dbt
 DBT_DIR     := dbt
 DATA_DIR    := data
+RAW_DIR     := $(DATA_DIR)/raw
+DOCS_ARTIFACTS := docs/dbt
+
+# ci-build runs the whole pipeline from fixtures, and must not touch the real
+# raw zone while doing it. It gets its own zone and its own warehouse file,
+# both under the gitignored data/ tree. Without this, `make check` quietly
+# appends fixture rows to data/raw, which is a slow-acting mess: the rows are
+# plausible, they survive into every later build, and nothing points at where
+# they came from.
+CI_DIR      := $(CURDIR)/$(DATA_DIR)/ci
+CI_RAW      := $(CI_DIR)/raw
+CI_DB       := $(CI_DIR)/sf.duckdb
+
 # dbt reads profiles.yml from here; every dbt target sets it explicitly so
 # these work regardless of what is in your shell.
 export DBT_PROFILES_DIR := $(CURDIR)/$(DBT_DIR)
 
-.PHONY: help setup ingest build test docs lint fmt leak-check \
-        compile-duckdb build-duckdb export-parquet rebuild clean check
+# Absolute, and exported, because dbt-duckdb resolves a relative path against
+# the current directory. profiles.yml defaults to ../data/sf.duckdb, which is
+# right when you run dbt from dbt/ and wrong from anywhere else: sqlfluff runs
+# from the repo root and was resolving it to a sibling of the repo. One
+# absolute value here means every tool opens the same file.
+export DUCKDB_PATH := $(CURDIR)/$(DATA_DIR)/sf.duckdb
+
+.PHONY: help setup ingest load load-bigquery build build-bigquery \
+        test docs docs-serve lint fmt leak-check compile-duckdb compile-bigquery \
+        ci-build rebuild clean clean-warehouse check
 
 help: ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -36,59 +64,77 @@ setup: ## Create venv, install deps, install dbt packages and git hooks
 	$(PIP) install --upgrade pip
 	$(PIP) install -r requirements.txt
 	$(PIP) install -r requirements-dev.txt
-	mkdir -p $(DATA_DIR)
+	mkdir -p $(RAW_DIR)
 	cd $(DBT_DIR) && $(DBT) deps || true
 	$(VENV)/bin/pre-commit install || echo "pre-commit hook not installed (not a git repo?)"
 	@chmod +x scripts/leak-check.sh
 	@echo ""
 	@echo "Setup complete. Next:"
-	@echo "  make compile-duckdb   # no credentials needed, proves the install works"
-	@echo "  make build            # needs credentials, see .env.example"
+	@echo "  make ci-build   # full pipeline from fixtures, no network, no creds"
+	@echo "  make ingest     # pull real data from DataSF (network, no creds)"
 
 # ---------------------------------------------------------------------------
-# Ingestion (creds)
+# Ingestion: Socrata -> Parquet. Needs network, but no credentials.
 # ---------------------------------------------------------------------------
 
-ingest: ## (creds) Ingest all registered datasets into BigQuery
+ingest: ## Pull every dataset from DataSF into data/raw as Parquet
 	$(PY) ingestion/ingest.py --all
 
-export-parquet: ## (creds) Dump raw BigQuery tables to data/*.parquet (opt-in, ADR-1)
-	$(PY) ingestion/export_parquet.py --all --out-dir $(DATA_DIR)
-
 # ---------------------------------------------------------------------------
-# dbt: BigQuery is the default target today (ADR-1)
+# Load: Parquet -> warehouse. Idempotent, so re-running is always safe.
 # ---------------------------------------------------------------------------
 
-build: ## (creds) dbt build against BigQuery: run + test in dependency order
+load: ## Load data/raw into the local DuckDB file
+	$(PY) ingestion/load.py --all --target duckdb
+
+load-bigquery: ## (creds) Load data/raw into BigQuery
+	$(PY) ingestion/load.py --all --target bigquery
+
+# ---------------------------------------------------------------------------
+# dbt. DuckDB is the default target (ADR-1); BigQuery is the named one.
+# ---------------------------------------------------------------------------
+
+build: ## dbt build against DuckDB: run + test in dependency order
 	cd $(DBT_DIR) && $(DBT) build
 
-test: ## (creds) dbt test only
+build-bigquery: ## (creds) dbt build against BigQuery
+	cd $(DBT_DIR) && $(DBT) build --target bigquery
+
+test: ## dbt test only, against DuckDB
 	cd $(DBT_DIR) && $(DBT) test
 
-docs: ## (creds) Generate and serve the dbt docs site
-	cd $(DBT_DIR) && $(DBT) docs generate && $(DBT) docs serve
-
-# ---------------------------------------------------------------------------
-# dbt: DuckDB target. No credentials, no network.
-#
-# compile-duckdb is the credential-free gate CI runs on every PR: it parses
-# the project and renders every model to SQL, which catches Jinja errors,
-# broken refs, bad macro calls, and engine-specific syntax that slipped past
-# the cross_engine macros.
-#
-# build-duckdb needs actual data in DuckDB and will fail until the Parquet
-# raw zone is wired up. That is step 3 of
-# docs/plans/plan-1-duckdb-parquet.md.
-# ---------------------------------------------------------------------------
-
+# compile renders every model to real SQL without touching a warehouse, which
+# is what catches engine-specific syntax that slipped past the cross_engine
+# macros. Both of these run without credentials, including the BigQuery one:
+# compiling does not open a connection. That is what makes a cross-engine
+# check possible on a fork pull request.
 compile-duckdb: ## Parse and compile against DuckDB. No credentials needed.
-	mkdir -p $(DATA_DIR)
+	mkdir -p $(RAW_DIR)
 	cd $(DBT_DIR) && $(DBT) parse --target duckdb
 	cd $(DBT_DIR) && $(DBT) compile --target duckdb
 
-build-duckdb: ## Full dbt build against DuckDB. Needs data/, see PLAN-1.
-	mkdir -p $(DATA_DIR)
-	cd $(DBT_DIR) && $(DBT) build --target duckdb
+compile-bigquery: ## Parse and compile against BigQuery. No credentials needed.
+	cd $(DBT_DIR) && $(DBT) parse --target bigquery
+	cd $(DBT_DIR) && $(DBT) compile --target bigquery
+
+# ---------------------------------------------------------------------------
+# Docs
+#
+# dbt writes docs into dbt/target/, which is gitignored and always will be.
+# The two machine-readable artifacts are copied to docs/dbt/ and committed, so
+# the project graph and column catalogue are readable from a clone without
+# building anything. index.html is deliberately not copied: it is a 1.7 MB
+# bundled viewer that is rewritten wholesale on every dbt upgrade.
+# ---------------------------------------------------------------------------
+
+docs: ## Generate dbt docs and refresh the committed artifacts in docs/dbt/
+	cd $(DBT_DIR) && $(DBT) docs generate
+	mkdir -p $(DOCS_ARTIFACTS)
+	cp $(DBT_DIR)/target/manifest.json $(DBT_DIR)/target/catalog.json $(DOCS_ARTIFACTS)/
+	@echo "Refreshed $(DOCS_ARTIFACTS)/manifest.json and catalog.json"
+
+docs-serve: docs ## Generate docs and serve the browsable site locally
+	cd $(DBT_DIR) && $(DBT) docs serve
 
 # ---------------------------------------------------------------------------
 # Quality gates
@@ -107,17 +153,38 @@ fmt: ## Auto-fix what ruff and sqlfluff can fix
 leak-check: ## Scan the working tree for credentials. Exits nonzero on a hit.
 	@bash scripts/leak-check.sh
 
-check: lint leak-check compile-duckdb ## Everything CI runs on a PR, locally
+# What CI runs on a pull request, end to end and credential-free: build a raw
+# zone from fixtures, load it, run and test every model, then drop the
+# warehouse and do the load and build again to prove the Parquet is genuinely
+# the source of truth. Isolated in data/ci/, so it never touches data/raw.
+ci-build: ## Full pipeline from fixtures, isolated. No network, no creds.
+	rm -rf $(CI_DIR)
+	mkdir -p $(CI_RAW)
+	RAW_ZONE_DIR=$(CI_RAW) $(PY) ingestion/ingest.py --all --fixtures tests/fixtures/socrata
+	RAW_ZONE_DIR=$(CI_RAW) DUCKDB_PATH=$(CI_DB) $(PY) ingestion/load.py --all --target duckdb
+	cd $(DBT_DIR) && DUCKDB_PATH=$(CI_DB) $(DBT) build
+	@echo ""
+	@echo "Dropping the warehouse and rebuilding from Parquet alone..."
+	rm -f $(CI_DB) $(CI_DB).wal
+	RAW_ZONE_DIR=$(CI_RAW) DUCKDB_PATH=$(CI_DB) $(PY) ingestion/load.py --all --target duckdb
+	cd $(DBT_DIR) && DUCKDB_PATH=$(CI_DB) $(DBT) build
+
+check: lint leak-check compile-bigquery ci-build ## Everything CI runs on a PR, locally
 
 # ---------------------------------------------------------------------------
 # Housekeeping
 # ---------------------------------------------------------------------------
 
-rebuild: clean setup ingest build ## (creds) Full local rebuild from scratch
+# The point of the split raw zone: this drops the warehouse and rebuilds every
+# model from Parquet, without going near the API. If it does not reproduce
+# what you had, the raw zone is not the source of truth it claims to be.
+rebuild: clean-warehouse load build ## Rebuild the warehouse from data/raw. No network.
 
-clean: ## Remove build artifacts, the venv, and the local DuckDB file
+clean-warehouse: ## Delete the DuckDB file. Leaves data/raw alone.
+	rm -f $(DATA_DIR)/*.duckdb $(DATA_DIR)/*.duckdb.wal
+
+clean: clean-warehouse ## Remove build artifacts, the venv, and the local DuckDB file
 	rm -rf $(VENV)
 	rm -rf $(DBT_DIR)/target $(DBT_DIR)/dbt_packages $(DBT_DIR)/logs
-	rm -f $(DATA_DIR)/*.duckdb $(DATA_DIR)/*.duckdb.wal
 	find . -type d -name __pycache__ -prune -exec rm -rf {} + 2>/dev/null || true
-	@echo "Clean. Note: data/*.parquet was left alone; it is the raw zone (ADR-1)."
+	@echo "Clean. Note: $(RAW_DIR) was left alone; it is the raw zone (ADR-1, ADR-4)."

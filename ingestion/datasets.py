@@ -2,9 +2,15 @@
 
 Each entry maps a friendly name to:
   socrata_id: the dataset id on data.sfgov.org (visible in the dataset URL)
-  table:      the BigQuery table it lands in (inside the raw dataset)
+  table:      the raw table name. It is both the directory under data/raw/
+              and the table ingestion/load.py creates in DuckDB and BigQuery,
+              so one name identifies the dataset everywhere downstream.
   start_date: how far back the first load reaches, using Socrata's
               system field :updated_at. Override per run with --since.
+
+The dbt side keeps its own copy of this list, as var('pipeline_sources') in
+dbt/dbt_project.yml, because YAML cannot read Python. Adding a dataset means
+adding it in both places.
 
 Note on start dates: the 311 and permits datasets are large, so the
 default backfill starts at 2024. You can widen it later with, e.g.
@@ -35,6 +41,10 @@ DATASETS = {
         "socrata_id": "yitu-d5am",
         "table": "raw_film_locations",
         "start_date": "1970-01-01T00:00:00.000Z",
-        "description": "Movies and TV filmed in San Francisco, with locations and fun facts. The fun one.",
+        "description": (
+            "Movies and TV filmed in San Francisco, with locations and fun facts. "
+            "The fun one, and the pipeline canary: small enough to ingest end to end "
+            "in seconds."
+        ),
     },
 }

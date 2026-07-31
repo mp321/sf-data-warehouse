@@ -1,9 +1,24 @@
 name: ingest
 
-# Daily ingestion into BigQuery. Unchanged in behaviour: this is the job
-# that keeps the raw zone current and it is deliberately left alone.
-# See ADR-1 for why the raw zone is moving to Parquet, and
-# docs/plans/plan-1-duckdb-parquet.md for the sequencing.
+# Daily ingestion. Two steps since ADR-4: pull Socrata into the Parquet raw
+# zone, then load that zone into BigQuery. Only the second step needs
+# credentials.
+#
+# THE RAW ZONE DOES NOT SURVIVE THE RUNNER. GitHub runners are ephemeral, so
+# data/raw starts empty unless it is restored, and an empty zone means
+# read_watermark returns nothing and ingestion backfills from start_date. The
+# cache step below is what stops that happening every night.
+#
+# It is a mitigation, not the answer. Actions caches are evicted after 7 days
+# untouched and capped at 10 GB per repository, so a large enough raw zone
+# will start missing and quietly turn every run into a full backfill. Where
+# the Parquet actually lives long term is step 5 of
+# docs/plans/plan-1-duckdb-parquet.md and needs its own ADR.
+#
+# Worth knowing about the failure mode, because it is much better than the one
+# ADR-1 was written about: a cache miss costs a slow expensive backfill, and
+# the load step then replaces the BigQuery table wholesale, so the result is
+# still correct. The old failure silently skipped rows instead.
 
 on:
   schedule:
@@ -18,6 +33,8 @@ permissions:
 jobs:
   ingest:
     runs-on: ubuntu-latest
+    env:
+      RAW_ZONE_DIR: ${{ github.workspace }}/data/raw
     steps:
       - uses: actions/checkout@v4
 
@@ -28,18 +45,40 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      # Restores the most recent zone and saves a new one at job end. The key
+      # is unique per run so every run writes a fresh entry; restore-keys is
+      # the prefix that finds the newest previous one.
+      - name: Restore the Parquet raw zone
+        uses: actions/cache@v4
+        with:
+          path: data/raw
+          key: raw-zone-${{ github.run_id }}
+          restore-keys: raw-zone-
+
+      - name: Report the watermark we are resuming from
+        run: |
+          echo "Raw zone contents before this run:"
+          du -sh data/raw 2>/dev/null || echo "  empty (this run will backfill)"
+
+      - name: Ingest into the Parquet raw zone
+        env:
+          SOCRATA_APP_TOKEN: ${{ secrets.SOCRATA_APP_TOKEN }}
+        run: python ingestion/ingest.py --all
+
       - name: Write service account key
         env:
           GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
         run: printf '%s' "$GCP_SA_KEY" > "$RUNNER_TEMP/sa.json"
 
-      - name: Run ingestion
+      - name: Load the raw zone into BigQuery
         env:
           GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/sa.json
-          SOCRATA_APP_TOKEN: ${{ secrets.SOCRATA_APP_TOKEN }}
-        run: python ingestion/ingest.py --all
+        run: python ingestion/load.py --all --target bigquery
 
+      # The key is written to RUNNER_TEMP, which GitHub discards with the
+      # runner, but removing it explicitly costs nothing and means a step
+      # added below this line later cannot read it by accident.
       - name: Remove service account key
         if: always()
         run: rm -f "$RUNNER_TEMP/sa.json"

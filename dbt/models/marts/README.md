@@ -4,6 +4,12 @@ This folder is intentionally almost empty. The marts are where you write
 SQL by hand, since interview-ready SQL is a goal of this project. Write
 each model yourself, then paste it to Claude for review before merging.
 
+The one model already here, `mart_pipeline_freshness`, is not part of that
+exercise. It describes the pipeline rather than the city, which is why it is
+`mart_` prefixed rather than `fct_`, `dim_` or `agg_`, and why it is the sole
+exception to rule 1 below. Its header says why it breaks the rule. Read it as
+infrastructure, not as an example to copy.
+
 ## Rules of the road
 
 1. Marts select only from staging models via `{{ ref('...') }}`, never

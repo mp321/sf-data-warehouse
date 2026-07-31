@@ -113,3 +113,107 @@
 {%- macro x_cast(column_expression, logical_type) -%}
     {{- 'cast(' ~ column_expression ~ ' as ' ~ x_type(logical_type) ~ ')' -}}
 {%- endmacro -%}
+
+
+{# ---------------------------------------------------------------------------
+   Integers that DataSF publishes with a decimal tail. supervisor_district
+   arrives as "9.00000" on 311 and "9" on permits; proposed_units arrives as
+   "14.0". A direct cast to int nulls the first form on both engines, which
+   looks like missing data rather than a formatting difference, so route
+   through float first.
+
+   Not dispatched: it composes x_safe_cast, which already is. Rounding is not
+   the point here and these values are integral in practice; do not use this
+   to turn a genuine decimal into an int.
+   --------------------------------------------------------------------------- #}
+
+{%- macro x_safe_int(column_expression) -%}
+    {{- x_safe_cast(x_safe_cast(column_expression, 'float'), 'int') -}}
+{%- endmacro -%}
+
+
+{# ---------------------------------------------------------------------------
+   Scalar extraction from a JSON string. Socrata sends nested values (point
+   geometries, media_url) as objects and normalize_record stores them as JSON
+   text, so pulling a field out is a staging concern on every dataset that has
+   coordinates but no flat lat/long columns.
+
+   BigQuery spells it json_value; DuckDB spells it json_extract_string. Both
+   take the same '$.a.b[0]' path syntax and both return NULL rather than
+   erroring on a malformed document.
+   --------------------------------------------------------------------------- #}
+
+{%- macro x_json_extract_scalar(column_expression, json_path) -%}
+    {{- adapter.dispatch('x_json_extract_scalar', 'sf_data_warehouse')(column_expression, json_path) -}}
+{%- endmacro -%}
+
+
+{%- macro default__x_json_extract_scalar(column_expression, json_path) -%}
+    {{- "json_extract_string(" ~ column_expression ~ ", '" ~ json_path ~ "')" -}}
+{%- endmacro -%}
+
+
+{%- macro bigquery__x_json_extract_scalar(column_expression, json_path) -%}
+    {{- "json_value(" ~ column_expression ~ ", '" ~ json_path ~ "')" -}}
+{%- endmacro -%}
+
+
+{# ---------------------------------------------------------------------------
+   Elapsed hours between two timestamps, as a float.
+
+   Two differences, not one. The obvious one is the spelling and the reversed
+   argument order: DuckDB is date_diff(part, start, end), BigQuery is
+   timestamp_diff(end, start, part). The subtle one is that asking either
+   engine directly for 'hour' counts boundary crossings rather than elapsed
+   time, so 10:59 to 11:01 is 1 hour on DuckDB and 0 on BigQuery. Both
+   branches therefore ask for seconds and divide, which makes the two agree
+   and gives a fractional answer that is more useful in a freshness view than
+   a truncated one.
+   --------------------------------------------------------------------------- #}
+
+{%- macro x_hours_between(start_timestamp, end_timestamp) -%}
+    {{- adapter.dispatch('x_hours_between', 'sf_data_warehouse')(start_timestamp, end_timestamp) -}}
+{%- endmacro -%}
+
+
+{%- macro default__x_hours_between(start_timestamp, end_timestamp) -%}
+    {{- "date_diff('second', " ~ start_timestamp ~ ", " ~ end_timestamp ~ ") / 3600.0" -}}
+{%- endmacro -%}
+
+
+{%- macro bigquery__x_hours_between(start_timestamp, end_timestamp) -%}
+    {{- 'timestamp_diff(' ~ end_timestamp ~ ', ' ~ start_timestamp ~ ', second) / 3600.0' -}}
+{%- endmacro -%}
+
+
+{# ---------------------------------------------------------------------------
+   Now, as a value that is comparable with the timestamps in this project.
+
+   Use this rather than dbt.current_timestamp() or a bare current_timestamp.
+   Everything ingestion writes is UTC, and x_safe_cast(col, 'timestamp')
+   yields a naive UTC timestamp on DuckDB because casting an offset-bearing
+   string to TIMESTAMP there keeps the UTC wall clock and drops the offset.
+   DuckDB's now() is a TIMESTAMP WITH TIME ZONE, so subtracting one from the
+   other converts to LOCAL time and silently shifts the answer by the
+   machine's UTC offset: measured at -6.8 hours on a laptop in PDT, which in
+   a freshness view reads as data arriving from the future rather than as an
+   error. `at time zone 'UTC'` returns it to a naive UTC timestamp.
+
+   BigQuery has no such trap, because its TIMESTAMP is an absolute instant
+   and parsing an offset-bearing string respects the offset, so plain
+   current_timestamp() is already comparable.
+   --------------------------------------------------------------------------- #}
+
+{%- macro x_utc_now() -%}
+    {{- adapter.dispatch('x_utc_now', 'sf_data_warehouse')() -}}
+{%- endmacro -%}
+
+
+{%- macro default__x_utc_now() -%}
+    {{- "now() at time zone 'UTC'" -}}
+{%- endmacro -%}
+
+
+{%- macro bigquery__x_utc_now() -%}
+    {{- 'current_timestamp()' -}}
+{%- endmacro -%}

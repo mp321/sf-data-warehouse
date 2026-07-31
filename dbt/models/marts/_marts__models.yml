@@ -1,0 +1,118 @@
+version: 2
+
+models:
+  - name: mart_pipeline_freshness
+    description: >
+      One row per registered source. The pipeline's own health: when each
+      source last loaded, how many rows it holds, how many the last ingestion
+      run added, how stale it is against its SLA, and how its tests did on
+      the most recent completed dbt run.
+
+      Read is_healthy first; the other columns explain it. Note that the test
+      columns describe the previous completed run rather than the run that
+      built this table, because dbt writes run results after models finish.
+      See macros/audit_run_results.sql.
+
+      Named mart_ rather than fct_, dim_ or agg_ because it describes the
+      pipeline instead of the city. It is the one metadata mart and the
+      prefix is what keeps it findable as such.
+    columns:
+      - name: source_name
+        description: Registry name of the source, e.g. 311_cases. The grain of this model.
+        tests:
+          - unique
+          - not_null
+
+      - name: source_table
+        description: Raw table the source lands in, e.g. raw_311_cases.
+        tests:
+          - not_null
+
+      - name: staging_model
+        description: >
+          Staging model built from this source. Also the join key to dbt's
+          test results, which is why it has to match the model name exactly.
+        tests:
+          - not_null
+
+      - name: tier
+        description: core or demoted, per ADR-3. Demoted sources carry no freshness SLA.
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["core", "demoted"]
+
+      - name: row_count
+        description: Rows currently in the raw table, counted directly rather than accumulated.
+        tests:
+          - not_null
+
+      - name: row_delta
+        description: >
+          Rows the most recent ingestion run added. 0 is the common healthy
+          case: the run went out, found nothing new, and wrote nothing.
+
+      - name: previous_row_count
+        description: row_count minus row_delta, i.e. the count before the last run.
+
+      - name: last_load_at
+        description: When rows last landed in the raw zone. Null if nothing has ever loaded.
+
+      - name: last_run_finished_at
+        description: >
+          When ingestion last ran at all, successful or not. Later than
+          last_load_at whenever recent runs found nothing new.
+
+      - name: last_run_status
+        description: success or failed, from the ingestion run manifest.
+        tests:
+          - accepted_values:
+              arguments:
+                values: ["success", "failed"]
+              config:
+                severity: warn
+
+      - name: hours_since_load
+        description: >
+          Hours since last_load_at, fractional, in UTC on both engines. See
+          x_utc_now in macros/cross_engine.sql for why that needed saying.
+
+      - name: hours_since_run_attempt
+        description: Hours since ingestion last ran, fractional.
+
+      - name: stale_after_hours
+        description: Freshness SLA in hours. Null means the source has no SLA.
+
+      - name: is_stale
+        description: >
+          Whether hours_since_load has passed stale_after_hours. Always false
+          for sources with no SLA, so this never fires on a demoted source.
+        tests:
+          - not_null
+
+      - name: tests_total
+        description: Tests run against this source's staging model in the last completed dbt run.
+
+      - name: tests_passed
+        description: Of those, how many passed.
+
+      - name: tests_failed
+        description: Of those, how many failed.
+
+      - name: tests_warned
+        description: Of those, how many warned. Warnings are signals, not failures.
+
+      - name: tests_errored
+        description: Of those, how many errored, meaning the test itself could not run.
+
+      - name: last_test_run_at
+        description: When that dbt run started. Null before the second ever run.
+
+      - name: is_healthy
+        description: >
+          False if the last ingestion run failed, if any test failed or
+          errored, or if the source is past its SLA. True otherwise. The
+          single column to read when checking in.
+        tests:
+          - not_null

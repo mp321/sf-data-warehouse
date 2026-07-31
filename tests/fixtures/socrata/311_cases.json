@@ -1,0 +1,1032 @@
+[
+  {
+    ":created_at": "2024-09-12T00:44:18.805Z",
+    ":id": "row-naz8-gtgk_2p73",
+    ":updated_at": "2026-07-28T12:00:00.000Z",
+    "address": "748 STANYAN ST, SAN FRANCISCO, CA, 94117",
+    "agency_responsible": "AT and T - Graffiti Queue",
+    "analysis_neighborhood": "Haight Ashbury",
+    "bos_2012": "5.00000",
+    "data_as_of": "2024-02-20T10:35:55.000",
+    "data_loaded_at": "2024-09-11T17:09:50.000",
+    "lat": "37.76835333",
+    "long": "-122.45321667",
+    "media_url": {
+      "url": "http://mobile311.sfgov.org/reports/13917095/photos"
+    },
+    "neighborhoods_sffind_boundaries": "Golden Gate Park",
+    "point": {
+      "human_address": "{\"address\": \"\", \"city\": \"\", \"state\": \"\", \"zip\": \"\"}",
+      "latitude": "37.76835333",
+      "longitude": "-122.45321667"
+    },
+    "point_geom": {
+      "coordinates": [
+        -122.45321667,
+        37.76835333
+      ],
+      "type": "Point"
+    },
+    "police_district": "PARK",
+    "requested_datetime": "2021-06-08T21:16:00.000",
+    "service_details": "ATT_Property - Offensive",
+    "service_name": "Graffiti",
+    "service_request_id": "13917095",
+    "service_subtype": "Graffiti on ATT_Property",
+    "source": "Mobile/Open311",
+    "status_description": "Open",
+    "status_notes": "Case Resolved - Completed",
+    "street": "STANYAN ST",
+    "supervisor_district": "5.00000",
+    "updated_datetime": "2021-06-21T17:30:56.000"
+  },
+  {
+    ":created_at": "2024-09-12T00:44:18.805Z",
+    ":id": "row-x6ut-mssp.2tj6",
+    ":updated_at": "2024-09-12T01:57:08.019Z",
+    "address": "758 DIVISADERO ST, SAN FRANCISCO, CA, 94117",
+    "agency_responsible": "Entertainment Commission - G",
+    "analysis_neighborhood": "Hayes Valley",
+    "bos_2012": "5.00000",
+    "closed_date": "2021-06-21T10:45:01.000",
+    "data_as_of": "2024-02-20T10:35:55.000",
+    "data_loaded_at": "2024-09-11T17:09:50.000",
+    "lat": "not-a-number",
+    "long": "",
+    "neighborhoods_sffind_boundaries": "Alamo Square",
+    "point": {
+      "human_address": "{\"address\": \"\", \"city\": \"\", \"state\": \"\", \"zip\": \"\"}",
+      "latitude": "37.77677851",
+      "longitude": "-122.43798882"
+    },
+    "point_geom": {
+      "coordinates": [
+        -122.43798882,
+        37.776778507
+      ],
+      "type": "Point"
+    },
+    "police_district": "NORTHERN",
+    "requested_datetime": "2021-06-08T19:52:06.000",
+    "service_details": "Noise Report - entertainment",
+    "service_name": "Noise Report",
+    "service_request_id": "13916967",
+    "service_subtype": "entertainment",
+    "source": "Mobile/Open311",
+    "status_description": "Closed",
+    "status_notes": "Case Resolved - EC visited and found business out of compliance with their JAM permit conditions for operating past 10pm. If issues persist, please use 3-1-1 again.",
+    "street": "DIVISADERO ST",
+    "supervisor_district": "5.00000",
+    "updated_datetime": "2021-06-21T10:45:01.000"
+  },
+  {
+    ":created_at": "2024-09-12T00:44:18.805Z",
+    ":id": "row-73ay~vnmk~uxzu",
+    ":updated_at": "2024-09-12T01:57:08.019Z",
+    "address": "50 DE LONG ST, SAN FRANCISCO, CA, 94112",
+    "agency_responsible": "Recology_Abandoned",
+    "analysis_neighborhood": "Outer Mission",
+    "bos_2012": "11.00000",
+    "closed_date": "2021-06-09T13:02:06.000",
+    "data_as_of": "2024-02-20T10:35:55.000",
+    "data_loaded_at": "2024-09-11T17:09:50.000",
+    "lat": "37.7096687",
+    "long": "-122.4592457",
+    "neighborhoods_sffind_boundaries": "Outer Mission",
+    "point": {
+      "human_address": "{\"address\": \"\", \"city\": \"\", \"state\": \"\", \"zip\": \"\"}",
+      "latitude": "37.7096687",
+      "longitude": "-122.4592457"
+    },
+    "point_geom": {
+      "coordinates": [
+        -122.4592457,
+        37.7096687
+      ],
+      "type": "Point"
+    },
+    "police_district": "TARAVAL",
+    "requested_datetime": "2021-06-08T19:46:00.000",
+    "service_details": "Furniture",
+    "service_name": "Street and Sidewalk Cleaning",
+    "service_request_id": "13916958",
+    "service_subtype": "Bulky Items",
+    "source": "Web",
+    "status_description": "Closed",
+    "status_notes": "Case Resolved - Pickup completed.",
+    "street": "DE LONG ST",
+    "supervisor_district": "11.00000",
+    "updated_datetime": "2021-06-09T13:02:06.000"
+  },
+  {
+    ":created_at": "2024-09-12T00:44:18.805Z",
+    ":id": "row-uzad.hz4j-7fkf",
+    ":updated_at": "2024-09-12T01:57:08.019Z",
+    "address": "1354 DOLORES ST, SAN FRANCISCO, CA, 94110",
+    "agency_responsible": "DPW Ops Queue",
+    "analysis_neighborhood": "Noe Valley",
+    "bos_2012": "8.00000",
+    "closed_date": "2021-06-09T11:42:08.000",
+    "data_as_of": "2024-02-20T10:35:55.000",
+    "data_loaded_at": "2024-09-11T17:09:50.000",
+    "lat": "37.747604370117",
+    "long": "-122.42497253418",
+    "neighborhoods_sffind_boundaries": "Noe Valley",
+    "point": {
+      "human_address": "{\"address\": \"\", \"city\": \"\", \"state\": \"\", \"zip\": \"\"}",
+      "latitude": "37.74760437",
+      "longitude": "-122.42497253"
+    },
+    "point_geom": {
+      "coordinates": [
+        -122.424972534,
+        37.74760437
+      ],
+      "type": "Point"
+    },
+    "police_district": "INGLESIDE",
+    "requested_datetime": "2021-06-08T18:19:00.000",
+    "service_details": "bses - complaint",
+    "service_name": "General Request - PUBLIC WORKS",
+    "service_request_id": "13916755",
+    "service_subtype": "complaint",
+    "source": "Phone",
+    "status_description": "Closed",
+    "status_notes": "Case Resolved - enforcement commenced on this address.",
+    "street": "DOLORES ST",
+    "supervisor_district": "8.00000",
+    "updated_datetime": "2021-06-09T11:42:08.000"
+  },
+  {
+    ":created_at": "2024-09-12T00:44:18.805Z",
+    ":id": "row-5i3m.fp5f~6qvi",
+    ":updated_at": "2024-09-12T01:57:08.019Z",
+    "address": "853 MARKET ST, SAN FRANCISCO, CA, 94103",
+    "agency_responsible": "DPW Ops Queue",
+    "analysis_neighborhood": "South of Market",
+    "bos_2012": "6.00000",
+    "closed_date": "2021-06-08T18:52:00.000",
+    "data_as_of": "2024-02-20T10:35:55.000",
+    "data_loaded_at": "2024-09-11T17:09:50.000",
+    "lat": "37.78473667",
+    "long": "-122.40698833",
+    "media_url": {
+      "url": "http://mobile311.sfgov.org/reports/13916748/photos"
+    },
+    "neighborhoods_sffind_boundaries": "South of Market",
+    "point": {
+      "human_address": "{\"address\": \"\", \"city\": \"\", \"state\": \"\", \"zip\": \"\"}",
+      "latitude": "37.78473667",
+      "longitude": "-122.40698833"
+    },
+    "point_geom": {
+      "coordinates": [
+        -122.40698833,
+        37.78473667
+      ],
+      "type": "Point"
+    },
+    "police_district": "TENDERLOIN",
+    "requested_datetime": "2021-06-08T18:17:00.000",
+    "service_details": "Other Loose Garbage",
+    "service_name": "Street and Sidewalk Cleaning",
+    "service_request_id": "13916748",
+    "service_subtype": "General Cleaning",
+    "source": "Mobile/Open311",
+    "status_description": "Closed",
+    "status_notes": "Case Resolved",
+    "street": "MARKET ST",
+    "supervisor_district": "6.00000",
+    "updated_datetime": "2021-06-08T18:52:00.000"
+  },
+  {
+    ":created_at": "2024-09-12T00:44:18.805Z",
+    ":id": "row-raa4_mpjy.cksy",
+    ":updated_at": "2024-09-12T01:57:08.019Z",
+    "address": "519 TERRY A FRANCOIS BLVD, SAN FRANCISCO, CA, 94158",
+    "agency_responsible": "Port Authority - G",
+    "analysis_neighborhood": "Mission Bay",
+    "bos_2012": "6.00000",
+    "closed_date": "2022-03-03T12:49:00.000",
+    "data_as_of": "2024-02-20T10:35:55.000",
+    "data_loaded_at": "2024-09-11T17:09:50.000",
+    "lat": "37.7704665",
+    "long": "-122.3857929",
+    "media_url": {
+      "url": "http://mobile311.sfgov.org/reports/13916704/photos"
+    },
+    "neighborhoods_sffind_boundaries": "Mission Bay",
+    "point": {
+      "human_address": "{\"address\": \"\", \"city\": \"\", \"state\": \"\", \"zip\": \"\"}",
+      "latitude": "37.7704665",
+      "longitude": "-122.3857929"
+    },
+    "point_geom": {
+      "coordinates": [
+        -122.3857929,
+        37.7704665
+      ],
+      "type": "Point"
+    },
+    "police_district": "SOUTHERN",
+    "requested_datetime": "2021-06-08T18:06:00.000",
+    "service_details": "Other Loose Garbage",
+    "service_name": "Street and Sidewalk Cleaning",
+    "service_request_id": "13916704",
+    "service_subtype": "General Cleaning",
+    "source": "Mobile/Open311",
+    "status_description": "Closed",
+    "status_notes": "Case Resolved - garbage cleaned up",
+    "street": "TERRY A FRANCOIS BLVD",
+    "supervisor_district": "6.00000",
+    "updated_datetime": "2022-03-03T12:49:00.000"
+  },
+  {
+    ":created_at": "2024-09-12T00:44:18.805Z",
+    ":id": "row-urzg.sydg~nuij",
+    ":updated_at": "2024-09-12T01:57:08.019Z",
+    "address": "Intersection of 11TH AVE and IRVING ST",
+    "agency_responsible": "Recology_Abandoned",
+    "analysis_neighborhood": "Inner Sunset",
+    "bos_2012": "5.00000",
+    "closed_date": "2021-06-08T18:55:52.000",
+    "data_as_of": "2024-02-20T10:35:55.000",
+    "data_loaded_at": "2024-09-11T17:09:50.000",
+    "lat": "37.763942718506",
+    "long": "-122.468452453613",
+    "neighborhoods_sffind_boundaries": "Inner Sunset",
+    "point": {
+      "human_address": "{\"address\": \"\", \"city\": \"\", \"state\": \"\", \"zip\": \"\"}",
+      "latitude": "37.76394272",
+      "longitude": "-122.46845245"
+    },
+    "point_geom": {
+      "coordinates": [
+        -122.468452454,
+        37.763942719
+      ],
+      "type": "Point"
+    },
+    "police_district": "TARAVAL",
+    "requested_datetime": "2021-06-08T17:59:00.000",
+    "service_details": "Other Loose Garbage",
+    "service_name": "Street and Sidewalk Cleaning",
+    "service_request_id": "13916678",
+    "service_subtype": "General Cleaning",
+    "source": "Phone",
+    "status_description": "Closed",
+    "status_notes": "Case Resolved - Pickup completed.",
+    "street": "11TH AVE",
+    "supervisor_district": "7.00000",
+    "updated_datetime": "2021-06-08T18:55:52.000"
+  },
+  {
+    ":created_at": "2024-09-12T00:44:18.805Z",
+    ":id": "row-5pbb-vn2n-rw2p",
+    ":updated_at": "2024-09-12T01:57:08.019Z",
+    "address": "Intersection of PORTOLA DR and DIAMOND HEIGHTS BLVD",
+    "agency_responsible": "DPW Ops Queue",
+    "analysis_neighborhood": "Noe Valley",
+    "bos_2012": "8.00000",
+    "closed_date": "2021-06-15T12:44:28.000",
+    "data_as_of": "2024-02-20T10:35:55.000",
+    "data_loaded_at": "2024-09-11T17:09:50.000",
+    "lat": "37.74694442749",
+    "long": "-122.444847106934",
+    "neighborhoods_sffind_boundaries": "Upper Market",
+    "point": {
+      "human_address": "{\"address\": \"\", \"city\": \"\", \"state\": \"\", \"zip\": \"\"}",
+      "latitude": "37.74694443",
+      "longitude": "-122.44484711"
+    },
+    "point_geom": {
+      "coordinates": [
+        -122.444847107,
+        37.746944427
+      ],
+      "type": "Point"
+    },
+    "police_district": "INGLESIDE",
+    "requested_datetime": "2021-06-08T16:55:00.000",
+    "service_details": "Signal_box - Not_Offensive",
+    "service_name": "Graffiti",
+    "service_request_id": "13916488",
+    "service_subtype": "Graffiti on Signal_box",
+    "source": "Phone",
+    "status_description": "Closed",
+    "status_notes": "Case Resolved",
+    "street": "PORTOLA DR",
+    "supervisor_district": "8.00000",
+    "updated_datetime": "2021-06-15T12:44:28.000"
+  },
+  {
+    ":created_at": "2024-09-12T00:44:18.805Z",
+    ":id": "row-9i4n~nsp7~h2s5",
+    ":updated_at": "2024-09-12T01:57:08.019Z",
+    "address": "901 FILLMORE ST, SAN FRANCISCO, CA, 94117",
+    "agency_responsible": "Recology_Abandoned",
+    "analysis_neighborhood": "Western Addition",
+    "bos_2012": "5.00000",
+    "closed_date": "2021-06-08T18:25:31.000",
+    "data_as_of": "2024-02-20T10:35:55.000",
+    "data_loaded_at": "2024-09-11T17:09:50.000",
+    "lat": "37.777799329747",
+    "long": "-122.431650016274",
+    "media_url": {
+      "url": "http://mobile311.sfgov.org/reports/13916359/photos"
+    },
+    "neighborhoods_sffind_boundaries": "Alamo Square",
+    "point": {
+      "human_address": "{\"address\": \"\", \"city\": \"\", \"state\": \"\", \"zip\": \"\"}",
+      "latitude": "37.77779933",
+      "longitude": "-122.43165002"
+    },
+    "point_geom": {
+      "coordinates": [
+        -122.431650016,
+        37.77779933
+      ],
+      "type": "Point"
+    },
+    "police_district": "NORTHERN",
+    "requested_datetime": "2021-06-08T16:21:00.000",
+    "service_details": "Furniture",
+    "service_name": "Street and Sidewalk Cleaning",
+    "service_request_id": "13916359",
+    "service_subtype": "Bulky Items",
+    "source": "Mobile/Open311",
+    "status_description": "Closed",
+    "status_notes": "Case Resolved - Pickup completed.",
+    "street": "FILLMORE ST",
+    "supervisor_district": "5.00000",
+    "updated_datetime": "2021-06-08T18:25:31.000"
+  },
+  {
+    ":created_at": "2024-09-12T00:44:18.805Z",
+    ":id": "row-cqcu-gyrs~q4ad",
+    ":updated_at": "2024-09-12T01:57:08.019Z",
+    "address": "1662 THE EMBARCADERO, SAN FRANCISCO, CA, 94133",
+    "agency_responsible": "SFMTA - Scooter Queue",
+    "analysis_neighborhood": "North Beach",
+    "bos_2012": "3.00000",
+    "closed_date": "2021-06-10T14:28:00.000",
+    "data_as_of": "2024-02-20T10:35:55.000",
+    "data_loaded_at": "2024-09-11T17:09:50.000",
+    "lat": "37.80845",
+    "long": "-122.410155",
+    "media_url": {
+      "url": "http://mobile311.sfgov.org/reports/13916196/photos"
+    },
+    "neighborhoods_sffind_boundaries": "Fisherman's Wharf",
+    "point": {
+      "human_address": "{\"address\": \"\", \"city\": \"\", \"state\": \"\", \"zip\": \"\"}",
+      "latitude": "37.80845",
+      "longitude": "-122.410155"
+    },
+    "point_geom": {
+      "coordinates": [
+        -122.410155,
+        37.80845
+      ],
+      "type": "Point"
+    },
+    "police_district": "CENTRAL",
+    "requested_datetime": "2021-06-08T15:51:46.000",
+    "service_details": "scooters - request_for_service",
+    "service_name": "General Request - MTA",
+    "service_request_id": "13916196",
+    "service_subtype": "request_for_service",
+    "source": "Mobile/Open311",
+    "status_description": "Closed",
+    "status_notes": "Case closed, Complaint Noted",
+    "street": "THE EMBARCADERO",
+    "supervisor_district": "3.00000",
+    "updated_datetime": "2021-06-10T14:28:00.000"
+  },
+  {
+    ":created_at": "2024-09-12T00:44:18.805Z",
+    ":id": "row-dt8z-hnxc-2qvr",
+    ":updated_at": "2024-09-12T01:57:08.019Z",
+    "address": "139 HARRIET ST, SAN FRANCISCO, CA, 94103",
+    "agency_responsible": "DPW Ops Queue",
+    "analysis_neighborhood": "South of Market",
+    "bos_2012": "6.00000",
+    "closed_date": "2021-06-08T15:23:01.000",
+    "data_as_of": "2024-02-20T10:35:55.000",
+    "data_loaded_at": "2024-09-11T17:09:50.000",
+    "lat": "37.777599566651",
+    "long": "-122.405320443327",
+    "media_url": {
+      "url": "http://mobile311.sfgov.org/reports/13915945/photos"
+    },
+    "neighborhoods_sffind_boundaries": "South of Market",
+    "point": {
+      "human_address": "{\"address\": \"\", \"city\": \"\", \"state\": \"\", \"zip\": \"\"}",
+      "latitude": "37.77759957",
+      "longitude": "-122.40532044"
+    },
+    "point_geom": {
+      "coordinates": [
+        -122.405320443,
+        37.777599567
+      ],
+      "type": "Point"
+    },
+    "police_district": "SOUTHERN",
+    "requested_datetime": "2021-06-08T15:07:00.000",
+    "service_details": "Building_commercial - Not_Offensive",
+    "service_name": "Graffiti",
+    "service_request_id": "13915945",
+    "service_subtype": "Graffiti on Building_commercial",
+    "source": "Mobile/Open311",
+    "status_description": "Closed",
+    "status_notes": "Case Resolved - Due to the COVID-19 pandemic, current economic conditions and legislation adopted by the Board of Supervisors, #210258, we have temporarily suspended posting graffiti notices of violation to private property owners under Article 23 of the San Francisco Public Works Code and Chapter 80 of the San Francisco Administrative Code until further notice. Despite the pause on enforcement, Public Works still strongly encourages private property owners to remove graffiti in a timely manner to assist in kee",
+    "street": "HARRIET ST",
+    "supervisor_district": "6.00000",
+    "updated_datetime": "2021-06-08T15:23:01.000"
+  },
+  {
+    ":created_at": "2024-09-12T00:44:18.805Z",
+    ":id": "row-ekzx-iyqs-8ttm",
+    ":updated_at": "2024-09-12T01:57:08.019Z",
+    "address": "1190 MARKET ST, SAN FRANCISCO, CA, 94102",
+    "agency_responsible": "DPW Ops Queue",
+    "analysis_neighborhood": "Tenderloin",
+    "bos_2012": "6.00000",
+    "closed_date": "2021-06-09T07:02:00.000",
+    "data_as_of": "2024-02-20T10:35:55.000",
+    "data_loaded_at": "2024-09-11T17:09:50.000",
+    "lat": "37.779003079312",
+    "long": "-122.414552489175",
+    "media_url": {
+      "url": "http://mobile311.sfgov.org/reports/13915547/photos"
+    },
+    "neighborhoods_sffind_boundaries": "Civic Center",
+    "point": {
+      "human_address": "{\"address\": \"\", \"city\": \"\", \"state\": \"\", \"zip\": \"\"}",
+      "latitude": "37.77900308",
+      "longitude": "-122.41455249"
+    },
+    "point_geom": {
+      "coordinates": [
+        -122.414552489,
+        37.779003079
+      ],
+      "type": "Point"
+    },
+    "police_district": "TENDERLOIN",
+    "requested_datetime": "2021-06-08T13:54:00.000",
+    "service_details": "Human or Animal Waste",
+    "service_name": "Street and Sidewalk Cleaning",
+    "service_request_id": "13915547",
+    "service_subtype": "Human or Animal Waste",
+    "source": "Mobile/Open311",
+    "status_description": "Closed",
+    "status_notes": "Case Resolved",
+    "street": "MARKET ST",
+    "supervisor_district": "6.00000",
+    "updated_datetime": "2021-06-09T07:02:00.000"
+  },
+  {
+    ":created_at": "2024-09-12T00:44:18.805Z",
+    ":id": "row-48nq_xwx6-bzzz",
+    ":updated_at": "2024-09-12T01:57:08.019Z",
+    "address": "Intersection of ALEMANY BLVD and HWY 101 S OFF RAMP",
+    "agency_responsible": "DPW Ops Queue",
+    "analysis_neighborhood": "Bernal Heights",
+    "bos_2012": "9.00000",
+    "closed_date": "2021-06-08T22:15:16.000",
+    "data_as_of": "2024-02-20T10:35:55.000",
+    "data_loaded_at": "2024-09-11T17:09:50.000",
+    "lat": "37.734747333641",
+    "long": "-122.410982113961",
+    "neighborhoods_sffind_boundaries": "Bernal Heights",
+    "point": {
+      "human_address": "{\"address\": \"\", \"city\": \"\", \"state\": \"\", \"zip\": \"\"}",
+      "latitude": "37.73474733",
+      "longitude": "-122.41098211"
+    },
+    "point_geom": {
+      "coordinates": [
+        -122.410982114,
+        37.734747334
+      ],
+      "type": "Point"
+    },
+    "police_district": "INGLESIDE",
+    "requested_datetime": "2021-06-08T13:27:00.000",
+    "service_details": "Boxed or Bagged Items",
+    "service_name": "Street and Sidewalk Cleaning",
+    "service_request_id": "13915388",
+    "service_subtype": "Bulky Items",
+    "source": "Mobile/Open311",
+    "status_description": "Closed",
+    "status_notes": "Case is a Duplicate - Request is a duplicate and has been previously reported as 13914174",
+    "street": "ALEMANY BLVD",
+    "supervisor_district": "9.00000",
+    "updated_datetime": "2021-06-08T22:15:16.000"
+  },
+  {
+    ":created_at": "2024-09-12T00:44:18.805Z",
+    ":id": "row-7icx.fwh2.yzbm",
+    ":updated_at": "2024-09-12T01:57:08.019Z",
+    "address": "751 VAN NESS AVE, SAN FRANCISCO, CA, 94102",
+    "agency_responsible": "DPW Ops Queue",
+    "analysis_neighborhood": "Western Addition",
+    "bos_2012": "5.00000",
+    "closed_date": "2021-06-13T08:46:00.000",
+    "data_as_of": "2024-02-20T10:35:55.000",
+    "data_loaded_at": "2024-09-11T17:09:50.000",
+    "lat": "37.782581010206",
+    "long": "-122.420896378326",
+    "neighborhoods_sffind_boundaries": "Cathedral Hill",
+    "point": {
+      "human_address": "{\"address\": \"\", \"city\": \"\", \"state\": \"\", \"zip\": \"\"}",
+      "latitude": "37.78258101",
+      "longitude": "-122.42089638"
+    },
+    "point_geom": {
+      "coordinates": [
+        -122.420896378,
+        37.78258101
+      ],
+      "type": "Point"
+    },
+    "police_district": "NORTHERN",
+    "requested_datetime": "2021-06-08T13:02:00.000",
+    "service_details": "Human or Animal Waste",
+    "service_name": "Street and Sidewalk Cleaning",
+    "service_request_id": "13915201",
+    "service_subtype": "Human or Animal Waste",
+    "source": "Web",
+    "status_description": "Closed",
+    "status_notes": "Case Resolved",
+    "street": "VAN NESS AVE",
+    "supervisor_district": "5.00000",
+    "updated_datetime": "2021-06-13T08:46:00.000"
+  },
+  {
+    ":created_at": "2024-09-12T00:44:18.805Z",
+    ":id": "row-pwhb_n5sa~s7ke",
+    ":updated_at": "2024-09-12T01:57:08.019Z",
+    "address": "101 CRESCENT WAY, SAN FRANCISCO, CA, 94134",
+    "agency_responsible": "Recology_Abandoned",
+    "analysis_neighborhood": "Bayview Hunters Point",
+    "bos_2012": "10.00000",
+    "closed_date": "2021-06-09T09:38:55.000",
+    "data_as_of": "2024-02-20T10:35:55.000",
+    "data_loaded_at": "2024-09-11T17:09:50.000",
+    "lat": "37.71054088934",
+    "long": "-122.389178158125",
+    "media_url": {
+      "url": "http://mobile311.sfgov.org/reports/13915121/photos"
+    },
+    "neighborhoods_sffind_boundaries": "Candlestick Point SRA",
+    "point": {
+      "human_address": "{\"address\": \"\", \"city\": \"\", \"state\": \"\", \"zip\": \"\"}",
+      "latitude": "37.71054089",
+      "longitude": "-122.38917816"
+    },
+    "point_geom": {
+      "coordinates": [
+        -122.389178158,
+        37.710540889
+      ],
+      "type": "Point"
+    },
+    "police_district": "BAYVIEW",
+    "requested_datetime": "2021-06-08T12:47:00.000",
+    "service_details": "Boxed or Bagged Items",
+    "service_name": "Street and Sidewalk Cleaning",
+    "service_request_id": "13915121",
+    "service_subtype": "Bulky Items",
+    "source": "Mobile/Open311",
+    "status_description": "Closed",
+    "status_notes": "Case Resolved - WASTE NOT FOUND",
+    "street": "CRESCENT WAY",
+    "supervisor_district": "10.00000",
+    "updated_datetime": "2021-06-09T09:38:55.000"
+  },
+  {
+    ":created_at": "2024-09-12T00:44:18.805Z",
+    ":id": "row-bkgn_8df7-5n7s",
+    ":updated_at": "2024-09-12T01:57:08.019Z",
+    "address": "Not associated with a specific address",
+    "agency_responsible": "DPW Ops Queue",
+    "data_as_of": "2024-02-20T10:35:55.000",
+    "data_loaded_at": "2024-09-11T17:09:50.000",
+    "lat": "0.0",
+    "long": "0.0",
+    "point": {
+      "human_address": "{\"address\": \"\", \"city\": \"\", \"state\": \"\", \"zip\": \"\"}",
+      "latitude": "0.0",
+      "longitude": "0.0"
+    },
+    "point_geom": {
+      "coordinates": [
+        0,
+        0
+      ],
+      "type": "Point"
+    },
+    "requested_datetime": "2021-06-10T12:14:15.000",
+    "service_details": "Building_other - Not_Offensive",
+    "service_name": "Graffiti",
+    "service_request_id": "13922167",
+    "service_subtype": "Graffiti on Building_other",
+    "source": "Integrated Agency",
+    "status_description": "Open",
+    "status_notes": "accepted",
+    "updated_datetime": "2021-06-10T12:14:15.000"
+  },
+  {
+    ":created_at": "2024-09-12T00:44:18.805Z",
+    ":id": "row-ujpb.r8zs_kt67",
+    ":updated_at": "2024-09-12T01:57:08.019Z",
+    "address": "Not associated with a specific address",
+    "agency_responsible": "Muni Feedback Received Queue",
+    "closed_date": "2021-06-10T08:48:04.000",
+    "data_as_of": "2024-02-20T10:35:55.000",
+    "data_loaded_at": "2024-09-11T17:09:50.000",
+    "lat": "0.0",
+    "long": "0.0",
+    "point": {
+      "human_address": "{\"address\": \"\", \"city\": \"\", \"state\": \"\", \"zip\": \"\"}",
+      "latitude": "0.0",
+      "longitude": "0.0"
+    },
+    "point_geom": {
+      "coordinates": [
+        0,
+        0
+      ],
+      "type": "Point"
+    },
+    "requested_datetime": "2021-06-09T11:56:00.000",
+    "service_details": "Discourteous_Rude",
+    "service_name": "Muni Employee Feedback",
+    "service_request_id": "13919041",
+    "service_subtype": "Muni - Complaint_Discourteous_Unprofessional",
+    "source": "Phone",
+    "status_description": "Closed",
+    "status_notes": "Case Resolved - Investigation completed",
+    "updated_datetime": "2021-06-10T08:48:04.000"
+  },
+  {
+    ":created_at": "2024-09-12T00:44:18.805Z",
+    ":id": "row-jvuy.ntm5_ijvr",
+    ":updated_at": "2024-09-12T01:57:08.019Z",
+    "address": "Not associated with a specific address",
+    "agency_responsible": "Controller - G",
+    "closed_date": "2021-06-15T12:08:00.000",
+    "data_as_of": "2024-02-20T10:35:55.000",
+    "data_loaded_at": "2024-09-11T17:09:50.000",
+    "lat": "0.0",
+    "long": "0.0",
+    "point": {
+      "human_address": "{\"address\": \"\", \"city\": \"\", \"state\": \"\", \"zip\": \"\"}",
+      "latitude": "0.0",
+      "longitude": "0.0"
+    },
+    "point_geom": {
+      "coordinates": [
+        0,
+        0
+      ],
+      "type": "Point"
+    },
+    "requested_datetime": "2021-06-08T13:06:00.000",
+    "service_details": "controller - request_for_service",
+    "service_name": "General Request - CONTROLLER",
+    "service_request_id": "13915234",
+    "service_subtype": "request_for_service",
+    "source": "Phone",
+    "status_description": "Closed",
+    "status_notes": "Case Resolved - Info given to Disbursements. Customer hung up. 3 attempts.",
+    "updated_datetime": "2021-06-15T12:08:00.000"
+  },
+  {
+    ":created_at": "2024-09-12T00:44:18.805Z",
+    ":id": "row-hjz4.g45m_tety",
+    ":updated_at": "2024-09-12T01:57:08.019Z",
+    "address": "2282 MISSION ST, SAN FRANCISCO, CA, 94110",
+    "agency_responsible": "DPW Ops Queue",
+    "analysis_neighborhood": "Mission",
+    "bos_2012": "9.00000",
+    "closed_date": "2021-06-09T10:57:00.000",
+    "data_as_of": "2024-02-20T10:35:55.000",
+    "data_loaded_at": "2024-09-11T17:09:50.000",
+    "lat": "37.760581970215",
+    "long": "-122.419441223145",
+    "neighborhoods_sffind_boundaries": "Mission",
+    "point": {
+      "human_address": "{\"address\": \"\", \"city\": \"\", \"state\": \"\", \"zip\": \"\"}",
+      "latitude": "37.76058197",
+      "longitude": "-122.41944122"
+    },
+    "point_geom": {
+      "coordinates": [
+        -122.419441223,
+        37.76058197
+      ],
+      "type": "Point"
+    },
+    "police_district": "MISSION",
+    "requested_datetime": "2021-06-08T11:55:00.000",
+    "service_details": "Other Loose Garbage",
+    "service_name": "Street and Sidewalk Cleaning",
+    "service_request_id": "13914815",
+    "service_subtype": "General Cleaning",
+    "source": "Phone",
+    "status_description": "Closed",
+    "status_notes": "Case Resolved",
+    "street": "MISSION ST",
+    "supervisor_district": "9.00000",
+    "updated_datetime": "2021-06-09T10:57:00.000"
+  },
+  {
+    ":created_at": "2024-09-12T00:44:18.805Z",
+    ":id": "row-frb9_y2qc.e86x",
+    ":updated_at": "2024-09-12T01:57:08.019Z",
+    "address": "Intersection of MISSION ST and MOUNT VERNON AVE",
+    "agency_responsible": "Recology_Abandoned",
+    "analysis_neighborhood": "Outer Mission",
+    "bos_2012": "11.00000",
+    "closed_date": "2021-06-09T05:41:27.000",
+    "data_as_of": "2024-02-20T10:35:55.000",
+    "data_loaded_at": "2024-09-11T17:09:50.000",
+    "lat": "37.714569091797",
+    "long": "-122.442665100098",
+    "neighborhoods_sffind_boundaries": "Crocker Amazon",
+    "point": {
+      "human_address": "{\"address\": \"\", \"city\": \"\", \"state\": \"\", \"zip\": \"\"}",
+      "latitude": "37.71456909",
+      "longitude": "-122.4426651"
+    },
+    "point_geom": {
+      "coordinates": [
+        -122.4426651,
+        37.714569092
+      ],
+      "type": "Point"
+    },
+    "police_district": "INGLESIDE",
+    "requested_datetime": "2021-06-08T10:59:30.000",
+    "service_details": "Refrigerator",
+    "service_name": "Street and Sidewalk Cleaning",
+    "service_request_id": "13914461",
+    "service_subtype": "Bulky Items",
+    "source": "Integrated Agency",
+    "status_description": "Closed",
+    "status_notes": "Case Resolved - Pickup completed.",
+    "street": "MISSION ST",
+    "supervisor_district": "11.00000",
+    "updated_datetime": "2021-06-09T05:41:27.000"
+  },
+  {
+    ":created_at": "2024-09-12T00:44:18.805Z",
+    ":id": "row-nrzk-iuj7~9n65",
+    ":updated_at": "2024-09-12T01:57:08.019Z",
+    "address": "1760 HYDE ST, SAN FRANCISCO, CA, 94109",
+    "agency_responsible": "DPW - Bureau of Street Use and Mapping - G",
+    "analysis_neighborhood": "Russian Hill",
+    "bos_2012": "3.00000",
+    "closed_date": "2021-06-08T00:00:00.000",
+    "data_as_of": "2024-02-20T10:35:55.000",
+    "data_loaded_at": "2024-09-11T17:09:50.000",
+    "lat": "37.797164916992",
+    "long": "-122.418487548828",
+    "neighborhoods_sffind_boundaries": "Russian Hill",
+    "point": {
+      "human_address": "{\"address\": \"\", \"city\": \"\", \"state\": \"\", \"zip\": \"\"}",
+      "latitude": "37.79716492",
+      "longitude": "-122.41848755"
+    },
+    "point_geom": {
+      "coordinates": [
+        -122.418487549,
+        37.797164917
+      ],
+      "type": "Point"
+    },
+    "police_district": "CENTRAL",
+    "requested_datetime": "2021-06-08T10:59:24.000",
+    "service_details": "bsm - request_for_service",
+    "service_name": "General Request - PUBLIC WORKS",
+    "service_request_id": "13914457",
+    "service_subtype": "request_for_service",
+    "source": "Integrated Agency",
+    "status_description": "Closed",
+    "status_notes": "Case Resolved - RFA NOT FOUND No action to enforce at this time because issue isn't found as described per RFA. Close out.. mb - RFA NOT FOUND No action to enforce at this time because issue isn't found as described per RFA. Close out.. mb",
+    "street": "HYDE ST",
+    "supervisor_district": "3.00000",
+    "updated_datetime": "2021-06-08T00:00:00.000"
+  },
+  {
+    ":created_at": "2024-09-12T00:44:18.805Z",
+    ":id": "row-dtvu_wgq3-2i2j",
+    ":updated_at": "2024-09-12T01:57:08.019Z",
+    "address": "2099 PALOU AVE, SAN FRANCISCO, CA, 94124",
+    "agency_responsible": "DPW Ops Queue",
+    "analysis_neighborhood": "Bayview Hunters Point",
+    "bos_2012": "10.00000",
+    "closed_date": "2021-06-08T22:20:13.000",
+    "data_as_of": "2024-02-20T10:35:55.000",
+    "data_loaded_at": "2024-09-11T17:09:50.000",
+    "lat": "37.739148",
+    "long": "-122.4003325",
+    "media_url": {
+      "url": "http://mobile311.sfgov.org/reports/13913867/photos"
+    },
+    "neighborhoods_sffind_boundaries": "Silver Terrace",
+    "point": {
+      "human_address": "{\"address\": \"\", \"city\": \"\", \"state\": \"\", \"zip\": \"\"}",
+      "latitude": "37.739148",
+      "longitude": "-122.4003325"
+    },
+    "point_geom": {
+      "coordinates": [
+        -122.4003325,
+        37.739148
+      ],
+      "type": "Point"
+    },
+    "police_district": "BAYVIEW",
+    "requested_datetime": "2021-06-08T09:28:00.000",
+    "service_details": "Other Loose Garbage",
+    "service_name": "Street and Sidewalk Cleaning",
+    "service_request_id": "13913867",
+    "service_subtype": "General Cleaning",
+    "source": "Mobile/Open311",
+    "status_description": "Closed",
+    "status_notes": "Case is a Duplicate - Request is a duplicate and has been previously reported as 13906410",
+    "street": "PALOU AVE",
+    "supervisor_district": "10.00000",
+    "updated_datetime": "2021-06-08T22:20:13.000"
+  },
+  {
+    ":created_at": "2024-09-12T00:44:18.805Z",
+    ":id": "row-bi5z~bemt-fx29",
+    ":updated_at": "2024-09-12T01:57:08.019Z",
+    "address": "499 MINNA ST, SAN FRANCISCO, CA, 94103",
+    "agency_responsible": "DPW Ops Queue",
+    "analysis_neighborhood": "South of Market",
+    "bos_2012": "6.00000",
+    "closed_date": "2021-06-08T12:24:00.000",
+    "data_as_of": "2024-02-20T10:35:55.000",
+    "data_loaded_at": "2024-09-11T17:09:50.000",
+    "lat": "37.7805866",
+    "long": "-122.4080553",
+    "media_url": {
+      "url": "http://mobile311.sfgov.org/reports/13913788/photos"
+    },
+    "neighborhoods_sffind_boundaries": "South of Market",
+    "point": {
+      "human_address": "{\"address\": \"\", \"city\": \"\", \"state\": \"\", \"zip\": \"\"}",
+      "latitude": "37.7805866",
+      "longitude": "-122.4080553"
+    },
+    "point_geom": {
+      "coordinates": [
+        -122.4080553,
+        37.7805866
+      ],
+      "type": "Point"
+    },
+    "police_district": "SOUTHERN",
+    "requested_datetime": "2021-06-08T09:13:00.000",
+    "service_details": "Boxed or Bagged Items",
+    "service_name": "Street and Sidewalk Cleaning",
+    "service_request_id": "13913788",
+    "service_subtype": "Bulky Items",
+    "source": "Mobile/Open311",
+    "status_description": "Closed",
+    "status_notes": "Case Resolved",
+    "street": "MINNA ST",
+    "supervisor_district": "6.00000",
+    "updated_datetime": "2021-06-08T12:24:00.000"
+  },
+  {
+    ":created_at": "2024-09-12T00:44:18.805Z",
+    ":id": "row-xw69-8ewh_bzah",
+    ":updated_at": "2024-09-12T01:57:08.019Z",
+    "address": "2650 MARKET ST, SAN FRANCISCO, CA, 94114",
+    "agency_responsible": "DPW Ops Queue",
+    "analysis_neighborhood": "Castro/Upper Market",
+    "bos_2012": "8.00000",
+    "closed_date": "2021-06-08T09:03:00.000",
+    "data_as_of": "2024-02-20T10:35:55.000",
+    "data_loaded_at": "2024-09-11T17:09:50.000",
+    "lat": "37.761901855469",
+    "long": "-122.438217163086",
+    "neighborhoods_sffind_boundaries": "Eureka Valley",
+    "point": {
+      "human_address": "{\"address\": \"\", \"city\": \"\", \"state\": \"\", \"zip\": \"\"}",
+      "latitude": "37.76190186",
+      "longitude": "-122.43821716"
+    },
+    "point_geom": {
+      "coordinates": [
+        -122.438217163,
+        37.761901855
+      ],
+      "type": "Point"
+    },
+    "police_district": "MISSION",
+    "requested_datetime": "2021-06-08T08:45:00.000",
+    "service_details": "Other Loose Garbage",
+    "service_name": "Street and Sidewalk Cleaning",
+    "service_request_id": "13913614",
+    "service_subtype": "General Cleaning",
+    "source": "Phone",
+    "status_description": "Closed",
+    "status_notes": "Case Resolved",
+    "street": "MARKET ST",
+    "supervisor_district": "8.00000",
+    "updated_datetime": "2021-06-08T09:03:00.000"
+  },
+  {
+    ":created_at": "2024-09-12T00:44:18.805Z",
+    ":id": "row-fixture~coverage",
+    ":updated_at": "2026-07-27T00:00:00.000Z",
+    "address": "748 STANYAN ST, SAN FRANCISCO, CA, 94117",
+    "agency_responsible": "AT and T - Graffiti Queue",
+    "analysis_neighborhood": "Haight Ashbury",
+    "bos_2012": "5.00000",
+    "closed_date": "2021-06-21T17:30:56.000",
+    "data_as_of": "2024-02-20T10:35:55.000",
+    "data_loaded_at": "2024-09-11T17:09:50.000",
+    "lat": "37.76835333",
+    "long": "-122.45321667",
+    "media_url": {
+      "url": "http://mobile311.sfgov.org/reports/13917095/photos"
+    },
+    "neighborhoods_sffind_boundaries": "Golden Gate Park",
+    "point": {
+      "human_address": "{\"address\": \"\", \"city\": \"\", \"state\": \"\", \"zip\": \"\"}",
+      "latitude": "37.76835333",
+      "longitude": "-122.45321667"
+    },
+    "point_geom": {
+      "coordinates": [
+        -122.45321667,
+        37.76835333
+      ],
+      "type": "Point"
+    },
+    "police_district": "PARK",
+    "requested_datetime": "2021-06-08T21:16:00.000",
+    "service_details": "ATT_Property - Offensive",
+    "service_name": "Graffiti",
+    "service_request_id": "999000001",
+    "service_subtype": "Graffiti on ATT_Property",
+    "source": "Mobile/Open311",
+    "status_description": "Closed",
+    "status_notes": "Case Resolved - Completed",
+    "street": "STANYAN ST",
+    "supervisor_district": "5.00000",
+    "updated_datetime": "2021-06-21T17:30:56.000"
+  },
+  {
+    ":created_at": "2024-09-12T00:44:18.805Z",
+    ":id": "row-naz8-gtgk_2p73",
+    ":updated_at": "2026-07-29T12:00:00.000Z",
+    "address": "748 STANYAN ST, SAN FRANCISCO, CA, 94117",
+    "agency_responsible": "AT and T - Graffiti Queue",
+    "analysis_neighborhood": "Haight Ashbury",
+    "bos_2012": "5.00000",
+    "closed_date": "2026-07-29T11:59:00.000",
+    "data_as_of": "2024-02-20T10:35:55.000",
+    "data_loaded_at": "2024-09-11T17:09:50.000",
+    "lat": "37.76835333",
+    "long": "-122.45321667",
+    "media_url": {
+      "url": "http://mobile311.sfgov.org/reports/13917095/photos"
+    },
+    "neighborhoods_sffind_boundaries": "Golden Gate Park",
+    "point": {
+      "human_address": "{\"address\": \"\", \"city\": \"\", \"state\": \"\", \"zip\": \"\"}",
+      "latitude": "37.76835333",
+      "longitude": "-122.45321667"
+    },
+    "point_geom": {
+      "coordinates": [
+        -122.45321667,
+        37.76835333
+      ],
+      "type": "Point"
+    },
+    "police_district": "PARK",
+    "requested_datetime": "2021-06-08T21:16:00.000",
+    "service_details": "ATT_Property - Offensive",
+    "service_name": "Graffiti",
+    "service_request_id": "13917095",
+    "service_subtype": "Graffiti on ATT_Property",
+    "source": "Mobile/Open311",
+    "status_description": "Closed",
+    "status_notes": "Case Resolved - Completed",
+    "street": "STANYAN ST",
+    "supervisor_district": "5.00000",
+    "updated_datetime": "2021-06-21T17:30:56.000"
+  }
+]

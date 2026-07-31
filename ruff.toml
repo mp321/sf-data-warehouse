@@ -23,41 +23,26 @@ select = [
 ]
 
 ignore = [
-    "PLR0913",  # too many arguments: ingest_one legitimately takes several
+    # Several functions take a handful of keyword arguments that are genuinely
+    # independent (table, rows, run_id, seq, ingest_date, root). Splitting them
+    # into a config object would add a type to carry six unrelated scalars.
+    # PLR0917, the positional-argument count, is deliberately left enabled: the
+    # ones that mattered were fixed by making the tail keyword-only.
+    "PLR0913",
     "PLR2004",  # magic value comparison: noisy on retry and page-size logic
 ]
 
-[lint.per-file-ignores]
-# ---------------------------------------------------------------------------
-# Deliberate, temporary exemptions for the pre-existing ingestion module.
+[lint.isort]
+# `datasets` and `raw_zone` are sibling modules in ingestion/, imported by the
+# scripts that live beside them. Ruff otherwise classifies `datasets` as
+# third-party, because a PyPI package owns that name, and demands it be sorted
+# into the third-party block where it would read as an external dependency.
 #
-# These are real findings, not false positives. They are exempted because the
-# session that introduced linting was explicitly not allowed to refactor
-# ingestion, and turning CI red on day one to report problems nobody was
-# authorised to fix helps no one. Removing these exemptions is
-# docs/plans/plan-2-ingestion-lint.md.
-#
-# Do not add to this list. Add to the plan instead.
-# ---------------------------------------------------------------------------
-
-# I001: "from datasets import DATASETS" is a bare sibling import that works
-# only because Python puts the script's own directory on sys.path. Sorting it
-# is trivial; the underlying fragility, that it shadows and is shadowed by the
-# HuggingFace `datasets` package, is not, and both should be fixed together.
-#
-# PLR0917: ingest_one takes 7 positional arguments. Genuinely too many, and
-# the fix is a config object, which is an ingestion refactor.
-"ingestion/ingest.py" = ["I001", "PLR0917"]
-
-# E501: one dataset description runs to 107 characters. Rewrapping it is a
-# one-line change, but it lives in the dataset registry and ADR-3 is
-# actively reconsidering those entries, so leave it until that settles.
-"ingestion/datasets.py" = ["E501"]
+# This makes the grouping correct. It does not remove the underlying hazard,
+# which is that `ingestion/datasets.py` shadows and is shadowed by the
+# HuggingFace `datasets` package if that ever lands in the venv. The fix for
+# that is a rename and is still tracked in docs/plans/plan-2-ingestion-lint.md.
+known-first-party = ["datasets", "raw_zone"]
 
 [format]
 quote-style = "double"
-
-# Same reasoning as the per-file-ignores above: the formatter would rewrite
-# ingest.py's argparse block and its call signatures, producing a large diff
-# in the one file this session was told to leave alone. Tracked in PLAN-2.
-exclude = ["ingestion/ingest.py"]

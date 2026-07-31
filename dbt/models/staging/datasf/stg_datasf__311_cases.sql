@@ -41,11 +41,16 @@ deduplicated as (
     -- case that was opened and later closed exists twice in raw. QUALIFY
     -- keeps only the most recently updated version of each case.
     -- QUALIFY is supported on both DuckDB and BigQuery.
+    -- The _ingested_at tiebreak makes the winner deterministic when two
+    -- copies share an _socrata_updated_at, which happens after a resumed run
+    -- re-reads rows it had already written.
     select *
     from source
     qualify row_number() over (
         partition by service_request_id
-        order by {{ x_cast('_socrata_updated_at', 'timestamp') }} desc
+        order by
+            {{ x_cast('_socrata_updated_at', 'timestamp') }} desc,
+            {{ x_cast('_ingested_at', 'timestamp') }} desc
     ) = 1
 
 ),
@@ -67,7 +72,12 @@ renamed as (
         service_name as service_category,
         service_subtype as service_subcategory,
         address,
-        supervisor_district,
+        -- 311 publishes this as "9.00000" where permits publish "9", so the
+        -- x_safe_int macro routes through float; a direct int cast would
+        -- null every value here. Typed rather than passed through as a
+        -- string so it joins to the other staging models, which is the whole
+        -- point of having a district column on both.
+        {{ x_safe_int('supervisor_district') }} as supervisor_district,
         police_district,
         source as request_source,
 

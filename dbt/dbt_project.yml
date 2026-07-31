@@ -13,6 +13,54 @@ clean-targets:
   - "target"
   - "dbt_packages"
 
+# ---------------------------------------------------------------------------
+# Capture dbt's own run results into a table so mart_pipeline_freshness can
+# read them. See macros/audit_run_results.sql, which explains why the mart
+# necessarily reports the previous run's results rather than the current one.
+#
+# Two separate on-run-start hooks rather than one statement: adapters differ
+# on whether a semicolon-separated batch is accepted, and BigQuery needs the
+# dataset to exist before the table, which dbt does not guarantee this early.
+# ---------------------------------------------------------------------------
+on-run-start:
+  - "{{ ensure_run_results_schema() }}"
+  - "{{ ensure_run_results_table() }}"
+
+on-run-end:
+  - "{{ log_run_results() }}"
+
+vars:
+  # The registry mart_pipeline_freshness loops over to build one row per
+  # source. It duplicates part of ingestion/datasets.py on purpose: that file
+  # is what Python ingests, this is what dbt reports on, and neither language
+  # can read the other's. Adding a dataset means adding it in both places.
+  #
+  # stale_after_hours is the freshness SLA and mirrors the thresholds in
+  # models/staging/datasf/_datasf__sources.yml. null means the source has no
+  # SLA, which per ADR-3 is the demoted tier: it is still ingested, and its
+  # staleness is reported but never counted as a failure.
+  pipeline_sources:
+    - name: "311_cases"
+      source_table: raw_311_cases
+      staging_model: stg_datasf__311_cases
+      tier: core
+      stale_after_hours: 48
+    - name: building_permits
+      source_table: raw_building_permits
+      staging_model: stg_datasf__building_permits
+      tier: core
+      stale_after_hours: 168
+    - name: city_budget
+      source_table: raw_city_budget
+      staging_model: stg_datasf__city_budget
+      tier: demoted
+      stale_after_hours: null
+    - name: film_locations
+      source_table: raw_film_locations
+      staging_model: stg_datasf__film_locations
+      tier: demoted
+      stale_after_hours: null
+
 models:
   sf_data_warehouse:
     staging:

@@ -1,6 +1,6 @@
-# This profile is committed on purpose: it contains no secrets.
+# This contains no secrets.
 # Everything sensitive comes from environment variables, so the exact
-# same file works on your laptop and in GitHub Actions.
+# same file works on local and in GitHub Actions.
 #
 # Run dbt from this folder with:
 #   export DBT_PROFILES_DIR="$(pwd)"
@@ -8,13 +8,24 @@
 #
 # Two targets, per ADR-1 (docs/decisions/adr-1-warehouse-targets.md):
 #
-#   dev      BigQuery. The default today. Needs real credentials.
-#   duckdb   Local DuckDB. No credentials, no network. This is what CI
-#            compiles against on every pull request, and what ADR-1
-#            intends to make the default once the Parquet raw zone is
-#            wired up.
+#   duckdb     Local DuckDB. The default. No credentials, no network. This
+#              is what CI builds and tests on every pull request.
+#   bigquery   BigQuery. Needs real credentials. Same models, same sources,
+#              built on a schedule.
 #
-# Pick one with: dbt build --target duckdb
+# Pick one with: dbt build --target bigquery
+#
+# The BigQuery output was called `dev` until the DuckDB switch. It is named
+# for the engine now, because "dev" stopped describing anything once the
+# credential-free target became the one you develop against.
+#
+# Both targets read raw tables out of a `raw_datasf` schema that
+# `ingestion/load.py` materialises from the Parquet zone. dbt-duckdb can read
+# Parquet directly through a source `external_location` instead, and that was
+# the earlier plan; it was dropped because it makes the DuckDB and BigQuery
+# source definitions structurally different, and the whole point of ADR-1 is
+# that one set of models runs unchanged on both. Loading first costs a step
+# and buys symmetry.
 #
 # Note on the env_var defaults below: dbt renders this entire file before
 # it picks a target, so a bare env_var('X') with no default would blow up
@@ -24,10 +35,19 @@
 # with a clear message instead of at parse time with a confusing one.
 
 sf_data_warehouse:
-  target: dev
+  target: duckdb
   outputs:
 
-    dev:
+    duckdb:
+      type: duckdb
+      # Relative to this folder (dbt/). Gitignored via *.duckdb.
+      # ingestion/load.py writes the same file; keep the two in step by
+      # setting DUCKDB_PATH rather than editing one of them.
+      path: "{{ env_var('DUCKDB_PATH', '../data/sf.duckdb') }}"
+      threads: 4
+      schema: main
+
+    bigquery:
       type: bigquery
       method: service-account
       keyfile: "{{ env_var('GOOGLE_APPLICATION_CREDENTIALS', '') }}"
@@ -36,26 +56,3 @@ sf_data_warehouse:
       threads: 4
       location: "{{ env_var('BQ_LOCATION', 'US') }}"
       job_execution_timeout_seconds: 600
-
-    duckdb:
-      type: duckdb
-      # Relative to this folder (dbt/). Gitignored via *.duckdb.
-      path: "{{ env_var('DUCKDB_PATH', '../data/sf.duckdb') }}"
-      threads: 4
-      schema: main
-      # Parquet raw zone, per ADR-1. Left commented until
-      # ingestion writes Parquet directly; today it is populated by the
-      # opt-in ingestion/export_parquet.py dump. To use it, uncomment and
-      # add a matching external_location to the source in
-      # models/staging/datasf/_datasf__sources.yml:
-      #
-      #   sources:
-      #     - name: raw_datasf
-      #       meta:
-      #         external_location: "read_parquet('../data/{name}.parquet')"
-      #
-      # See docs/plans/plan-1-duckdb-parquet.md for the full path.
-      #
-      # extensions:
-      #   - httpfs
-      #   - parquet

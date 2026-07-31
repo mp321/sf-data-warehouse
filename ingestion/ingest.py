@@ -1,14 +1,21 @@
-"""Incremental ingestion from DataSF (Socrata) into BigQuery.
+"""Incremental ingestion from DataSF (Socrata) into the Parquet raw zone.
 
 How it works, in plain terms:
-  1. Look in BigQuery for the newest _socrata_updated_at we already have.
-     If the table does not exist yet, fall back to the dataset's start_date.
+  1. Look in data/raw/<table>/ for the newest _socrata_updated_at we already
+     have. If the zone is empty, fall back to the dataset's start_date.
   2. Ask the Socrata API for rows updated after that watermark, ordered by
      update time, 5000 rows per page.
-  3. Land every value as a STRING in a raw table. No cleaning here on
-     purpose: raw stays raw, and all typing/renaming happens in dbt staging.
-  4. Appends can create multiple versions of the same record over time.
-     That is expected. Staging models deduplicate to the latest version.
+  3. Land every value as a STRING in a Parquet file under an
+     ingest_date=YYYY-MM-DD partition. No cleaning here on purpose: raw stays
+     raw, and all typing/renaming happens in dbt staging.
+  4. Record the run in data/raw/<table>/_runs/<run_id>.json.
+  5. Appends can create multiple versions of the same record over time. That
+     is expected. Staging models deduplicate to the latest version.
+
+This writes Parquet and nothing else. Getting those files into DuckDB or
+BigQuery is `ingestion/load.py`, a separate and idempotent step (ADR-4). The
+split matters because it means a warehouse can be rebuilt without re-hitting
+the API, and an API pull cannot be lost by a warehouse failure.
 
 Usage:
     python ingestion/ingest.py 311_cases
@@ -16,44 +23,36 @@ Usage:
     python ingestion/ingest.py --all
     python ingestion/ingest.py 311_cases --full-refresh
     python ingestion/ingest.py 311_cases --since 2023-01-01T00:00:00.000Z
+    python ingestion/ingest.py --all --fixtures tests/fixtures/socrata
 
-Required environment variables:
-    GCP_PROJECT_ID                   your Google Cloud project id
-    GOOGLE_APPLICATION_CREDENTIALS   path to a service account key JSON
+Required environment variables: none. This step needs no credentials.
 Optional:
-    BQ_RAW_DATASET   BigQuery dataset for raw tables (default: raw_datasf)
-    BQ_LOCATION      BigQuery location (default: US)
     SOCRATA_APP_TOKEN  free token from data.sfgov.org, raises rate limits
+    RAW_ZONE_DIR       root of the raw zone (default: data/raw)
 """
 
 import argparse
 import json
 import os
+import shutil
 import sys
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 
 import requests
-from google.api_core.exceptions import NotFound
-from google.cloud import bigquery
 
+import raw_zone
 from datasets import DATASETS
 
 SOCRATA_DOMAIN = "https://data.sfgov.org"
-PAGE_SIZE = 5000          # rows per API request
-ROWS_PER_LOAD = 50000     # buffer this many rows before each BigQuery load job
+PAGE_SIZE = 5000  # rows per API request
+ROWS_PER_FILE = 50000  # buffer this many rows before writing each Parquet file
 MAX_RETRIES = 3
 
 
-def require_env(name: str) -> str:
-    value = os.environ.get(name)
-    if not value:
-        sys.exit(f"Missing required environment variable: {name}. See SETUP.md.")
-    return value
-
-
 def sanitize_column(name: str) -> str:
-    """Make a Socrata field name safe for BigQuery.
+    """Make a Socrata field name safe as a warehouse column name.
 
     Socrata system fields start with ':' (e.g. :updated_at); we rename
     them to _socrata_updated_at etc. so they are valid column names.
@@ -66,44 +65,62 @@ def sanitize_column(name: str) -> str:
     return cleaned.lower()
 
 
-def normalize_record(record: dict, ingested_at: str) -> dict:
-    """Flatten one API record into an all-STRING row for the raw table."""
+def normalize_record(record: dict, ingested_at: str, run_id: str) -> dict:
+    """Flatten one API record into an all-STRING row for the raw zone."""
     row = {}
     for key, value in record.items():
         col = sanitize_column(key)
         if value is None:
             row[col] = None
-        elif isinstance(value, (dict, list)):
-            row[col] = json.dumps(value)  # nested objects (e.g. point geometries) kept as JSON text
+        elif isinstance(value, dict | list):
+            # Nested objects (point geometries, media_url) are kept as JSON
+            # text. Staging pulls fields out with x_json_extract_scalar; the
+            # raw zone does not get to decide which of them matter.
+            row[col] = json.dumps(value)
         else:
             row[col] = str(value)
-    row["_ingested_at"] = ingested_at
+    row[raw_zone.INGESTED_AT_COLUMN] = ingested_at
+    row[raw_zone.RUN_ID_COLUMN] = run_id
     return row
 
 
-def get_watermark(client: bigquery.Client, table_ref: str, start_date: str) -> str:
-    """Return the newest _socrata_updated_at already loaded, or start_date."""
-    try:
-        client.get_table(table_ref)
-    except NotFound:
-        return start_date
-    query = f"select max(_socrata_updated_at) as w from `{table_ref}`"
-    rows = list(client.query(query).result())
-    watermark = rows[0]["w"]
-    return watermark or start_date
+def socrata_pages(socrata_id: str, watermark: str, app_token: str):
+    """Yield pages of records updated after the watermark, oldest first.
 
+    Ordering by :updated_at is what makes the watermark safe to resume from:
+    a run that dies halfway has still written a contiguous prefix, so the next
+    run picks up exactly where it stopped rather than leaving a hole.
 
-def fetch_page(session: requests.Session, socrata_id: str, watermark: str,
-               offset: int, app_token: str) -> list:
-    params = {
-        "$select": "*,:id,:created_at,:updated_at",
-        "$where": f":updated_at > '{watermark}'",
-        "$order": ":updated_at",
-        "$limit": PAGE_SIZE,
-        "$offset": offset,
-    }
+    The :id tiebreaker is not decoration. DataSF bulk-refreshes these datasets,
+    so tens of thousands of rows can share one :updated_at value: a single
+    slice of building_permits had a 7425-row tie. Ordering by :updated_at
+    alone leaves rows within a tie in an order the API does not promise to
+    repeat, and $offset paging then re-reads some of them and skips others,
+    which loses data with no error and no duplicate to notice it by. Sorting
+    on (:updated_at, :id) is a total order, so page boundaries are stable.
+    """
+    session = requests.Session()
     headers = {"X-App-Token": app_token} if app_token else {}
     url = f"{SOCRATA_DOMAIN}/resource/{socrata_id}.json"
+    offset = 0
+
+    while True:
+        params = {
+            "$select": "*,:id,:created_at,:updated_at",
+            "$where": f":updated_at > '{watermark}'",
+            "$order": ":updated_at,:id",
+            "$limit": PAGE_SIZE,
+            "$offset": offset,
+        }
+        page = _get_with_retries(session, url, params, headers)
+        yield page
+        if len(page) < PAGE_SIZE:
+            return
+        offset += PAGE_SIZE
+        time.sleep(0.3)  # be polite to the API
+
+
+def _get_with_retries(session: requests.Session, url: str, params: dict, headers: dict) -> list:
     for attempt in range(1, MAX_RETRIES + 1):
         try:
             resp = session.get(url, params=params, headers=headers, timeout=90)
@@ -115,87 +132,192 @@ def fetch_page(session: requests.Session, socrata_id: str, watermark: str,
             wait = 5 * attempt
             print(f"  request failed ({exc}); retrying in {wait}s")
             time.sleep(wait)
+    return []
 
 
-def load_rows(client: bigquery.Client, table_ref: str, rows: list, truncate: bool) -> None:
-    """Load a batch of rows. All columns are STRING; new columns are allowed."""
-    columns = sorted({col for row in rows for col in row})
-    schema = [bigquery.SchemaField(col, "STRING") for col in columns]
-    if truncate:
-        job_config = bigquery.LoadJobConfig(
-            schema=schema,
-            write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE,
-        )
-    else:
-        job_config = bigquery.LoadJobConfig(
-            schema=schema,
-            write_disposition=bigquery.WriteDisposition.WRITE_APPEND,
-            schema_update_options=[bigquery.SchemaUpdateOption.ALLOW_FIELD_ADDITION],
-        )
-    job = client.load_table_from_json(rows, table_ref, job_config=job_config)
-    job.result()  # wait for completion; raises on failure
+def fixture_pages(fixture_dir: Path, name: str, watermark: str):
+    """Yield pages from a committed JSON fixture instead of the API.
+
+    This exists so CI can run the whole pipeline with no network and no
+    credentials. It filters, orders and pages exactly as socrata_pages does,
+    so everything downstream of this generator is the same code path that
+    runs in production; only the transport changes.
+    """
+    path = fixture_dir / f"{name}.json"
+    if not path.exists():
+        sys.exit(f"No fixture for '{name}' at {path}")
+    records = json.loads(path.read_text())
+    matching = sorted(
+        (r for r in records if r.get(":updated_at", "") > watermark),
+        key=lambda r: (r.get(":updated_at", ""), r.get(":id", "")),
+    )
+    for start in range(0, len(matching), PAGE_SIZE):
+        yield matching[start : start + PAGE_SIZE]
 
 
-def ensure_dataset(client: bigquery.Client, project: str, dataset_id: str) -> None:
-    dataset = bigquery.Dataset(f"{project}.{dataset_id}")
-    dataset.location = os.environ.get("BQ_LOCATION", "US")
-    client.create_dataset(dataset, exists_ok=True)
+def resolve_watermark(cfg: dict, args: argparse.Namespace) -> str:
+    """--since beats --full-refresh beats what is already on disk."""
+    if args.since:
+        return args.since
+    if args.full_refresh:
+        return cfg["start_date"]
+    return raw_zone.read_watermark(cfg["table"], args.raw_root) or cfg["start_date"]
 
 
-def ingest_one(name: str, client: bigquery.Client, project: str, raw_dataset: str,
-               app_token: str, full_refresh: bool, since: str) -> None:
+def ingest_one(name: str, args: argparse.Namespace, app_token: str) -> dict:
+    """Fetch one dataset into the raw zone. Returns its run manifest."""
     cfg = DATASETS[name]
-    table_ref = f"{project}.{raw_dataset}.{cfg['table']}"
+    table = cfg["table"]
+    run_id = raw_zone.new_run_id()
+    started_at = datetime.now(timezone.utc)
+    ingest_date = started_at.date().isoformat()
+    watermark = resolve_watermark(cfg, args)
 
-    if since:
-        watermark = since
-    elif full_refresh:
-        watermark = cfg["start_date"]
+    # A full refresh writes a complete new copy beside the old one and swaps
+    # it in only once the fetch has finished. Writing in place would mean a
+    # network failure halfway through leaves the durable raw zone holding
+    # neither the old data nor the new.
+    write_table = f"{table}.rebuild-{run_id}" if args.full_refresh else table
+
+    mode = "fixtures" if args.fixtures else ("full-refresh" if args.full_refresh else "incremental")
+    print(f"[{name}] {mode}: fetching rows with :updated_at > {watermark}")
+
+    if args.fixtures:
+        pages = fixture_pages(args.fixtures, name, watermark)
     else:
-        watermark = get_watermark(client, table_ref, cfg["start_date"])
+        pages = socrata_pages(cfg["socrata_id"], watermark, app_token)
 
-    print(f"[{name}] fetching rows with :updated_at > {watermark}")
+    manifest = {
+        "run_id": run_id,
+        "dataset": name,
+        "table_name": table,
+        "ingest_date": ingest_date,
+        "started_at": started_at.isoformat(),
+        "finished_at": None,
+        "watermark_in": watermark,
+        "watermark_out": watermark,
+        "rows_written": 0,
+        "files_written": 0,
+        "mode": mode,
+        "status": "failed",
+        "error": None,
+    }
 
-    session = requests.Session()
-    offset = 0
-    total = 0
-    buffer = []
-    truncate_next_load = full_refresh
+    buffer: list[dict] = []
+    try:
+        for page in pages:
+            if page:
+                ingested_at = datetime.now(timezone.utc).isoformat()
+                buffer.extend(normalize_record(r, ingested_at, run_id) for r in page)
+                manifest["watermark_out"] = max(
+                    manifest["watermark_out"], page[-1].get(":updated_at", watermark)
+                )
+            if len(buffer) >= ROWS_PER_FILE:
+                _flush(
+                    write_table,
+                    buffer,
+                    run_id,
+                    manifest,
+                    root=args.raw_root,
+                    ingest_date=ingest_date,
+                )
+                buffer = []
+        if buffer:
+            _flush(
+                write_table, buffer, run_id, manifest, root=args.raw_root, ingest_date=ingest_date
+            )
+        manifest["status"] = "success"
+    except Exception as exc:
+        manifest["error"] = f"{type(exc).__name__}: {exc}"
+        _finish(manifest, table, args.raw_root)
+        raise
 
-    while True:
-        page = fetch_page(session, cfg["socrata_id"], watermark, offset, app_token)
-        if page:
-            ingested_at = datetime.now(timezone.utc).isoformat()
-            buffer.extend(normalize_record(r, ingested_at) for r in page)
+    if args.full_refresh:
+        _swap_in(table, write_table, run_id, args.raw_root)
 
-        last_page = len(page) < PAGE_SIZE
-        if buffer and (len(buffer) >= ROWS_PER_LOAD or last_page):
-            load_rows(client, table_ref, buffer, truncate_next_load)
-            truncate_next_load = False
-            total += len(buffer)
-            print(f"[{name}] loaded {total} rows so far")
-            buffer = []
+    _finish(manifest, table, args.raw_root)
 
-        if last_page:
-            break
-        offset += PAGE_SIZE
-        time.sleep(0.3)  # be polite to the API
-
-    if total == 0:
+    if manifest["rows_written"] == 0:
         print(f"[{name}] already up to date, nothing new to load")
     else:
-        print(f"[{name}] done: {total} rows loaded into {table_ref}")
+        print(
+            f"[{name}] done: {manifest['rows_written']} rows in "
+            f"{manifest['files_written']} file(s) under "
+            f"{raw_zone.dataset_dir(table, args.raw_root)}"
+        )
+    return manifest
+
+
+def _flush(
+    table: str,
+    buffer: list[dict],
+    run_id: str,
+    manifest: dict,
+    *,
+    root: Path | None,
+    ingest_date: str,
+) -> None:
+    seq = manifest["files_written"]
+    path = raw_zone.write_batch(table, buffer, run_id, seq, ingest_date=ingest_date, root=root)
+    manifest["rows_written"] += len(buffer)
+    manifest["files_written"] += 1
+    print(f"  wrote {len(buffer)} rows to {path}")
+
+
+def _finish(manifest: dict, table: str, root: Path | None) -> None:
+    manifest["finished_at"] = datetime.now(timezone.utc).isoformat()
+    raw_zone.write_run_manifest(table, manifest, root)
+
+
+def _swap_in(table: str, staged_table: str, run_id: str, root: Path | None) -> None:
+    """Replace the dataset's tree with the freshly rebuilt one.
+
+    Rename-then-delete rather than delete-then-rename: at every instant a
+    complete tree exists at the final path, so an interruption costs disk
+    space rather than the raw zone.
+    """
+    final = raw_zone.dataset_dir(table, root)
+    staged = raw_zone.dataset_dir(staged_table, root)
+    if not staged.exists():
+        # Nothing came back. Leave the existing tree alone rather than
+        # replacing it with an empty one.
+        print(f"[{table}] full refresh returned no rows; existing files kept")
+        return
+    superseded = final.with_name(f"{table}.superseded-{run_id}")
+    if final.exists():
+        final.rename(superseded)
+    staged.rename(final)
+    shutil.rmtree(superseded, ignore_errors=True)
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Ingest DataSF datasets into BigQuery.")
-    parser.add_argument("datasets", nargs="*",
-                        help=f"dataset names to ingest: {', '.join(DATASETS)}")
+    parser = argparse.ArgumentParser(
+        description="Ingest DataSF datasets into the Parquet raw zone (ADR-4)."
+    )
+    parser.add_argument(
+        "datasets", nargs="*", help=f"dataset names to ingest: {', '.join(DATASETS)}"
+    )
     parser.add_argument("--all", action="store_true", help="ingest every registered dataset")
-    parser.add_argument("--full-refresh", action="store_true",
-                        help="wipe the raw table and reload from start_date")
-    parser.add_argument("--since", default=None,
-                        help="override the watermark, e.g. 2023-01-01T00:00:00.000Z")
+    parser.add_argument(
+        "--full-refresh",
+        action="store_true",
+        help="refetch from start_date and atomically replace the dataset's Parquet tree",
+    )
+    parser.add_argument(
+        "--since", default=None, help="override the watermark, e.g. 2023-01-01T00:00:00.000Z"
+    )
+    parser.add_argument(
+        "--fixtures",
+        type=Path,
+        default=None,
+        help="read records from <dir>/<dataset>.json instead of the API (no network)",
+    )
+    parser.add_argument(
+        "--raw-root",
+        type=Path,
+        default=None,
+        help="root of the raw zone (default: $RAW_ZONE_DIR or data/raw)",
+    )
     args = parser.parse_args()
 
     names = list(DATASETS) if args.all else args.datasets
@@ -205,17 +327,13 @@ def main() -> None:
     if unknown:
         parser.error(f"unknown dataset(s): {', '.join(unknown)}. Valid: {', '.join(DATASETS)}")
 
-    project = require_env("GCP_PROJECT_ID")
-    require_env("GOOGLE_APPLICATION_CREDENTIALS")
-    raw_dataset = os.environ.get("BQ_RAW_DATASET", "raw_datasf")
     app_token = os.environ.get("SOCRATA_APP_TOKEN", "")
 
-    client = bigquery.Client(project=project)
-    ensure_dataset(client, project, raw_dataset)
-
     for name in names:
-        ingest_one(name, client, project, raw_dataset, app_token,
-                   args.full_refresh, args.since)
+        ingest_one(name, args, app_token)
+
+    print("\nRaw zone updated. Load it into a warehouse with:")
+    print("  python ingestion/load.py --all --target duckdb")
 
 
 if __name__ == "__main__":

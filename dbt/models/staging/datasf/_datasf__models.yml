@@ -1,5 +1,10 @@
 version: 2
 
+# Every model description opens with its grain, stated as "one row per ...".
+# That sentence is the contract: it is what the unique test on this file
+# enforces, and it is the first thing that stops being true when an upstream
+# schema changes. If you cannot write the sentence, the model is not finished.
+
 models:
   - name: stg_datasf__311_cases
     description: >
@@ -9,7 +14,7 @@ models:
       never from the raw source.
     columns:
       - name: case_id
-        description: Unique identifier for the service request.
+        description: Unique identifier for the service request. The grain of this model.
         tests:
           - unique
           - not_null
@@ -22,8 +27,11 @@ models:
       - name: status
         description: Current case status as reported by SF311.
         tests:
+          # `values` sits under `arguments` because dbt deprecated bare
+          # generic-test arguments; `config` stays a sibling of it.
           - accepted_values:
-              values: ["Open", "Closed"]
+              arguments:
+                values: ["Open", "Closed"]
               config:
                 # warn rather than fail: if DataSF introduces a new status
                 # we want to notice it, not break the pipeline
@@ -34,3 +42,164 @@ models:
 
       - name: service_category
         description: Top-level request type, e.g. Street and Sidewalk Cleaning.
+
+      - name: supervisor_district
+        description: >
+          Supervisor district number, 1 to 11. Published as "9.00000" and
+          cast to an integer here so it joins to the other staging models.
+
+  - name: stg_datasf__building_permits
+    description: >
+      One row per building permit record, deduplicated to the latest version
+      of each record. Note that this is not one row per permit: revisions and
+      addenda are filed as separate records under the same permit_number, so
+      permit_number repeats and only permit_record_id is unique. Costs,
+      units, stories and coordinates are typed here; the coordinates are
+      extracted from the location GeoJSON point.
+    columns:
+      - name: permit_record_id
+        description: Unique identifier for the permit record. The grain of this model.
+        tests:
+          - unique
+          - not_null
+
+      - name: permit_number
+        description: >
+          The permit this record belongs to. Deliberately not unique: one
+          permit accumulates a record per revision, up to about 100.
+        tests:
+          - not_null
+
+      - name: permit_status
+        description: >
+          Where the permit is in its lifecycle. Null on about a dozen records
+          out of 1.3 million, so this deliberately carries no not_null test.
+        tests:
+          - accepted_values:
+              arguments:
+                # All 23 values observed upstream, not just the common ones.
+                # The long tail is real: "upheld", "overruled" and "granted"
+                # have single-digit row counts and appear only after an
+                # appeal, so a list built from a sample misses them and the
+                # test then fails on the first full backfill instead of now.
+                values:
+                  ["complete", "issued", "expired", "cancelled", "filed",
+                   "withdrawn", "reinstated", "approved", "filing", "suspend",
+                   "disapproved", "triage", "revoked", "plancheck", "appeal",
+                   "issuing", "denied", "inspection", "incomplete", "unknown",
+                   "upheld", "granted", "overruled"]
+              config:
+                # warn rather than fail, as on 311: a new status is news, not
+                # a broken pipeline.
+                severity: warn
+
+      - name: filed_at
+        description: When the application was filed. Null on a handful of older records.
+
+      - name: issued_at
+        description: When the permit was issued. Null unless it reached that stage.
+
+      - name: completed_at
+        description: When work was recorded complete. Null on most records.
+
+      - name: estimated_cost
+        description: Cost declared by the applicant at filing, in dollars.
+
+      - name: revised_cost
+        description: >
+          Cost after departmental revision, in dollars. Differs from
+          estimated_cost often enough that the two should not be used
+          interchangeably.
+
+      - name: supervisor_district
+        description: Supervisor district number, 1 to 11. Null where the address did not geocode.
+
+      - name: latitude
+        description: Latitude extracted from the location GeoJSON point. Null where absent.
+
+      - name: longitude
+        description: Longitude extracted from the location GeoJSON point. Null where absent.
+
+      - name: is_adu
+        description: Whether the permit covers an accessory dwelling unit.
+
+  - name: stg_datasf__city_budget
+    description: >
+      One row per published city budget line. There is no natural key: the
+      full dimensional combination of year, department, fund, program and
+      object still repeats, because the city publishes a line per originating
+      appropriation. The grain key is therefore Socrata's row id. Demoted
+      source per ADR-3, so there is no freshness SLA and no mart.
+    columns:
+      - name: budget_line_id
+        description: Socrata row id. The grain of this model, and the only unique column.
+        tests:
+          - unique
+          - not_null
+
+      - name: fiscal_year
+        description: Fiscal year the line belongs to. Ranges from 2010 to 2027.
+        tests:
+          - not_null
+
+      - name: ledger_type
+        description: Whether the line is money coming in or going out.
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["Revenue", "Spending"]
+              config:
+                severity: warn
+
+      - name: department_code
+        description: >
+          Short department code, e.g. HSA. This is the column a future
+          crosswalk to the 311 agency_responsible field would join on; ADR-3
+          treats building that crosswalk as an open question.
+        tests:
+          - not_null
+
+      - name: budget_amount
+        description: >
+          Amount in dollars. Negative values are legitimate transfers out and
+          appropriation reversals, not errors.
+
+  - name: stg_datasf__film_locations
+    description: >
+      One row per published film location record. A title appears once per
+      place it was shot, and the same title at the same address can appear
+      more than once with nothing to tell the rows apart, so the grain key is
+      Socrata's row id rather than any composite of title and location.
+      Demoted source per ADR-3; it earns its place as the pipeline canary.
+    columns:
+      - name: film_location_id
+        description: Socrata row id. The grain of this model.
+        tests:
+          - unique
+          - not_null
+
+      - name: film_title
+        description: Title of the film or show.
+        tests:
+          - not_null
+
+      - name: release_year
+        description: >
+          Year of release. Null on at least one row upstream ("Goodbye,
+          Mr.Chips"), so no not_null test: a single permanently missing value
+          would make the test a warning nobody reads.
+
+      - name: location_description
+        description: >
+          Free text location as written by the submitter. Not an address and
+          not a join key.
+
+      - name: latitude
+        description: Latitude where published. Null for roughly one row in twenty.
+
+      - name: longitude
+        description: Longitude where published. Null for roughly one row in twenty.
+
+      - name: fun_facts
+        description: Trivia about the shoot. Null on most rows.

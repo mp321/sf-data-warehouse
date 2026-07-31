@@ -3,10 +3,12 @@ version: 2
 sources:
   - name: raw_datasf
     description: >
-      Raw landing zone loaded by ingestion/ingest.py. Every column is a
-      STRING on purpose; all typing happens in staging models. Tables are
-      append-only, so the same record can appear multiple times as it is
-      updated at the source. Staging deduplicates to the latest version.
+      Raw landing zone. ingestion/ingest.py writes Parquet under data/raw/
+      and ingestion/load.py materialises these tables from it, on DuckDB and
+      on BigQuery alike (ADR-4). Every DataSF column is a STRING on purpose;
+      all typing happens in staging models. The Parquet zone is append-only,
+      so the same record can appear multiple times as it is updated at the
+      source, and staging deduplicates to the latest version.
     schema: raw_datasf
     tables:
       - name: raw_311_cases
@@ -31,3 +33,16 @@ sources:
         description: >
           Films and TV shows shot in San Francisco, including location and
           fun facts. Small, updated occasionally, no freshness check.
+
+      - name: raw_ingest_runs
+        description: >
+          One row per ingestion run, loaded from the run manifests that
+          ingest.py writes to data/raw/<table>/_runs/. This is the only table
+          in the schema that is not all-STRING, because it is pipeline
+          metadata rather than DataSF data.
+
+          It exists because the data alone cannot distinguish "ingestion ran
+          and found nothing new" from "ingestion has not run in three days":
+          a run that fetches zero rows writes no Parquet file. Those two mean
+          opposite things to anyone reading mart_pipeline_freshness, which is
+          the only consumer.

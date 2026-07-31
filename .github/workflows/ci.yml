@@ -4,9 +4,14 @@ name: ci
 # deliberate: it means CI also works on pull requests from forks, where
 # repository secrets are not available.
 #
-# The credentialed work lives in the other two workflows and stays on its
-# schedule: ingest.yml (daily, BigQuery) and dbt.yml (weekly build against
-# BigQuery). Nothing here touches them.
+# Since ADR-4 split ingestion from loading, that buys more than it used to.
+# The dbt-duckdb job below is a real end-to-end run, not a compile: it builds
+# the Parquet raw zone from committed fixtures, loads it into DuckDB, then
+# runs and tests every model. A broken model, a broken macro, a broken loader
+# or a broken staging contract all fail here rather than on Monday.
+#
+# The credentialed work stays on its schedule: ingest.yml (daily) and dbt.yml
+# (weekly build against BigQuery).
 
 on:
   pull_request:
@@ -38,6 +43,13 @@ jobs:
   lint:
     name: lint
     runs-on: ubuntu-latest
+    env:
+      DBT_PROFILES_DIR: dbt
+      # sqlfluff runs the dbt templater from the repo root, and dbt-duckdb
+      # resolves a relative path against the current directory, so the
+      # ../data/sf.duckdb default in profiles.yml would land outside the
+      # workspace. Absolute, as the Makefile also does.
+      DUCKDB_PATH: ${{ github.workspace }}/data/sf.duckdb
     steps:
       - uses: actions/checkout@v4
 
@@ -52,6 +64,9 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements-dev.txt
 
+      - name: Create local data directory
+        run: mkdir -p data/raw
+
       - name: ruff check
         run: ruff check .
 
@@ -59,13 +74,15 @@ jobs:
         run: ruff format --check .
 
       - name: sqlfluff lint
-        env:
-          DBT_PROFILES_DIR: dbt
         run: sqlfluff lint dbt/models --processes 4
 
   dbt-duckdb:
-    name: dbt (duckdb)
+    name: dbt (duckdb, end to end)
     runs-on: ubuntu-latest
+    env:
+      DBT_PROFILES_DIR: ${{ github.workspace }}/dbt
+      DUCKDB_PATH: ${{ github.workspace }}/data/sf.duckdb
+      RAW_ZONE_DIR: ${{ github.workspace }}/data/raw
     steps:
       - uses: actions/checkout@v4
 
@@ -78,40 +95,32 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Create local data directory
-        run: mkdir -p data
-
       - name: dbt deps
         working-directory: dbt
-        env:
-          DBT_PROFILES_DIR: "."
         run: dbt deps
 
-      # parse catches broken refs, bad macro calls and Jinja errors.
-      # compile additionally renders every model to real SQL, which is what
-      # catches engine-specific syntax that slipped past the cross_engine
-      # macros in macros/cross_engine.sql.
-      - name: dbt parse
-        working-directory: dbt
-        env:
-          DBT_PROFILES_DIR: "."
-        run: dbt parse --target duckdb
+      # Same code path as production ingestion; only the transport differs.
+      # See tests/fixtures/README.md for what the fixtures deliberately
+      # contain and why they are JSON rather than Parquet.
+      - name: Build the Parquet raw zone from fixtures
+        run: python ingestion/ingest.py --all --fixtures tests/fixtures/socrata
 
-      - name: dbt compile
-        working-directory: dbt
-        env:
-          DBT_PROFILES_DIR: "."
-        run: dbt compile --target duckdb
+      - name: Load Parquet into DuckDB
+        run: python ingestion/load.py --all --target duckdb
 
-      # A full `dbt build --target duckdb` is the goal and is blocked on the
-      # Parquet raw zone. See docs/plans/plan-1-duckdb-parquet.md
-      # step 3. Swap the compile step above for this once that lands:
-      #
-      # - name: dbt build
-      #   working-directory: dbt
-      #   env:
-      #     DBT_PROFILES_DIR: "."
-      #   run: dbt build --target duckdb
+      - name: dbt build
+        working-directory: dbt
+        run: dbt build
+
+      # Proves the claim in the Makefile and in ADR-4: the Parquet zone is the
+      # source of truth, so dropping the warehouse entirely and reloading
+      # reproduces every model. If this step ever fails, something has crept
+      # into the warehouse that the raw zone cannot regenerate.
+      - name: Rebuild from Parquet after dropping the warehouse
+        run: |
+          rm -f data/sf.duckdb data/sf.duckdb.wal
+          python ingestion/load.py --all --target duckdb
+          cd dbt && dbt build
 
       - name: Upload compiled SQL
         if: always()
@@ -121,3 +130,38 @@ jobs:
           path: dbt/target/compiled/
           retention-days: 7
           if-no-files-found: ignore
+
+  dbt-bigquery-compile:
+    name: dbt (bigquery, compile only)
+    runs-on: ubuntu-latest
+    env:
+      DBT_PROFILES_DIR: ${{ github.workspace }}/dbt
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: dbt deps
+        working-directory: dbt
+        run: dbt deps
+
+      # Compiling does not open a warehouse connection, so the whole BigQuery
+      # dialect can be checked on a fork PR with no secrets. This is what
+      # catches DuckDB-only syntax that the end-to-end job above cannot see,
+      # such as try_cast or json_extract_string leaking past the dispatch
+      # macros in macros/cross_engine.sql. GCP_PROJECT_ID is a placeholder and
+      # is never used: nothing connects.
+      - name: dbt compile against BigQuery
+        working-directory: dbt
+        env:
+          GCP_PROJECT_ID: compile-only-no-connection
+        run: |
+          dbt parse --target bigquery
+          dbt compile --target bigquery

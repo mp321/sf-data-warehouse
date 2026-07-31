@@ -1,5 +1,24 @@
 # Setup guide
 
+> **Out of date as of 2026-07-31, and Phase 1 is no longer required.** ADR-4
+> split the pipeline into ingest (Socrata to Parquet), load (Parquet to a
+> warehouse) and build (dbt), and made DuckDB the default target. None of
+> those need Google Cloud. To get a working warehouse now:
+>
+> ```
+> make setup
+> make ci-build     # whole pipeline from fixtures. No network, no account.
+> make ingest       # real data from DataSF. Network, still no account.
+> make load
+> make build
+> ```
+>
+> Phases 1 and 2 below are only needed for the optional BigQuery target
+> (`make load-bigquery`, `make build-bigquery`). Phase 3 onward still
+> describes the shape of things but names commands that have moved.
+> `CLAUDE.md` is authoritative until this file is rewritten; see the
+> follow-ups in `docs/dev-notes/2026-07-31.md`.
+
 Follow this top to bottom the first time. Every step has a checkpoint so
 you know it worked before moving on. Total cost of everything here: $0.
 Budget roughly 60 to 90 minutes for the first full pass.
@@ -8,7 +27,7 @@ Prerequisites: Python 3.10+, git, a Google account, a GitHub account.
 
 ---
 
-## Phase 1: Google Cloud and BigQuery
+## Phase 1: Google Cloud and BigQuery (optional since ADR-4)
 
 ### 1.1 Create a project
 
@@ -138,10 +157,7 @@ and staging models do the casting.
 
 ## Phase 4: dbt
 
-Two-minute orientation, since dbt is new to you. dbt is just a tool that
-runs SQL files against your warehouse in the right order. Each `.sql`
-file in `models/` becomes a view or table named after the file. Three
-ideas cover 90 percent of it:
+Two-minute orientation: dbt is just a tool that runs SQL files against your warehouse in the right order. Each `.sql` file in `models/` becomes a view or table named after the file. Three ideas cover 90 percent of it:
 
 1. `{{ source('raw_datasf', 'raw_311_cases') }}` points at a raw table
    loaded by something outside dbt (our Python script).

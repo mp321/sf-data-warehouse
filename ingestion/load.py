@@ -1,0 +1,227 @@
+"""Load the Parquet raw zone into a warehouse. Separate from ingestion, idempotent.
+
+`ingest.py` pulls from Socrata and writes Parquet. This reads that Parquet and
+materialises it as raw tables in DuckDB or BigQuery. It never touches the API,
+so it can be run as often as you like, and a warehouse can be rebuilt from
+scratch without re-fetching anything (ADR-4).
+
+Load semantics: replace, not append. Each run rebuilds the whole raw table
+from the files currently in the zone. That is what makes this step idempotent
+with no bookkeeping at all: there is no "which partitions did I already load"
+state to get wrong, and a half-finished load leaves nothing behind to
+reconcile. Append-only lives where it matters, on the Parquet zone, which is
+the record; the warehouse tables are derived mirrors of it.
+
+The cost of replacing rather than appending is a full rewrite per run. That is
+free on DuckDB (local) and free on BigQuery (load jobs are not billed; only
+storage and query are), so the simpler semantics win until a raw table gets
+big enough for the rewrite time itself to hurt. ADR-4 records the threshold.
+
+Both targets read through DuckDB, using the single reader in raw_zone.py, so
+the two warehouses cannot disagree about what the raw zone contains.
+
+Usage:
+    python ingestion/load.py --all --target duckdb
+    python ingestion/load.py 311_cases --target duckdb
+    python ingestion/load.py --all --target bigquery
+
+Required environment variables:
+    none for --target duckdb
+    GCP_PROJECT_ID, GOOGLE_APPLICATION_CREDENTIALS for --target bigquery
+Optional:
+    DUCKDB_PATH      DuckDB file to load into (default: data/sf.duckdb)
+    BQ_RAW_DATASET   BigQuery dataset for raw tables (default: raw_datasf)
+    BQ_LOCATION      BigQuery location (default: US)
+    RAW_ZONE_DIR     root of the raw zone (default: data/raw)
+"""
+
+import argparse
+import os
+import sys
+import tempfile
+from pathlib import Path
+
+import duckdb
+
+import raw_zone
+from datasets import DATASETS
+
+# Schema the dbt sources point at, on both engines. Keeping the name identical
+# across warehouses is what lets one set of models build against either.
+RAW_SCHEMA = "raw_datasf"
+
+# Ingestion run manifests land here so mart_pipeline_freshness can read them
+# as an ordinary table. It is metadata rather than DataSF data, so it is the
+# one table in the raw schema that is not all-STRING.
+RUNS_TABLE = "raw_ingest_runs"
+
+
+def require_env(name: str) -> str:
+    value = os.environ.get(name)
+    if not value:
+        sys.exit(f"Missing required environment variable: {name}. See SETUP.md.")
+    return value
+
+
+def _select_all(table: str, root: Path | None) -> str:
+    return f"select * from {raw_zone.read_sql(table, root)}"
+
+
+# ---------------------------------------------------------------------------
+# DuckDB
+# ---------------------------------------------------------------------------
+
+
+def load_duckdb(names: list[str], root: Path | None, duckdb_path: Path) -> None:
+    duckdb_path.parent.mkdir(parents=True, exist_ok=True)
+    with duckdb.connect(str(duckdb_path)) as con:
+        con.execute(f"create schema if not exists {RAW_SCHEMA}")
+        for name in names:
+            table = DATASETS[name]["table"]
+            if not raw_zone.has_data(table, root):
+                print(f"[{name}] no Parquet in the raw zone; skipped")
+                continue
+            # CREATE OR REPLACE is atomic in DuckDB: readers see either the
+            # old table or the new one, never a truncated one.
+            con.execute(
+                f"create or replace table {RAW_SCHEMA}.{table} as {_select_all(table, root)}"
+            )
+            count = con.execute(f"select count(*) from {RAW_SCHEMA}.{table}").fetchone()[0]
+            print(f"[{name}] {count} rows in {RAW_SCHEMA}.{table}")
+
+        _load_runs_duckdb(con, root)
+    print(f"\nLoaded into {duckdb_path}")
+
+
+def _load_runs_duckdb(con: duckdb.DuckDBPyConnection, root: Path | None) -> None:
+    manifests = list((root or raw_zone.raw_root()).glob(f"*/{raw_zone.RUNS_DIRNAME}/*.json"))
+    if not manifests:
+        # The freshness mart left-joins this table, so it has to exist even
+        # when nothing has ever been ingested. An empty table with the right
+        # columns is a better answer than a missing relation.
+        con.execute(_empty_runs_ddl())
+        return
+    con.execute(
+        f"create or replace table {RAW_SCHEMA}.{RUNS_TABLE} as "
+        f"select * from {raw_zone.runs_read_sql(root)}"
+    )
+    count = con.execute(f"select count(*) from {RAW_SCHEMA}.{RUNS_TABLE}").fetchone()[0]
+    print(f"[_runs] {count} ingestion runs in {RAW_SCHEMA}.{RUNS_TABLE}")
+
+
+def _empty_runs_ddl() -> str:
+    return f"""
+        create or replace table {RAW_SCHEMA}.{RUNS_TABLE} (
+            run_id varchar, dataset varchar, table_name varchar, ingest_date varchar,
+            started_at timestamp, finished_at timestamp, watermark_in varchar,
+            watermark_out varchar, rows_written bigint, files_written bigint,
+            mode varchar, status varchar, error varchar
+        )
+    """
+
+
+# ---------------------------------------------------------------------------
+# BigQuery
+# ---------------------------------------------------------------------------
+
+
+def load_bigquery(names: list[str], root: Path | None) -> None:
+    from google.cloud import bigquery
+
+    project = require_env("GCP_PROJECT_ID")
+    require_env("GOOGLE_APPLICATION_CREDENTIALS")
+    raw_dataset = os.environ.get("BQ_RAW_DATASET", RAW_SCHEMA)
+
+    client = bigquery.Client(project=project)
+    dataset = bigquery.Dataset(f"{project}.{raw_dataset}")
+    dataset.location = os.environ.get("BQ_LOCATION", "US")
+    client.create_dataset(dataset, exists_ok=True)
+
+    with raw_zone.connect() as reader, tempfile.TemporaryDirectory() as tmp:
+        for name in names:
+            table = DATASETS[name]["table"]
+            if not raw_zone.has_data(table, root):
+                print(f"[{name}] no Parquet in the raw zone; skipped")
+                continue
+            _upload(
+                client,
+                reader,
+                f"{project}.{raw_dataset}.{table}",
+                _select_all(table, root),
+                Path(tmp) / f"{table}.parquet",
+                label=name,
+            )
+
+        if list((root or raw_zone.raw_root()).glob(f"*/{raw_zone.RUNS_DIRNAME}/*.json")):
+            _upload(
+                client,
+                reader,
+                f"{project}.{raw_dataset}.{RUNS_TABLE}",
+                f"select * from {raw_zone.runs_read_sql(root)}",
+                Path(tmp) / f"{RUNS_TABLE}.parquet",
+                label="_runs",
+            )
+
+
+def _upload(client, reader, table_ref: str, query: str, staged: Path, *, label: str) -> None:
+    """Consolidate one dataset into a single Parquet file, then load it.
+
+    DuckDB does the consolidation and streams to disk, so memory stays flat
+    regardless of how many partitions the zone holds; the previous loader
+    buffered rows in Python and grew with the table. BigQuery infers the
+    schema from the file, and every column is a STRING there, so the raw
+    contract survives the round trip without a schema being declared twice.
+    """
+    from google.cloud import bigquery
+
+    reader.execute(f"copy ({query}) to '{staged}' (format parquet, compression snappy)")
+    config = bigquery.LoadJobConfig(
+        source_format=bigquery.SourceFormat.PARQUET,
+        write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE,
+    )
+    with staged.open("rb") as handle:
+        job = client.load_table_from_file(handle, table_ref, job_config=config)
+    job.result()  # wait for completion; raises on failure
+    print(f"[{label}] {client.get_table(table_ref).num_rows} rows in {table_ref}")
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Load the Parquet raw zone into a warehouse.")
+    parser.add_argument("datasets", nargs="*", help=f"dataset names: {', '.join(DATASETS)}")
+    parser.add_argument("--all", action="store_true", help="load every registered dataset")
+    parser.add_argument(
+        "--target",
+        choices=["duckdb", "bigquery"],
+        default="duckdb",
+        help="warehouse to load into (default: duckdb)",
+    )
+    parser.add_argument(
+        "--duckdb-path",
+        type=Path,
+        default=None,
+        help="DuckDB file for --target duckdb (default: $DUCKDB_PATH or data/sf.duckdb)",
+    )
+    parser.add_argument(
+        "--raw-root",
+        type=Path,
+        default=None,
+        help="root of the raw zone (default: $RAW_ZONE_DIR or data/raw)",
+    )
+    args = parser.parse_args()
+
+    names = list(DATASETS) if args.all else args.datasets
+    if not names:
+        parser.error("pass one or more dataset names, or --all")
+    unknown = [n for n in names if n not in DATASETS]
+    if unknown:
+        parser.error(f"unknown dataset(s): {', '.join(unknown)}. Valid: {', '.join(DATASETS)}")
+
+    if args.target == "duckdb":
+        path = args.duckdb_path or Path(os.environ.get("DUCKDB_PATH", "data/sf.duckdb"))
+        load_duckdb(names, args.raw_root, path)
+    else:
+        load_bigquery(names, args.raw_root)
+
+
+if __name__ == "__main__":
+    main()

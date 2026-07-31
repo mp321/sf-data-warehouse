@@ -17,5 +17,8 @@ dbt-core>=1.8,<2.0
 dbt-bigquery>=1.8,<2.0
 dbt-duckdb>=1.8,<2.0
 
-# Used by ingestion/export_parquet.py and by dbt-duckdb's Parquet reads.
+# pyarrow writes the raw zone; duckdb reads it. Both are direct dependencies
+# of ingestion/ now, not just of dbt-duckdb, so they are pinned here rather
+# than inherited. See ingestion/raw_zone.py for why the two split that way.
 pyarrow>=15.0
+duckdb>=1.0

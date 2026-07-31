@@ -1,0 +1,692 @@
+[
+  {
+    ":created_at": "2026-02-21T00:44:51.821Z",
+    ":id": "row-ekwv~gkjq-dt35",
+    ":updated_at": "2026-02-21T00:44:53.889Z",
+    "actor_1": "Hugh Laurie",
+    "actor_2": "Greta Lee",
+    "actor_3": "Ethan Suplee",
+    "analysis_neighborhood": "Russian Hill",
+    "data_as_of": "2026-02-20T16:37:46.000",
+    "data_loaded_at": "2026-02-20T16:44:43.000",
+    "director": "Rozann Dawson",
+    "distributor": "Hulu",
+    "latitude": "37.80264",
+    "locations": "Columbus between Filbert and Lombard St",
+    "longitude": "-122.41375",
+    "point": {
+      "coordinates": [
+        -122.41375,
+        37.80264
+      ],
+      "type": "Point"
+    },
+    "production_company": "TVM Productions Inc.",
+    "release_year": "2017",
+    "supervisor_district": "3",
+    "title": "Chance Season 2",
+    "writer": "Alexandra Cunningham"
+  },
+  {
+    ":created_at": "2026-02-21T00:44:51.821Z",
+    ":id": "row-t5a2.tk7q_4iru",
+    ":updated_at": "2026-02-21T00:44:53.889Z",
+    "actor_1": "Hugh Laurie",
+    "actor_2": "Gretchen Mol",
+    "actor_3": "Ethan Suplee",
+    "analysis_neighborhood": "Chinatown",
+    "data_as_of": "2026-02-20T16:37:46.000",
+    "data_loaded_at": "2026-02-20T16:44:43.000",
+    "director": "Lenny Abrahamson",
+    "distributor": "HULU",
+    "latitude": "37.7966361",
+    "locations": "William Stout Architectural Books, 804 Montgomery St.",
+    "longitude": "-122.4033161",
+    "point": {
+      "coordinates": [
+        -122.4033161,
+        37.7966361
+      ],
+      "type": "Point"
+    },
+    "production_company": "TVM Productions",
+    "supervisor_district": "3",
+    "title": "Chance - Season 1 Pilot",
+    "writer": "Alexandra Cunningham and Kem Nunn"
+  },
+  {
+    ":created_at": "2026-02-21T00:44:51.821Z",
+    ":id": "row-hj96.4ci4~uh2u",
+    ":updated_at": "2026-02-21T00:44:53.889Z",
+    "actor_1": "Sean Penn",
+    "actor_2": "Emile Hirsch",
+    "analysis_neighborhood": "Lincoln Park",
+    "data_as_of": "2026-02-20T16:37:46.000",
+    "data_loaded_at": "2026-02-20T16:44:43.000",
+    "director": "Gus Van Sant",
+    "distributor": "Focus Features",
+    "locations": "El Camino Del Mar",
+    "production_company": "Focus Features",
+    "release_year": "2008",
+    "supervisor_district": "1",
+    "title": "Milk",
+    "writer": "Dustin Lance Black"
+  },
+  {
+    ":created_at": "2026-02-21T00:44:51.821Z",
+    ":id": "row-id5j.ua53~32fi",
+    ":updated_at": "2026-02-21T00:44:53.889Z",
+    "actor_1": "Tom Hardy",
+    "actor_2": "Michelle Wiliams",
+    "actor_3": "Riz Ahmed",
+    "analysis_neighborhood": "Financial District/South Beach",
+    "data_as_of": "2026-02-20T16:37:46.000",
+    "data_loaded_at": "2026-02-20T16:44:43.000",
+    "director": "Ruben Fleischer",
+    "distributor": "Columbia Pictures, Sony Pictures Releasing",
+    "fun_facts": "Motorcycle/SUV chase scene",
+    "latitude": "37.7900488",
+    "locations": "Stockton Tunnel btwn Sutter and Sacramento",
+    "longitude": "-122.4069884",
+    "point": {
+      "coordinates": [
+        -122.4069884,
+        37.7900488
+      ],
+      "type": "Point"
+    },
+    "production_company": "L.O.Z. Productions, Inc.",
+    "release_year": "2018",
+    "supervisor_district": "3",
+    "title": "Venom",
+    "writer": "Jeff Pinkner, Scott Rosenberg"
+  },
+  {
+    ":created_at": "2026-02-21T00:44:51.821Z",
+    ":id": "row-sntf-utuf.msk5",
+    ":updated_at": "2026-02-21T00:44:53.889Z",
+    "actor_1": "Jimmie Fails",
+    "actor_2": "Jonathan Majors",
+    "actor_3": "Danny Glover",
+    "analysis_neighborhood": "Bayview Hunters Point",
+    "data_as_of": "2026-02-20T16:37:46.000",
+    "data_loaded_at": "2026-02-20T16:44:43.000",
+    "director": "Joe Talbot",
+    "distributor": "A24",
+    "fun_facts": "Bus stop",
+    "latitude": "37.729848",
+    "locations": "801 Innes Ave",
+    "longitude": "-122.3722183",
+    "point": {
+      "coordinates": [
+        -122.3722183,
+        37.729848
+      ],
+      "type": "Point"
+    },
+    "production_company": "LBMISF, LLC",
+    "release_year": "2019",
+    "supervisor_district": "10",
+    "title": "The Last Black Man in San Francisco",
+    "writer": "Joe Talbot, Jimmie Fails, Rob Richert"
+  },
+  {
+    ":created_at": "2026-02-21T00:44:51.821Z",
+    ":id": "row-bkbx.raqp-ivk9",
+    ":updated_at": "2026-02-21T00:44:53.889Z",
+    "actor_1": "Alexander Skarsgard",
+    "actor_2": "Kristen Wiig",
+    "actor_3": "Christopher Meloni",
+    "analysis_neighborhood": "Sunset/Parkside",
+    "data_as_of": "2026-02-20T16:37:46.000",
+    "data_loaded_at": "2026-02-20T16:44:43.000",
+    "director": "Marielle Heller",
+    "distributor": "Sony Pictures Classics",
+    "latitude": "37.7593921",
+    "locations": "Ocean Beach at Point Lobos",
+    "longitude": "-122.510734",
+    "point": {
+      "coordinates": [
+        -122.510734,
+        37.7593921
+      ],
+      "type": "Point"
+    },
+    "production_company": "Diary the Movie, LLC",
+    "release_year": "2015",
+    "supervisor_district": "4",
+    "title": "The Diary of a Teenage Girl",
+    "writer": "Marielle Heller"
+  },
+  {
+    ":created_at": "2026-02-21T00:44:51.821Z",
+    ":id": "row-84hb_rnam.trkg",
+    ":updated_at": "2026-02-21T00:44:53.889Z",
+    "actor_1": "Lorenza Izzo",
+    "actor_2": "Simu Liu",
+    "actor_3": "Liza Weil",
+    "analysis_neighborhood": "Mission",
+    "data_as_of": "2026-02-20T16:37:46.000",
+    "data_loaded_at": "2026-02-20T16:44:43.000",
+    "director": "Lissette Feliciano",
+    "latitude": "37.7507117",
+    "locations": "Capp St at 25th St",
+    "longitude": "-122.4172258",
+    "point": {
+      "coordinates": [
+        -122.4172258,
+        37.7507117
+      ],
+      "type": "Point"
+    },
+    "production_company": "Look at the Moon Pictures",
+    "release_year": "2020",
+    "supervisor_district": "9",
+    "title": "Women is Losers",
+    "writer": "Lissette Feliciano"
+  },
+  {
+    ":created_at": "2026-02-21T00:44:51.821Z",
+    ":id": "row-r357_2vb5_zqsp",
+    ":updated_at": "2026-02-21T00:44:53.889Z",
+    "actor_1": "Arnold Schwarzenegger",
+    "actor_2": "Jason Clarke",
+    "analysis_neighborhood": "Financial District/South Beach",
+    "data_as_of": "2026-02-20T16:37:46.000",
+    "data_loaded_at": "2026-02-20T16:44:43.000",
+    "director": "Alan Taylor",
+    "distributor": "Paramount Pictures",
+    "latitude": "37.7920406",
+    "locations": "Front St. between Market and Clay",
+    "longitude": "-122.3981194",
+    "point": {
+      "coordinates": [
+        -122.3981194,
+        37.7920406
+      ],
+      "type": "Point"
+    },
+    "production_company": "T5 Productions LLC",
+    "release_year": "2015",
+    "supervisor_district": "3",
+    "title": "Terminator - Genisys",
+    "writer": "James Cameron"
+  },
+  {
+    ":created_at": "2026-02-21T00:44:51.821Z",
+    ":id": "row-pcvw~qx7f.sqwy",
+    ":updated_at": "2026-02-21T00:44:53.889Z",
+    "actor_1": "Britt Robertson",
+    "actor_2": "Ellie Reed",
+    "actor_3": "Amanda Rea",
+    "analysis_neighborhood": "Hayes Valley",
+    "data_as_of": "2026-02-20T16:37:46.000",
+    "data_loaded_at": "2026-02-20T16:44:43.000",
+    "director": "Jamie Babbit, Amanda Brotchie, Steven K. Tsuchida, Christian Ditter, John Riggi",
+    "distributor": "Netflix",
+    "latitude": "37.7711831",
+    "locations": "Fillmore and Waller",
+    "longitude": "-122.4302866",
+    "point": {
+      "coordinates": [
+        -122.4302866,
+        37.7711831
+      ],
+      "type": "Point"
+    },
+    "production_company": "Hippolyta Productions, LLC",
+    "release_year": "2017",
+    "supervisor_district": "5",
+    "title": "GirlBoss",
+    "writer": "Kay Cannon"
+  },
+  {
+    ":created_at": "2026-02-21T00:44:51.821Z",
+    ":id": "row-u2vp.ckkk~wq4s",
+    ":updated_at": "2026-02-21T00:44:53.889Z",
+    "actor_1": "Glenn Ford",
+    "actor_2": "Lee Remick",
+    "actor_3": "Stefanie Powers",
+    "analysis_neighborhood": "Russian Hill",
+    "data_as_of": "2026-02-20T16:37:46.000",
+    "data_loaded_at": "2026-02-20T16:44:43.000",
+    "director": "Blake Edwards",
+    "distributor": "Columbia Pictures",
+    "latitude": "37.8023378",
+    "locations": "2632 Larkin Street at Lombard",
+    "longitude": "-122.4211036",
+    "point": {
+      "coordinates": [
+        -122.4211036,
+        37.8023378
+      ],
+      "type": "Point"
+    },
+    "production_company": "Columbia Pictures Corporation",
+    "release_year": "1962",
+    "supervisor_district": "3",
+    "title": "Experiment in Terror",
+    "writer": "The Gordons"
+  },
+  {
+    ":created_at": "2026-02-21T00:44:51.821Z",
+    ":id": "row-6y9q-ahgy-rq3e",
+    ":updated_at": "2026-02-21T00:44:53.889Z",
+    "actor_1": "Taye Diggs",
+    "actor_2": "Kathleen Robertson",
+    "actor_3": "Ian Anthony Dale",
+    "analysis_neighborhood": "Potrero Hill",
+    "data_as_of": "2026-02-20T16:37:46.000",
+    "data_loaded_at": "2026-02-20T16:44:43.000",
+    "director": "Steven Bochcho",
+    "distributor": "Turner Network Television (TNT)",
+    "latitude": "37.7618033",
+    "locations": "372/374 Pennsylvania Avenue",
+    "longitude": "-122.3938338",
+    "point": {
+      "coordinates": [
+        -122.3938338,
+        37.7618033
+      ],
+      "type": "Point"
+    },
+    "production_company": "Turner North Center Productions",
+    "release_year": "2015",
+    "supervisor_district": "10",
+    "title": "Murder in the First, Season 2",
+    "writer": "Eric Lodal"
+  },
+  {
+    ":created_at": "2026-02-21T00:44:51.821Z",
+    ":id": "row-q8nv~bms9.a5bx",
+    ":updated_at": "2026-02-21T00:44:53.889Z",
+    "actor_1": "Taye Diggs",
+    "actor_2": "Kathleen Robertson",
+    "actor_3": "Ian Anthony Dale",
+    "analysis_neighborhood": "North Beach",
+    "data_as_of": "2026-02-20T16:37:46.000",
+    "data_loaded_at": "2026-02-20T16:44:43.000",
+    "director": "Steven Bochcho",
+    "distributor": "Turner Network Television (TNT)",
+    "latitude": "37.7979773",
+    "locations": "435 Broadway",
+    "longitude": "-122.404479",
+    "point": {
+      "coordinates": [
+        -122.404479,
+        37.7979773
+      ],
+      "type": "Point"
+    },
+    "production_company": "Turner North Center Productions",
+    "release_year": "2015",
+    "supervisor_district": "3",
+    "title": "Murder in the First, Season 2",
+    "writer": "Eric Lodal"
+  },
+  {
+    ":created_at": "2026-02-21T00:44:51.821Z",
+    ":id": "row-z633~tmsx_h5ek",
+    ":updated_at": "2026-02-21T00:44:53.889Z",
+    "actor_1": "Jeff Bridges",
+    "actor_2": "Isabella Rosellini",
+    "actor_3": "Rosie Perez",
+    "analysis_neighborhood": "Presidio",
+    "data_as_of": "2026-02-20T16:37:46.000",
+    "data_loaded_at": "2026-02-20T16:44:43.000",
+    "director": "Peter Weir",
+    "distributor": "Warner Bros. Pictures",
+    "latitude": "37.7927708",
+    "locations": "5th and Beale Streets",
+    "longitude": "-122.4789708",
+    "point": {
+      "coordinates": [
+        -122.4789708,
+        37.7927708
+      ],
+      "type": "Point"
+    },
+    "production_company": "Spring Creek Productions",
+    "release_year": "1993",
+    "supervisor_district": "2",
+    "title": "Fearless",
+    "writer": "Rafael Yglesias"
+  },
+  {
+    ":created_at": "2026-02-21T00:44:51.821Z",
+    ":id": "row-nxpa-m4wy-cwvw",
+    ":updated_at": "2026-02-21T00:44:53.889Z",
+    "actor_1": "Don Johnson",
+    "actor_2": "Cheech Marin",
+    "actor_3": "Joe Dinicol",
+    "analysis_neighborhood": "North Beach",
+    "data_as_of": "2026-02-20T16:37:46.000",
+    "data_loaded_at": "2026-02-20T16:44:43.000",
+    "director": "Greg Beeman",
+    "distributor": "USA Nework",
+    "latitude": "37.8041563",
+    "locations": "1040 Columbus Avenue, Kennedy's",
+    "longitude": "-122.4152693",
+    "point": {
+      "coordinates": [
+        -122.4152693,
+        37.8041563
+      ],
+      "type": "Point"
+    },
+    "production_company": "Village NB Productions, LLC",
+    "release_year": "2021",
+    "supervisor_district": "3",
+    "title": "Nash Bridges",
+    "writer": "Carlton Cuse, Bill Chais"
+  },
+  {
+    ":created_at": "2026-02-21T00:44:51.821Z",
+    ":id": "row-tvvs~g9b9.3s94",
+    ":updated_at": "2026-02-21T00:44:53.889Z",
+    "actor_1": "Shannon Chan-Kent",
+    "actor_2": "Shannon Kook",
+    "actor_3": "Tia Carrere",
+    "analysis_neighborhood": "Chinatown",
+    "data_as_of": "2026-02-20T16:37:46.000",
+    "data_loaded_at": "2026-02-20T16:44:43.000",
+    "director": "Jennifer Liao",
+    "distributor": "Hallmark Channel",
+    "latitude": "37.7946664",
+    "locations": "Montgomery Street between Clay and California",
+    "longitude": "-122.4028388",
+    "point": {
+      "coordinates": [
+        -122.4028388,
+        37.7946664
+      ],
+      "type": "Point"
+    },
+    "production_company": "Hongbao Productions",
+    "release_year": "2022",
+    "supervisor_district": "3",
+    "title": "My Big Fat Chinese Christmas",
+    "writer": "Blaine Chiappetta ,Marguerite Henry, Justine Wentzell-Chang"
+  },
+  {
+    ":created_at": "2026-02-21T00:44:51.821Z",
+    ":id": "row-w2c4_faeb_rqfx",
+    ":updated_at": "2026-02-21T00:44:53.889Z",
+    "actor_1": "William Shatner",
+    "actor_2": "Leonard Nimoy",
+    "actor_3": "George Takei",
+    "analysis_neighborhood": "North Beach",
+    "data_as_of": "2026-02-20T16:37:46.000",
+    "data_loaded_at": "2026-02-20T16:44:43.000",
+    "director": "Leonard Nimoy",
+    "distributor": "Paramount Pictures",
+    "latitude": "37.7972383",
+    "locations": "Intersection of Columbus & Kearney Streets",
+    "longitude": "-122.4055929",
+    "point": {
+      "coordinates": [
+        -122.4055929,
+        37.7972383
+      ],
+      "type": "Point"
+    },
+    "production_company": "Paramount Pictures",
+    "release_year": "1986",
+    "supervisor_district": "3",
+    "title": "Star Trek IV: The Voyage Home",
+    "writer": "Steve Meerson"
+  },
+  {
+    ":created_at": "2026-02-21T00:44:51.821Z",
+    ":id": "row-ktid~shqa_5ysh",
+    ":updated_at": "2026-02-21T00:44:53.889Z",
+    "actor_1": "Clint Eastwood",
+    "actor_2": "Liam Neeson",
+    "actor_3": "Patricia Clarkson",
+    "analysis_neighborhood": "Chinatown",
+    "data_as_of": "2026-02-20T16:37:46.000",
+    "data_loaded_at": "2026-02-20T16:44:43.000",
+    "director": "Buddy Van Horn",
+    "distributor": "Warner Bros. Pictures",
+    "latitude": "37.7954245",
+    "locations": "Nam Yuen Restaurant (740 Washington Street, Chinatown)",
+    "longitude": "-122.4058831",
+    "point": {
+      "coordinates": [
+        -122.4058831,
+        37.7954245
+      ],
+      "type": "Point"
+    },
+    "production_company": "Warner Bros. Pictures",
+    "release_year": "1988",
+    "supervisor_district": "3",
+    "title": "The Dead Pool",
+    "writer": "Harry Julian Fink"
+  },
+  {
+    ":created_at": "2026-02-21T00:44:51.821Z",
+    ":id": "row-zhru_qgef.fa39",
+    ":updated_at": "2026-02-21T00:44:53.889Z",
+    "actor_1": "Hugh Grant",
+    "actor_2": "Julianne Moore",
+    "actor_3": "Robin Williams",
+    "analysis_neighborhood": "Chinatown",
+    "data_as_of": "2026-02-20T16:37:46.000",
+    "data_loaded_at": "2026-02-20T16:44:43.000",
+    "director": "Chris Columbus",
+    "distributor": "Twentieth Century Fox Film Corp.",
+    "latitude": "37.7975023",
+    "locations": "Jack Kerouac Alley between Columbus & Grant Streets",
+    "longitude": "-122.4068124",
+    "point": {
+      "coordinates": [
+        -122.4068124,
+        37.7975023
+      ],
+      "type": "Point"
+    },
+    "production_company": "1492 Pictures",
+    "release_year": "1995",
+    "supervisor_district": "3",
+    "title": "Nine Months",
+    "writer": "Chris Columbus"
+  },
+  {
+    ":created_at": "2026-02-21T00:44:51.821Z",
+    ":id": "row-ps2z_2vm7.6cn9",
+    ":updated_at": "2026-02-21T00:44:53.889Z",
+    "actor_1": "Clint Eastwood",
+    "actor_2": "Hal Holbrook",
+    "actor_3": "Mitchell Ryan",
+    "analysis_neighborhood": "Pacific Heights",
+    "data_as_of": "2026-02-20T16:37:46.000",
+    "data_loaded_at": "2026-02-20T16:44:43.000",
+    "director": "Ted Post",
+    "distributor": "Warner Bros. Pictures",
+    "latitude": "37.7906712",
+    "locations": "Pacific Heights Towers (2200 Sacramento Street, Pacific Heights)",
+    "longitude": "-122.4294937",
+    "point": {
+      "coordinates": [
+        -122.4294937,
+        37.7906712
+      ],
+      "type": "Point"
+    },
+    "production_company": "The Malpaso Company",
+    "release_year": "1973",
+    "supervisor_district": "2",
+    "title": "Magnum Force",
+    "writer": "John Milius"
+  },
+  {
+    ":created_at": "2026-02-21T00:44:51.821Z",
+    ":id": "row-7rfe~2e9r.kqmw",
+    ":updated_at": "2026-02-21T00:44:53.889Z",
+    "actor_1": "Jessica Rothe",
+    "actor_2": "Scott Bakula",
+    "actor_3": "Matilda Anna Ingrid Lutz",
+    "analysis_neighborhood": "Inner Sunset",
+    "data_as_of": "2026-02-20T16:37:46.000",
+    "data_loaded_at": "2026-02-20T16:44:43.000",
+    "director": "Gabriele Muccino",
+    "distributor": "8 Distribution",
+    "latitude": "37.7594754",
+    "locations": "Stanyan & Belgrave",
+    "longitude": "-122.4515753",
+    "point": {
+      "coordinates": [
+        -122.4515753,
+        37.7594754
+      ],
+      "type": "Point"
+    },
+    "production_company": "Creative Monster Productions, Inc.",
+    "release_year": "2015",
+    "supervisor_district": "8",
+    "title": "Summertime",
+    "writer": "Gabriele Muccino"
+  },
+  {
+    ":created_at": "2026-02-21T00:44:51.821Z",
+    ":id": "row-qbkd-n6hv-fx7t",
+    ":updated_at": "2026-02-21T00:44:53.889Z",
+    "actor_1": "Keanu Reeves",
+    "actor_2": "Keanu Reeves",
+    "actor_3": "Neil Patrick Harris",
+    "analysis_neighborhood": "Financial District/South Beach",
+    "data_as_of": "2026-02-20T16:37:46.000",
+    "data_loaded_at": "2026-02-20T16:44:43.000",
+    "director": "Lana Wachowski",
+    "distributor": "Warner Brothers",
+    "latitude": "37.7932242",
+    "locations": "155 California",
+    "longitude": "-122.3984911",
+    "point": {
+      "coordinates": [
+        -122.3984911,
+        37.7932242
+      ],
+      "type": "Point"
+    },
+    "production_company": "Adobe Pictures, Inc.",
+    "release_year": "2021",
+    "supervisor_district": "3",
+    "title": "The Matrix Resurrections",
+    "writer": "Lana Wachowski, David Mitchell, Aleksander Hemon"
+  },
+  {
+    ":created_at": "2026-02-21T00:44:51.821Z",
+    ":id": "row-rpd5-573v~idw2",
+    ":updated_at": "2026-02-21T00:44:53.889Z",
+    "actor_1": "Amy Adams",
+    "actor_2": "Krysten Ritter",
+    "actor_3": "Christoph Waltz",
+    "analysis_neighborhood": "Russian Hill",
+    "data_as_of": "2026-02-20T16:37:46.000",
+    "data_loaded_at": "2026-02-20T16:44:43.000",
+    "director": "Tim Burton",
+    "distributor": "Weinstein Company",
+    "latitude": "37.8001879",
+    "locations": "1101 Filbert St.",
+    "longitude": "-122.4177694",
+    "point": {
+      "coordinates": [
+        -122.4177694,
+        37.8001879
+      ],
+      "type": "Point"
+    },
+    "production_company": "Blink & Wink Productions",
+    "release_year": "2014",
+    "supervisor_district": "3",
+    "title": "Big Eyes",
+    "writer": "Scott Alexander"
+  },
+  {
+    ":created_at": "2026-02-21T00:44:51.821Z",
+    ":id": "row-y4eb~5fv4_ck2x",
+    ":updated_at": "2026-02-21T00:44:53.889Z",
+    "actor_1": "Hugh Grant",
+    "actor_2": "Julianne Moore",
+    "actor_3": "Robin Williams",
+    "analysis_neighborhood": "Hayes Valley",
+    "data_as_of": "2026-02-20T16:37:46.000",
+    "data_loaded_at": "2026-02-20T16:44:43.000",
+    "director": "Chris Columbus",
+    "distributor": "Twentieth Century Fox Film Corp.",
+    "latitude": "37.7754224",
+    "locations": "Alamo Square",
+    "longitude": "-122.4345097",
+    "point": {
+      "coordinates": [
+        -122.4345097,
+        37.7754224
+      ],
+      "type": "Point"
+    },
+    "production_company": "1492 Pictures",
+    "release_year": "1995",
+    "supervisor_district": "5",
+    "title": "Nine Months",
+    "writer": "Chris Columbus"
+  },
+  {
+    ":created_at": "2026-02-21T00:44:51.821Z",
+    ":id": "row-icxw-wj5c-wbvs",
+    ":updated_at": "2026-02-21T00:44:53.889Z",
+    "actor_1": "Jessica Rothe",
+    "actor_2": "Scott Bakula",
+    "actor_3": "Matilda Anna Ingrid Lutz",
+    "analysis_neighborhood": "Hayes Valley",
+    "data_as_of": "2026-02-20T16:37:46.000",
+    "data_loaded_at": "2026-02-20T16:44:43.000",
+    "director": "Gabriele Muccino",
+    "distributor": "7 Distribution",
+    "latitude": "37.7754224",
+    "locations": "Alamo Square",
+    "longitude": "-122.4345097",
+    "point": {
+      "coordinates": [
+        -122.4345097,
+        37.7754224
+      ],
+      "type": "Point"
+    },
+    "production_company": "Creative Monster Productions, Inc.",
+    "release_year": "2015",
+    "supervisor_district": "5",
+    "title": "Summertime",
+    "writer": "Gabriele Muccino"
+  },
+  {
+    ":created_at": "2026-02-21T00:44:51.821Z",
+    ":id": "row-fixture~coverage",
+    ":updated_at": "2026-07-27T00:00:00.000Z",
+    "actor_1": "Hugh Laurie",
+    "actor_2": "Greta Lee",
+    "actor_3": "Ethan Suplee",
+    "analysis_neighborhood": "Russian Hill",
+    "data_as_of": "2026-02-20T16:37:46.000",
+    "data_loaded_at": "2026-02-20T16:44:43.000",
+    "director": "Rozann Dawson",
+    "distributor": "Hulu",
+    "fun_facts": "Motorcycle/SUV chase scene",
+    "latitude": "37.80264",
+    "locations": "Columbus between Filbert and Lombard St",
+    "longitude": "-122.41375",
+    "point": {
+      "coordinates": [
+        -122.41375,
+        37.80264
+      ],
+      "type": "Point"
+    },
+    "production_company": "TVM Productions Inc.",
+    "release_year": "2017",
+    "supervisor_district": "3",
+    "title": "Chance Season 2",
+    "writer": "Alexandra Cunningham"
+  }
+]
