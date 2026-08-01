@@ -331,10 +331,9 @@ models:
           - not_null
 
     tests:
-      - unique:
+      - unique_combination:
           arguments:
-            column_name: >
-              h3_cell || '|' || dataset || '|' || category || '|' || cast(event_month as varchar)
+            columns: [h3_cell, dataset, category, event_month]
 
   - name: mart_activity_by_neighborhood
     description: >
@@ -402,11 +401,9 @@ models:
         description: Density. Unlike the H3 mart, neighborhood areas genuinely differ.
 
     tests:
-      - unique:
+      - unique_combination:
           arguments:
-            column_name: >
-              analysis_neighborhood || '|' || dataset || '|' || category
-              || '|' || cast(event_month as varchar)
+            columns: [analysis_neighborhood, dataset, category, event_month]
 
   - name: mart_film_locations
     description: >
@@ -535,6 +532,6 @@ models:
         description: Share of that year's citywide total for the same ledger type.
 
     tests:
-      - unique:
+      - unique_combination:
           arguments:
-            column_name: "cast(fiscal_year as varchar) || '|' || ledger_type || '|' || department_code"
+            columns: [fiscal_year, ledger_type, department_code]

@@ -65,12 +65,16 @@ Read this before assuming the ADRs describe running code.
 | Staging models | one per source, all nine | same | ADR-7 |
 | Marts | 5 city marts, 2 dims, 1 metadata mart | same | ADR-7 |
 | Published export | local `published/`, remote untested | remote verified once | ADR-8 |
-| BigQuery build | compiles in CI, never executed | run and verified by hand | PLAN-1 step 4 |
+| BigQuery build | run by hand 2026-07-31, `PASS=196 ERROR=0`, and compared row for row against DuckDB | same, plus in CI | PLAN-4 step 3 |
 
-Two rows matter most. `dbt build --target bigquery` has never actually run: no
-session has had Google Cloud credentials, so CI compiling against BigQuery
-proves the SQL is valid there, not that it returns the same rows. And the
-remote half of `make publish` has never been executed against a real bucket.
+One row matters most, and it is no longer the BigQuery one. `dbt build
+--target bigquery` ran for the first time on 2026-07-31 and found four
+cross-engine defects, three of which `dbt compile --target bigquery` cannot
+catch because compiling never asks the warehouse whether a type exists. All
+four are fixed, both targets build green, and `scripts/parity-check.py` compares
+the six point staging models row for row on demand. What remains untested is the
+remote half of `make publish`, which has never been executed against a real
+bucket, and the raw zone still lives only on this machine.
 
 ## The pipeline is five steps
 

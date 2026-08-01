@@ -122,13 +122,26 @@
    looks like missing data rather than a formatting difference, so route
    through float first.
 
-   Not dispatched: it composes x_safe_cast, which already is. Rounding is not
-   the point here and these values are integral in practice; do not use this
-   to turn a genuine decimal into an int.
+   Not dispatched: it composes x_safe_cast, which already is.
+
+   The trunc() is load bearing and was added by PLAN-4 step 3, which ran the
+   BigQuery target for the first time and compared it against DuckDB row for
+   row. This macro used to be a float cast followed by an int cast, on the
+   assumption recorded here that the values are integral in practice. One is
+   not: building permit 1752022162216 reports "2.5" stories, and a float to int
+   cast rounds it on BigQuery and truncates it on DuckDB, so the same model
+   returned 3 on one engine and 2 on the other. Neither engine was wrong; the
+   macro had simply never said which it wanted.
+
+   trunc() means "drop the fractional part", exists under that name on both
+   engines, and keeps the answer DuckDB was already giving, so no published
+   number changes. Note it is truncation and not floor: they differ for
+   negative inputs, and nothing here is negative today. A column where the
+   difference would matter wants a real decimal, not this macro.
    --------------------------------------------------------------------------- #}
 
 {%- macro x_safe_int(column_expression) -%}
-    {{- x_safe_cast(x_safe_cast(column_expression, 'float'), 'int') -}}
+    {{- x_safe_cast('trunc(' ~ x_safe_cast(column_expression, 'float') ~ ')', 'int') -}}
 {%- endmacro -%}
 
 

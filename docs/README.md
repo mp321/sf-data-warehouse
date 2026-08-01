@@ -7,10 +7,10 @@ anything else in here.
 
 | Plan | Status | What it is |
 |---|---|---|
-| PLAN-1 duckdb-parquet | active, closing | Parquet raw zone and DuckDB default. Six of eight steps done; the last two are PLAN-4. |
+| PLAN-1 duckdb-parquet | active, closing | Parquet raw zone and DuckDB default. Seven of eight steps done; step 5 is PLAN-4. |
 | PLAN-2 ingestion-lint | draft, nearly closed | Ruff exemptions gone. One item left, carried into PLAN-5 step 7. |
 | PLAN-3 geography-and-marts | done | H3, boundaries, marts, published exports. Delivered 2026-07-31. |
-| **PLAN-4 cloud-first-storage** | **active, do this next** | GCS raw zone, BigQuery external tables, and the BigQuery parity proof that has never run. |
+| **PLAN-4 cloud-first-storage** | **active, in progress** | Steps 1 to 4 done 2026-07-31: BigQuery has now been built and proven row for row against DuckDB, after four cross-engine defects. Steps 5 to 9, the GCS raw zone, are blocked on one IAM grant on the bucket. |
 | PLAN-5 narrow-and-polish | draft | Cut two datasets and one H3 resolution, one registry, pytest on the geometry code. After PLAN-4. |
 | PLAN-6 context-pack | draft | The versioned context artifact with explicit refusal boundaries. Last, deliberately. |
 

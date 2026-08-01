@@ -21,7 +21,14 @@
 with boundaries as (
 
     select
-        {{ x_safe_cast('boundary_id', 'int') }} as supervisor_district,
+        -- x_safe_int, not a direct int cast. DataSF publishes the district
+        -- number as "1.0", and the two engines disagree about what that is:
+        -- DuckDB's try_cast truncates it to 1, BigQuery's safe_cast refuses a
+        -- fractional string and returns null. A direct cast therefore passes
+        -- every local test and nulls all 11 districts on BigQuery, which is
+        -- what PLAN-4 step 3 found the first time the BigQuery target ran.
+        -- Routing through float parses on both.
+        {{ x_safe_int('boundary_id') }} as supervisor_district,
         boundary_id as supervisor_district_id,
         area_sq_km,
         geojson

@@ -6,9 +6,10 @@ related: [adr-1-warehouse-targets, adr-2-spatial-strategy, plan-4-cloud-first-st
 
 # PLAN-1. Make DuckDB and Parquet the default path
 
-Six of eight steps are done. The two that remain, step 4 (BigQuery row-for-row
-parity) and step 5 (where the Parquet actually lives), are both PLAN-4, and
-closing this plan is PLAN-4 step 11. Nothing new should be added here.
+Seven of eight steps are done. Step 4 (BigQuery row-for-row parity) closed
+2026-07-31 under PLAN-4 step 3. Step 5 (where the Parquet actually lives) is
+the only one left, it is PLAN-4 steps 5 to 10, and closing this plan is PLAN-4
+step 11. Nothing new should be added here.
 
 ## Goal
 
@@ -50,7 +51,11 @@ non-durable and keeps the silent-full-backfill failure mode live.
    in the header of `dbt/profiles.yml`.
 4. Compare the DuckDB and BigQuery outputs of `stg_datasf__311_cases` row for
    row. Any disagreement is a cross-engine bug and must be fixed with a macro,
-   not by tolerating a diff. (Still open: needs credentials.)
+   not by tolerating a diff. (Done 2026-07-31 under PLAN-4 step 3. It found
+   four cross-engine defects, three of them in yml test definitions rather than
+   in model SQL, and one in the `x_safe_int` macro itself. All fixed, both
+   targets green, and the comparison is now `scripts/parity-check.py` rather
+   than a hash pasted into a dev note.)
 5. Decide where Parquet actually lives long term. `data/` is gitignored and
    therefore durable against BigQuery expiry but not against losing the
    laptop. Candidates: a GCS bucket on the free tier, or Cloudflare R2. This
@@ -80,10 +85,11 @@ non-durable and keeps the silent-full-backfill failure mode live.
 - [x] `make build` succeeds on a clean clone with no credentials in the env.
       `make ci-build` does the whole pipeline from fixtures; `make ingest`
       needs network but no credentials.
-- [ ] `stg_datasf__311_cases` returns identical rows on both targets. Not
-      verified: no credentials in the sessions that built this. CI compiles
-      against BigQuery, which proves the SQL is valid there but not that it
-      returns the same rows.
+- [x] `stg_datasf__311_cases` returns identical rows on both targets. Verified
+      2026-07-31 after fixing four defects, and the same check passes on all six
+      point staging models. The gap this bullet described was real: CI's
+      BigQuery compile proved the SQL was valid there and three of the four
+      defects were type errors that only executing could find.
 - [ ] The scheduled BigQuery workflow still goes green untouched. It was not
       left untouched: `ingest.yml` had to change, because ingestion no longer
       writes to BigQuery, and a workflow that silently does nothing is worse

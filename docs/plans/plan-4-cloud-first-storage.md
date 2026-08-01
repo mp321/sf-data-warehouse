@@ -53,7 +53,13 @@ replace-on-load rewrite entirely.
    6.44 GB already there may be on a countdown. Attaching billing removes the
    expiry and leaves the free tier intact. Record the answer in the dev note
    either way, because the rest of this plan reads differently if the project
-   is a sandbox.
+   is a sandbox. Done 2026-07-31: billing is attached, **and attaching it did
+   not clear the expiry.** The `raw_datasf` dataset still carried
+   `default_table_expiration_ms = 5184000000` from its sandbox days, which is a
+   dataset property and outlives the sandbox, so every table `load.py`
+   recreated in there was still on a 60 day countdown. Cleared with
+   `bq update --default_table_expiration 0 raw_datasf`. Check this on any
+   dataset the project creates later, `dbt_dev` included.
 2. **Human step. Create a GCS bucket in `us-central1`, `us-west1` or
    `us-east1`.** Walked through in SETUP.md section 1.3, including the two
    settings that quietly break the free tier: soft delete, which is on by
@@ -68,10 +74,58 @@ replace-on-load rewrite entirely.
    cross-engine bug and is fixed with a macro in `cross_engine.sql`, not
    tolerated as a diff (ADR-1). This closes PLAN-1 step 4 whichever way it
    goes, and it is the highest-credibility item in the repo.
+
+   **Done 2026-07-31, and it failed the first time in four separate ways.** The
+   first `dbt build --target bigquery` in the project's history came back
+   `PASS=150 ERROR=2 SKIP=44`. All four defects and their fixes:
+
+   - Three grain tests concatenated their key columns and cast one of them with
+     `cast(x as varchar)`. `varchar` is DuckDB only. Fixed by writing
+     `macros/generic/test_unique_combination.sql`, a group-by grain test that
+     needs no cast, no separator and no engine-specific type name. Routing the
+     cast through `x_type` was rejected: dbt derives a test's node name from the
+     rendered expression, so the same test would be named `..._as_varchar_` on
+     one target and `..._as_string_` on the other.
+   - `accepted_values` on an integer column rendered `int64 in ('8','9','10')`,
+     which DuckDB casts implicitly and BigQuery rejects. Fixed with
+     `quote: false`.
+   - `dim_supervisor_district` cast `boundary_id` straight to int. DataSF
+     publishes it as "1.0", DuckDB's `try_cast` truncates that to 1 and
+     BigQuery's `safe_cast` returns null, so all 11 districts were null on
+     BigQuery while every local test passed. Fixed by using `x_safe_int`, the
+     macro that already existed for exactly this and was not reached for.
+   - `x_safe_int` itself was engine-dependent. Its comment asserted the values
+     are integral in practice; permit 1752022162216 reports "2.5" stories, and
+     float to int rounds on BigQuery and truncates on DuckDB, so one model
+     returned 3 on one engine and 2 on the other. Fixed with an explicit
+     `trunc()` inside the macro, which keeps DuckDB's existing answer.
+
+   Both targets now build `PASS=196 ERROR=0`, and `scripts/parity-check.py`
+   compares all six point staging models row for row. The three defects that
+   were type errors are all defects `dbt compile --target bigquery` structurally
+   cannot catch, which is the finding worth carrying: compiling renders Jinja
+   and never asks the warehouse whether the type exists.
 4. **Drop the orphaned BigQuery tables.** The four `raw_` tables in
    `raw_datasf` came from the pre-ADR-4 code path and are not reproducible
    from the zone. Do this after step 3, so the parity check has something to
-   run against.
+   run against. Resolved 2026-07-31 by step 3 rather than by a drop: the four
+   tables are the four `load.py` writes, so `WRITE_TRUNCATE` replaced all of
+   them with current-zone content, and the 8.8M row pre-ADR-4 `raw_311_cases`
+   is gone. Human decision, recorded because it is not reversible: the old rows
+   were not snapshotted. `raw_datasf` still holds materialized raw tables, and
+   emptying it of those is step 7, not this step.
+   **Blocked as of 2026-07-31 on one IAM grant.** Steps 5 through 9 all need the
+   service account to reach the bucket, and it cannot: `sf-dw-pipeline@` gets
+   403 `storage.buckets.get` on `gs://sf-data-bucket-mp`. The bucket was created
+   under a human identity and never shared with the pipeline identity. Unblock
+   with, from an identity that owns the bucket:
+
+       gcloud storage buckets add-iam-policy-binding gs://sf-data-bucket-mp \
+         --member=serviceAccount:sf-dw-pipeline@sf-data-warehouse.iam.gserviceaccount.com \
+         --role=roles/storage.objectAdmin
+
+   Nothing below this line has been attempted, so treat the two routes in the
+   open question as still open.
 5. **Teach `raw_zone.py` a GCS prefix.** `RAW_ZONE_URI` alongside
    `RAW_ZONE_DIR`: when set, `read_sql()` reads
    `gs://<bucket>/raw/<table>/**/*.parquet` through DuckDB's httpfs with the
@@ -112,17 +166,24 @@ replace-on-load rewrite entirely.
 
 ## Done when
 
-- [ ] `dbt build --target bigquery` has been executed against real data and
-      the dev note records the result, pass or fail.
-- [ ] `stg_datasf__311_cases` returns identical rows on both targets, or the
-      disagreement has been fixed with a macro and re-verified.
+- [x] `dbt build --target bigquery` has been executed against real data and
+      the dev note records the result, pass or fail. Failed at 4 defects, all
+      fixed, now `PASS=196 ERROR=0`.
+- [x] `stg_datasf__311_cases` returns identical rows on both targets, or the
+      disagreement has been fixed with a macro and re-verified. All six point
+      staging models are identical, verified by `scripts/parity-check.py`.
 - [ ] The zone is listed under `gs://<bucket>/raw/`, and a clone with no
-      `data/` directory can run `make load && make build`.
-- [ ] `raw_datasf` in BigQuery contains no materialized raw table.
+      `data/` directory can run `make load && make build`. Blocked on the IAM
+      grant above.
+- [ ] `raw_datasf` in BigQuery contains no materialized raw table. Still four,
+      now reproducible from the zone rather than orphaned. Needs step 7.
 - [ ] `ingest.yml` has no cache step and one scheduled run has gone green.
-- [ ] `make ci-build` still passes with no credentials and no bucket.
+- [x] `make ci-build` still passes with no credentials and no bucket.
 - [ ] `published/` has been written to a real bucket once.
-- [ ] ADR-9 written, ADR-4 superseded, PLAN-1 closed.
+- [ ] ADR-9 written, ADR-4 superseded, PLAN-1 closed. PLAN-1 step 4 is closed;
+      step 5 is what ADR-9 is about and it is still open.
+- [x] New, added by doing the work: a repeatable cross-engine row comparison
+      exists rather than a one-off hash captured in a dev note.
 
 ## Open questions
 

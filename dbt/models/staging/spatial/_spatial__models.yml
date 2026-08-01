@@ -103,7 +103,11 @@ models:
           - not_null
           - accepted_values:
               arguments:
+                # quote: false because resolution is an integer. dbt quotes the
+                # values by default, and `int64 in ('8', '9', '10')` is an error
+                # on BigQuery rather than an implicit cast as it is on DuckDB.
                 values: [8, 9, 10]
+                quote: false
 
       - name: h3_cell
         description: The covering cell, as a BIGINT.
