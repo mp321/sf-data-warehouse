@@ -6,10 +6,18 @@ the derived zone. It talks to no API, needs no credentials, and can be
 re-run at any time: everything it produces is a pure function of the raw zone
 and this file.
 
-    make ingest    Socrata, TIGERweb -> data/raw          network, no creds
-    make spatial   data/raw          -> data/derived      no network, no creds  <- here
+    make ingest    Socrata, TIGERweb -> raw zone          network, no creds
+    make spatial   raw zone          -> derived zone      no network, no creds  <- here
     make load      both zones        -> warehouse         no network, no creds
     make build     dbt run + test                         no network, no creds
+
+Both zones are `data/raw` and `data/derived` by default and `gs://` prefixes
+when `RAW_ZONE_URI` and `DERIVED_ZONE_URI` are set (ADR-9). This reads and
+writes whichever is configured, and writes to exactly one of them: a remote run
+leaves `data/derived` alone rather than keeping a second copy. The two roots are
+resolved independently, so reading a remote raw zone and writing a local derived
+zone is a legal arrangement; `check_derived.py` is what notices when the pair
+has drifted apart, and it compares whatever two roots it is pointed at.
 
 **Why Python and not SQL.** ADR-5 has the argument in full. Briefly: DuckDB's
 h3 community extension works well, and BigQuery has no H3 support of any kind,
@@ -71,6 +79,7 @@ import pyarrow as pa
 import derived_zone
 import geometry as geo
 import raw_zone
+import remote
 from datasets import DATASETS, SF_BOUNDING_BOX, point_datasets, polygon_datasets
 
 # The resolutions carried on every point row. 8 is roughly a 460 m hexagon,
@@ -118,7 +127,7 @@ def _dedup_sql(inner: str, key: str) -> str:
     """
 
 
-def raw_input_state(con, root: Path | None) -> dict:
+def raw_input_state(con, root: Path | str | None) -> dict:
     """What the raw zone held for every dataset this step reads.
 
     Per raw table: the deduplicated row count and the newest watermark. The
@@ -167,7 +176,7 @@ def _point_expressions(cfg: dict) -> tuple[str, str]:
     return (spec["latitude"], spec["longitude"])
 
 
-def read_points(con, name: str, cfg: dict, root: Path | None) -> list[tuple]:
+def read_points(con, name: str, cfg: dict, root: Path | str | None) -> list[tuple]:
     """(row_key, latitude_text, longitude_text) for one point dataset."""
     latitude, longitude = _point_expressions(cfg)
     key = cfg["grain_key"]
@@ -180,7 +189,7 @@ def read_points(con, name: str, cfg: dict, root: Path | None) -> list[tuple]:
     ).fetchall()
 
 
-def read_boundaries(con, name: str, cfg: dict, root: Path | None) -> list[dict]:
+def read_boundaries(con, name: str, cfg: dict, root: Path | str | None) -> list[dict]:
     """One dict per polygon row, with the GeoJSON already parsed."""
     spec = cfg["geometry"]
     key = cfg["grain_key"]
@@ -271,7 +280,7 @@ def classify_coordinate(lat_text, lon_text) -> tuple[str, float | None, float | 
     return ("ok", latitude, longitude)
 
 
-def build_point_h3(con, root: Path | None) -> tuple[list[dict], dict]:
+def build_point_h3(con, root: Path | str | None) -> tuple[list[dict], dict]:
     """derived_point_h3, plus a per-source coordinate quality summary."""
     rows: list[dict] = []
     stats: dict = {}
@@ -328,7 +337,7 @@ def build_point_h3(con, root: Path | None) -> tuple[list[dict], dict]:
 # ---------------------------------------------------------------------------
 
 
-def build_boundaries(con, root: Path | None) -> tuple[list[dict], list[dict], dict]:
+def build_boundaries(con, root: Path | str | None) -> tuple[list[dict], list[dict], dict]:
     """derived_boundary and derived_polygon_h3, for every polygon dataset."""
     boundary_rows: list[dict] = []
     bridge_rows: list[dict] = []
@@ -847,15 +856,17 @@ def main() -> None:
     )
     parser.add_argument(
         "--raw-root",
-        type=Path,
+        type=remote.zone_root,
         default=None,
-        help="root of the raw zone (default: $RAW_ZONE_DIR or data/raw)",
+        help="root of the raw zone: a directory or a gs:// prefix "
+        "(default: $RAW_ZONE_DIR, else $RAW_ZONE_URI, else data/raw)",
     )
     parser.add_argument(
         "--derived-root",
-        type=Path,
+        type=remote.zone_root,
         default=None,
-        help="root of the derived zone (default: $DERIVED_ZONE_DIR or data/derived)",
+        help="root of the derived zone: a directory or a gs:// prefix "
+        "(default: $DERIVED_ZONE_DIR, else $DERIVED_ZONE_URI, else data/derived)",
     )
     args = parser.parse_args()
     if not args.all:
@@ -872,7 +883,11 @@ def main() -> None:
         # this is worth saying loudly rather than discovering in a mart.
         print(f"WARNING: no raw data for boundary dataset(s): {', '.join(missing)}")
 
-    with raw_zone.connect() as con:
+    # The root goes to connect() as well as to every read: connect() is what
+    # registers the gs:// filesystem, and it registers it for the zone it is
+    # given, so a --raw-root that disagrees with the environment would otherwise
+    # open a connection that cannot see the zone it is about to be asked for.
+    with raw_zone.connect(args.raw_root) as con:
         # Read before building, not after. Taking the counts afterwards would
         # record a raw zone that an `ingest` running alongside this could have
         # already moved past, and the manifest would then claim coverage the

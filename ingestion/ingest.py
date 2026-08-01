@@ -1,16 +1,27 @@
 """Incremental ingestion from DataSF (Socrata) into the Parquet raw zone.
 
 How it works, in plain terms:
-  1. Look in data/raw/<table>/ for the newest _socrata_updated_at we already
+  1. Look in <zone>/<table>/ for the newest _socrata_updated_at we already
      have. If the zone is empty, fall back to the dataset's start_date.
   2. Ask the Socrata API for rows updated after that watermark, ordered by
      update time, 5000 rows per page.
   3. Land every value as a STRING in a Parquet file under an
      ingest_date=YYYY-MM-DD partition. No cleaning here on purpose: raw stays
      raw, and all typing/renaming happens in dbt staging.
-  4. Record the run in data/raw/<table>/_runs/<run_id>.json.
+  4. Record the run in <zone>/<table>/_runs/<run_id>.json.
   5. Appends can create multiple versions of the same record over time. That
      is expected. Staging models deduplicate to the latest version.
+
+**Where the zone is, and it is one place at a time.** `<zone>` is `data/raw` by
+default and a `gs://` prefix when `RAW_ZONE_URI` is set (ADR-9), and a run
+writes to whichever one is configured and to nothing else. A remote run does
+not also update `data/raw`: ADR-9 considered exactly that arrangement, GCS
+holding the record with a local copy beside it, and rejected it because two
+copies with nothing to detect divergence is the failure this project had just
+spent a session fixing in the derived zone. So `data/raw` is not a cache of the
+bucket, and it is not stale-but-usable when the bucket is in use; it is
+whatever the last local run left there, and the way to read the zone is to point
+at the zone. `RAW_ZONE_DIR` beats `RAW_ZONE_URI` so that CI stays local.
 
 This writes Parquet and nothing else. Getting those files into DuckDB or
 BigQuery is `ingestion/load.py`, a separate and idempotent step (ADR-4). The
@@ -21,14 +32,17 @@ Usage:
     python ingestion/ingest.py 311_cases
     python ingestion/ingest.py 311_cases film_locations
     python ingestion/ingest.py --all
-    python ingestion/ingest.py 311_cases --full-refresh
+    python ingestion/ingest.py 311_cases --full-refresh      # local zones only
     python ingestion/ingest.py 311_cases --since 2023-01-01T00:00:00.000Z
     python ingestion/ingest.py --all --fixtures tests/fixtures/socrata
 
-Required environment variables: none. This step needs no credentials.
+Required environment variables: none. This step needs no credentials against a
+local zone. A `gs://` zone authenticates through GOOGLE_APPLICATION_CREDENTIALS
+like everything else that touches the bucket; see ingestion/remote.py.
 Optional:
     SOCRATA_APP_TOKEN  free token from data.sfgov.org, raises rate limits
-    RAW_ZONE_DIR       root of the raw zone (default: data/raw)
+    RAW_ZONE_DIR       root of the raw zone as a directory (default: data/raw)
+    RAW_ZONE_URI       root of the raw zone as a gs:// prefix, when DIR is unset
 """
 
 import argparse
@@ -43,6 +57,7 @@ from pathlib import Path
 import requests
 
 import raw_zone
+import remote
 from census import census_pages
 from datasets import DATASETS
 
@@ -173,12 +188,32 @@ def _pages_for(name: str, cfg: dict, args: argparse.Namespace, watermark: str, a
 
 
 def resolve_watermark(cfg: dict, args: argparse.Namespace) -> str:
-    """--since beats --full-refresh beats what is already on disk."""
+    """--since beats --full-refresh beats what is already in the zone.
+
+    The last branch is the one to be careful with. An empty zone and a zone
+    pointed somewhere that holds nothing are the same answer here, None, and
+    None falls through to `start_date` and refetches everything: 8.8 million
+    rows for 311, correct and expensive and previously silent. It announces
+    itself now, because reading the zone is the only source of the position
+    (ADR-4) and there is nothing to cross-check it against.
+
+    A bucket that genuinely cannot be listed raises rather than coming back
+    empty, so that case fails loudly on its own and is not what this guards.
+    What it guards is a zone that is fine and simply is not the one you meant.
+    """
     if args.since:
         return args.since
     if args.full_refresh:
         return cfg["start_date"]
-    return raw_zone.read_watermark(cfg["table"], args.raw_root) or cfg["start_date"]
+    watermark = raw_zone.read_watermark(cfg["table"], args.raw_root)
+    if watermark is None:
+        root = args.raw_root if args.raw_root is not None else raw_zone.raw_root()
+        print(
+            f"[{cfg['table']}] no rows in {root}, so this is a full backfill from "
+            f"{cfg['start_date']}, not a resume."
+        )
+        return cfg["start_date"]
+    return watermark
 
 
 def ingest_one(name: str, args: argparse.Namespace, app_token: str) -> dict:
@@ -268,7 +303,7 @@ def _flush(
     run_id: str,
     manifest: dict,
     *,
-    root: Path | None,
+    root: Path | str | None,
     ingest_date: str,
 ) -> None:
     seq = manifest["files_written"]
@@ -278,17 +313,56 @@ def _flush(
     print(f"  wrote {len(buffer)} rows to {path}")
 
 
-def _finish(manifest: dict, table: str, root: Path | None) -> None:
+def _finish(manifest: dict, table: str, root: Path | str | None) -> None:
     manifest["finished_at"] = datetime.now(timezone.utc).isoformat()
     raw_zone.write_run_manifest(table, manifest, root)
 
 
+def reject_remote_full_refresh(root: Path | str | None) -> None:
+    """`--full-refresh` needs an atomic swap, and object storage has no rename.
+
+    Checked before the first request rather than before the swap, because the
+    alternative is discovering it after refetching 8.8 million rows.
+
+    Locally `_swap_in` renames a finished tree into place, so at every instant
+    the zone holds the whole old copy or the whole new one, which is the one
+    exception ADR-4 grants to the append-only rule. GCS has neither a rename nor
+    a multi-object transaction: the same swap is a delete of every old object
+    followed by a copy of every new one, and any failure inside that window
+    leaves a raw zone that is neither copy and that nothing can reconstruct.
+    Doing that and calling it a swap would make the exception unbounded, so this
+    refuses instead.
+
+    The honest way to do it is a refresh into a local zone followed by an upload,
+    which is a copy rather than a swap: the new tree can be checked before
+    anything is deleted, and the delete is then a separate deliberate act.
+    """
+    if not remote.is_remote(root if root is not None else raw_zone.raw_root()):
+        return
+    sys.exit(
+        "--full-refresh cannot run against a remote raw zone.\n"
+        "\n"
+        "It replaces a dataset's whole tree, which is safe locally because a\n"
+        "directory rename is atomic. GCS has no rename, so the same operation is\n"
+        "a delete of every object followed by a re-upload, and an interruption\n"
+        "anywhere in between leaves the zone holding neither the old data nor the\n"
+        "new. The raw zone is append-only precisely so that cannot happen.\n"
+        "\n"
+        "Rebuild locally and upload the result instead:\n"
+        "  RAW_ZONE_DIR=data/refresh python ingestion/ingest.py <dataset> --full-refresh\n"
+        "  # check it, then replace the prefix by hand, deliberately\n"
+        "\n"
+        "An incremental run needs none of this and works against the bucket."
+    )
+
+
 def _swap_in(table: str, staged_table: str, run_id: str, root: Path | None) -> None:
-    """Replace the dataset's tree with the freshly rebuilt one.
+    """Replace the dataset's tree with the freshly rebuilt one. Local only.
 
     Rename-then-delete rather than delete-then-rename: at every instant a
     complete tree exists at the final path, so an interruption costs disk
-    space rather than the raw zone.
+    space rather than the raw zone. That is the property a bucket cannot
+    offer, and `reject_remote_full_refresh` is where it is turned away.
     """
     final = raw_zone.dataset_dir(table, root)
     staged = raw_zone.dataset_dir(staged_table, root)
@@ -328,9 +402,10 @@ def main() -> None:
     )
     parser.add_argument(
         "--raw-root",
-        type=Path,
+        type=remote.zone_root,
         default=None,
-        help="root of the raw zone (default: $RAW_ZONE_DIR or data/raw)",
+        help="root of the raw zone: a directory or a gs:// prefix "
+        "(default: $RAW_ZONE_DIR, else $RAW_ZONE_URI, else data/raw)",
     )
     args = parser.parse_args()
 
@@ -341,7 +416,12 @@ def main() -> None:
     if unknown:
         parser.error(f"unknown dataset(s): {', '.join(unknown)}. Valid: {', '.join(DATASETS)}")
 
+    if args.full_refresh:
+        reject_remote_full_refresh(args.raw_root)
+
     app_token = os.environ.get("SOCRATA_APP_TOKEN", "")
+    root = args.raw_root if args.raw_root is not None else raw_zone.raw_root()
+    print(f"Raw zone: {root}")
 
     for name in names:
         ingest_one(name, args, app_token)

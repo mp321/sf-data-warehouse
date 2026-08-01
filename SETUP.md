@@ -349,9 +349,14 @@ lineage graph. This is a great screen-share artifact in interviews.
 ## Phase 5: Automation on GitHub
 
 1. In your GitHub repo: Settings, Secrets and variables, Actions, New
-   repository secret. Create three secrets:
+   repository secret. Create four secrets:
    - `GCP_PROJECT_ID`: your project id
    - `GCP_SA_KEY`: open `keys/sa.json`, copy the entire JSON, paste it
+   - `GCS_BUCKET`: the bucket name alone, no `gs://` and no path. The
+     ingest workflow builds `gs://<bucket>/raw` and `gs://<bucket>/derived`
+     from it, and those are the zones it reads and writes (ADR-9). A bucket
+     name is not really a secret, but it goes here rather than in the
+     workflow file because project identifiers do not belong in the repo.
    - `SOCRATA_APP_TOKEN`: your token, or create the secret with an empty
      value if you skipped it
 2. Actions tab: enable workflows if prompted.

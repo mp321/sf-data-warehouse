@@ -57,24 +57,37 @@ Read this before assuming the ADRs describe running code.
 | Area | Today | Intended | ADR |
 |---|---|---|---|
 | Default dbt target | DuckDB | DuckDB | ADR-1 |
-| Raw zone | Parquet under `data/raw/` | same | ADR-1, ADR-4 |
-| Derived zone | Parquet under `data/derived/` | same | ADR-5 |
-| Warehouse load | `ingestion/load.py`, both engines | same | ADR-4 |
-| Parquet durability | local, cached in CI for 7 days | off-machine storage | PLAN-1 step 5 |
+| Raw zone | Parquet, read and written in whichever zone is configured: `data/raw`, or `gs://<bucket>/raw` when `RAW_ZONE_URI` is set | same | ADR-4, ADR-9 |
+| Derived zone | Parquet, same arrangement as raw, under `DERIVED_ZONE_URI` | same | ADR-5, ADR-9 |
+| Warehouse load | `ingestion/load.py`. DuckDB materialises; BigQuery creates external tables over GCS and stores no raw bytes | same | ADR-9 |
+| Parquet durability | written to GCS by `ingest.py` and `spatial.py` themselves | same | ADR-9, PLAN-4 step 6 |
 | Spatial | H3 cells plus exact boundary membership | same | ADR-5, ADR-6 |
 | Staging models | one per source, all nine | same | ADR-7 |
 | Marts | 5 city marts, 2 dims, 1 metadata mart | same | ADR-7 |
-| Published export | local `published/`, remote untested | remote verified once | ADR-8 |
+| Published export | local `published/`, and uploaded to GCS once on 2026-08-01 | scheduled | ADR-8 |
 | BigQuery build | run by hand 2026-07-31, `PASS=196 ERROR=0`, and compared row for row against DuckDB | same, plus in CI | PLAN-4 step 3 |
 
-One row matters most, and it is no longer the BigQuery one. `dbt build
+The rows that used to be the embarrassing ones are closed. `dbt build
 --target bigquery` ran for the first time on 2026-07-31 and found four
 cross-engine defects, three of which `dbt compile --target bigquery` cannot
-catch because compiling never asks the warehouse whether a type exists. All
-four are fixed, both targets build green, and `scripts/parity-check.py` compares
-the six point staging models row for row on demand. What remains untested is the
-remote half of `make publish`, which has never been executed against a real
-bucket, and the raw zone still lives only on this machine.
+catch because compiling never asks the warehouse whether a type exists. All four
+are fixed, both targets build green, and `scripts/parity-check.py` compares the
+six point staging models row for row on demand. The zones moved to GCS on
+2026-08-01 (ADR-9), the writer followed the same day (PLAN-4 step 6), and
+`make publish` has uploaded to a real bucket once.
+
+**There is one zone at a time, and it is never two.** This is the thing to have
+straight before reading anything else about storage. A run reads and writes
+whichever zone its environment names: `data/raw` and `data/derived` with no URI
+set, the bucket prefixes with them set. A remote run does **not** also write
+`data/`, so after one, the local directories hold whatever the last local run
+left there. They are not a cache, not a mirror, and not a stale-but-usable copy;
+they are a different zone that happens to be on this machine. ADR-9 considered
+keeping both in step and rejected it: two copies with nothing to detect
+divergence is the exact failure this project had just spent a session fixing in
+the derived zone, and a mirror written only by the machines that happen to run
+`make ingest` is a worse version of it. If you want to know what is in the zone,
+point at the zone.
 
 ## The pipeline is five steps
 
@@ -82,12 +95,17 @@ They are separate on purpose (ADR-4, ADR-5). Only the BigQuery ones need
 credentials; `make publish` needs them only with a remote destination.
 
 ```
-make ingest    APIs      -> data/raw/*.parquet     network, no credentials
-make spatial   data/raw  -> data/derived/*.parquet no network, no credentials
+make ingest    APIs      -> raw zone/*.parquet     network, no credentials
+make spatial   raw zone  -> derived zone/*.parquet no network, no credentials
 make load      both      -> DuckDB                 no network, no credentials
 make build     dbt run + test                      no network, no credentials
 make publish   warehouse -> published/             no network, no credentials
 ```
+
+"No credentials" holds for the local zones, which are the default. Point the
+zones at the bucket and the first three need `GOOGLE_APPLICATION_CREDENTIALS`,
+because that is where the Parquet then is. Nothing needs a Google account to run
+the pipeline or the CI gate, which is ADR-1's constraint and is unchanged.
 
 `make all` runs the first four in order. **Forgetting `make spatial` does not
 error**: the spatial models build empty, and the marts come out with no rows.
@@ -161,8 +179,12 @@ Google Cloud setup. It is not authoritative on architecture.
 
 ```
 ingestion/          datasets.py is the dataset registry. raw_zone.py owns the
-                    Parquet layout and is the only thing that reads it;
-                    derived_zone.py is its sibling for data/derived.
+                    Parquet layout and is the only thing that reads or writes
+                    it; derived_zone.py is its sibling for the derived zone, and
+                    remote.py is the one place that knows a zone can be a gs://
+                    prefix rather than a directory, and the one place that
+                    authenticates to it (ADR-9). Nothing else in ingestion/
+                    should learn to talk to a bucket.
                     ingest.py writes the raw zone, census.py is its TIGERweb
                     transport, spatial.py computes the derived zone,
                     check_derived.py asserts the derived zone is not behind the
@@ -195,16 +217,23 @@ docs/dbt/           committed manifest.json and catalog.json. Refresh: make docs
 tests/fixtures/     committed JSON so CI can run without network. Includes
                     real boundary polygons with thinned vertices, so the
                     fixture run genuinely exercises the H3 machinery.
-scripts/            leak-check.sh, sqlfluff-lint.sh, check-lint-pins.sh.
+scripts/            leak-check.sh, sqlfluff-lint.sh, check-lint-pins.sh, and
+                    parity-check.py, which compares a model row for row across
+                    DuckDB and BigQuery and needs credentials, so it is run by
+                    hand rather than in CI.
                     These are the real implementation; pre-commit, the
                     Makefile and CI call them rather than restating the
                     command, so a hook and a make target cannot disagree
                     about what the check is. check-lint-pins.sh is the
                     exception that proves it: ruff genuinely is installed
                     twice, so something has to assert the two agree.
-data/raw/           local Parquet raw zone. Gitignored, never committed.
-data/derived/       local Parquet derived zone. Gitignored. Always safe to
-                    delete; make spatial rebuilds it exactly.
+data/raw/           the raw zone when no RAW_ZONE_URI is set, which is the
+                    default, all of CI, and every fresh clone. Gitignored,
+                    never committed. Not a copy of the bucket: with a URI set
+                    the bucket is the zone and this directory is only whatever
+                    the last local run left behind.
+data/derived/       the derived zone under the same rule. Gitignored. Always
+                    safe to delete; make spatial rebuilds it exactly.
 published/          the export. Gitignored, regenerated by make publish.
 keys/               service account keys. Gitignored, never committed.
 ```
@@ -226,11 +255,20 @@ files are `_<source>__sources.yml`.
   environment variables locally and GitHub repository secrets in CI.
 - `keys/`, `.env`, `data/`, `*.duckdb`, `target/`, and `dbt_packages/` are
   gitignored. Do not add exceptions to those rules.
+- **`RAW_ZONE_DIR` beats `RAW_ZONE_URI`, and the same for the derived pair.**
+  `make ci-build` sets the DIR variables, and it has to stay local, bucket-free
+  and credential-free in a shell that has sourced `.env`. Reversing that
+  precedence makes `set -a; source .env` silently change what `make check`
+  tests. See ingestion/remote.py.
 - `scripts/leak-check.sh` runs in CI on every PR and blocks the merge on a hit.
   If it fires, rotate the credential first, then clean the tree.
 - **The Parquet raw zone is append-only.** Files are added, never edited or
   deleted, the one exception being `ingest.py --full-refresh`, which swaps a
-  whole tree atomically. Warehouse raw tables are derived mirrors of the zone,
+  whole tree atomically. That exception is local only: a directory rename is
+  atomic and object storage has no rename, so `--full-refresh` against a
+  `gs://` zone refuses and explains itself rather than doing a delete-then-copy
+  that can leave the zone holding neither tree. Refresh into a local zone and
+  upload the result. Warehouse raw tables are derived mirrors of the zone,
   rebuilt wholesale by `load.py`; never write an UPDATE or DELETE against
   them either. Deduplication belongs in staging.
 - SQL must compile on both BigQuery and DuckDB. Use the dispatch macros in

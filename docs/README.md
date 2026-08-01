@@ -7,10 +7,10 @@ anything else in here.
 
 | Plan | Status | What it is |
 |---|---|---|
-| PLAN-1 duckdb-parquet | active, closing | Parquet raw zone and DuckDB default. Seven of eight steps done; step 5 is PLAN-4. |
+| PLAN-1 duckdb-parquet | done | Parquet raw zone and DuckDB default. Closed 2026-08-01 under PLAN-4 step 11, once the writer moved to the bucket. One Done-when box is left unticked on purpose; the plan says why. |
 | PLAN-2 ingestion-lint | draft, nearly closed | Ruff exemptions gone. One item left, carried into PLAN-5 step 7. |
 | PLAN-3 geography-and-marts | done | H3, boundaries, marts, published exports. Delivered 2026-07-31. |
-| **PLAN-4 cloud-first-storage** | **active, in progress** | Steps 1 to 4 done 2026-07-31: BigQuery has now been built and proven row for row against DuckDB, after four cross-engine defects. Steps 5 to 9, the GCS raw zone, are blocked on one IAM grant on the bucket. |
+| **PLAN-4 cloud-first-storage** | **active, one item left** | All eleven steps done 2026-08-01. BigQuery is built and proven row for row against DuckDB, both zones live in GCS and are now read *and written* there by the pipeline itself, the CI cache step is gone and PLAN-1 is closed. Left: commit, add the `GCS_BUCKET` secret, and get one scheduled `ingest` run green. |
 | PLAN-5 narrow-and-polish | draft | Cut two datasets and one H3 resolution, one registry, pytest on the geometry code. After PLAN-4. |
 | PLAN-6 context-pack | draft | The versioned context artifact with explicit refusal boundaries. Last, deliberately. |
 
@@ -19,11 +19,12 @@ anything else in here.
 | ADR-1 warehouse targets | active |
 | ADR-2 spatial strategy | superseded by ADR-6 |
 | ADR-3 dataset scope | superseded by ADR-7 |
-| ADR-4 raw zone layout | active, superseded by ADR-9 when PLAN-4 lands |
+| ADR-4 raw zone layout | superseded by ADR-9 |
 | ADR-5 H3 computation | active, superseded by ADR-10 when PLAN-5 lands |
 | ADR-6 polygon membership | active |
 | ADR-7 dataset scope, second pass | active, superseded by ADR-10 when PLAN-5 lands |
 | ADR-8 published exports | active |
+| ADR-9 cloud raw zone | active |
 
 `review-2026-07-31-scope-and-cloud.md` is an outside assessment that produced
 PLAN-4, PLAN-5 and PLAN-6. It is not one of the three kinds below and can be

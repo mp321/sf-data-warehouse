@@ -42,7 +42,15 @@ ignore = [
 # which is that `ingestion/datasets.py` shadows and is shadowed by the
 # HuggingFace `datasets` package if that ever lands in the venv. The fix for
 # that is a rename and is still tracked in docs/plans/plan-2-ingestion-lint.md.
-known-first-party = ["census", "datasets", "derived_zone", "geometry", "raw_zone", "spatial"]
+known-first-party = [
+    "census",
+    "datasets",
+    "derived_zone",
+    "geometry",
+    "raw_zone",
+    "remote",
+    "spatial",
+]
 
 [format]
 quote-style = "double"

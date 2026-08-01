@@ -10,110 +10,87 @@ value of the sequence is that a failure is attributable.
 
 ---
 
-## Before session A: two things only a human can do
+## Sessions A, B and B-remainder are done. Start at C.
 
-1. **Confirm billing is attached to the GCP project.** Console, Billing. If it
-   is not attached, the project is a sandbox and every table in `raw_datasf`
-   expires 60 days after creation. Attaching billing removes the expiry and
-   leaves the free tier intact (10 GiB storage, 1 TiB scanned per month).
-2. **Create a GCS bucket in `us-central1`, `us-west1` or `us-east1`.**
-   Always-free storage applies only to those three regions: 5 GB-month
-   Standard, 5,000 Class A and 50,000 Class B operations. Uniform bucket-level
-   access. Grant the existing service account object admin on that bucket and
-   nothing wider. Put the name in `.env` as `GCS_BUCKET`.
+- **A (prove BigQuery)** done 2026-07-31. It found four cross-engine defects and
+  all four are fixed; both targets build `PASS=196 ERROR=0` and
+  `scripts/parity-check.py` compares models row for row on demand. See the
+  fourth section of `docs/dev-notes/2026-07-31.md`.
+- **B (zone to GCS)** mostly done 2026-08-01: steps 5, 7 and 9. Both zones are
+  read from `gs://` by DuckDB through gcsfs and by BigQuery through external
+  tables, BigQuery storage went 8.02 GB to 40.96 MB, and `make publish` has
+  uploaded to the bucket once. ADR-9 is written and ADR-4 is superseded. See
+  `docs/dev-notes/2026-08-01.md`.
 
-Session A does not need the bucket. Session B does.
+- **B-remainder (move the writer)** done 2026-08-01: steps 6, 8 and 11.
+  `ingest.py` and `spatial.py` now write the bucket, so nothing is synced by
+  hand and the zone no longer depends on one laptop. The Actions cache step is
+  deleted and PLAN-1 is closed. A run writes one zone and not two: with a URI
+  set, `data/` is not updated at all, which is the decision that had to be made
+  rather than assumed. See the second session in `docs/dev-notes/2026-08-01.md`.
 
----
-
-## Session A. Prove the BigQuery target
-
-Paste this:
-
-```
-Read CLAUDE.md, then docs/README.md, then docs/plans/plan-4-cloud-first-storage.md.
-
-Execute PLAN-4 steps 3 and 4 only. Stop after step 4 and report.
-
-Step 3 is the whole point of this session: run `make load-bigquery` then
-`make build-bigquery` against the local zone exactly as it stands, change
-no scope and no models first, and then compare stg_datasf__311_cases row
-for row between DuckDB and BigQuery. Use an order-independent content hash
-of the full model on both engines, the same technique the 2026-07-31 dev
-note used to verify the rebuild. If the hashes disagree, find the column
-that differs, fix it with a dispatch macro in dbt/macros/cross_engine.sql
-per ADR-1, and re-verify. Do not tolerate a diff and do not narrow the
-comparison to make it pass.
-
-Then step 4: drop the four orphaned raw_ tables in raw_datasf. They came
-from the pre-ADR-4 code path, are not reproducible from the Parquet zone,
-and are 6.44 GB against a 10 GiB free-tier ceiling. Confirm with me before
-dropping anything.
-
-Load credentials with `set -a; source .env; set +a`.
-
-Append a dev note to docs/dev-notes/2026-07-31.md (or today's file if the
-date has rolled) recording: whether billing is attached, the two hashes,
-what disagreed if anything, and the BigQuery storage before and after.
-Record it whether it passes or fails. A failure here is the most useful
-result this repo has produced in weeks.
-
-Do not commit or push. Leave everything in the working tree and tell me
-what is there.
-```
-
-**Checkpoint before session B:** the dev note says the two engines agree, or
-says exactly how they disagree and what fixed it. `raw_datasf` is empty of
-materialized raw tables. This closes PLAN-1 step 4, which has been open since
-the plan was written.
+The one thing left in PLAN-4 is outside a session's control: commit, add the
+`GCS_BUCKET` repository secret, and let one scheduled `ingest` run go green.
+Do that before starting C, because C changes the dataset registry and a red
+nightly job is much harder to attribute afterwards.
 
 ---
 
-## Session B. Move the raw zone to GCS and make BigQuery read it
+## Session B-remainder. Done 2026-08-01. Kept for the record only
 
-Paste this:
+Do not run this again. The prompt is left here because the constraints in it are
+the reason the session went the way it did, and because the plan annotations
+refer back to it.
 
 ```
-Read CLAUDE.md, docs/plans/plan-4-cloud-first-storage.md, and the most
-recent file in docs/dev-notes/.
+Read CLAUDE.md, docs/decisions/adr-9-cloud-raw-zone.md,
+docs/plans/plan-4-cloud-first-storage.md, and
+docs/dev-notes/2026-08-01.md.
 
-Execute PLAN-4 steps 5 through 11.
+Execute PLAN-4 steps 6, 8 and 11. Steps 1 to 5, 7 and 9 are done; do not
+redo them.
 
-Answer the plan's first open question before writing any code: does
-DuckDB's httpfs read gs:// with the service account directly, or does it
-need HMAC interoperability keys? Test it in a scratch script and tell me
-the answer, because it changes what .env.example has to document.
+Step 6 is the substance: ingest.py writes to the raw zone URI when it is
+set, and spatial.py writes the derived zone the same way. The read side is
+already built, so use it: ingestion/remote.py owns the local-or-bucket
+question and the authentication, and the write paths in raw_zone.py and
+derived_zone.py currently raise NotImplementedError on a remote root,
+which is where your change goes. Do not add a second way to talk to GCS.
 
-Constraints that are not negotiable here:
-- read_sql() in ingestion/raw_zone.py stays the single reader. Add the
-  remote case to it; do not add a second reader.
-- `make ci-build` must still pass with no credentials and no bucket. Run
-  it before you finish. If the change makes CI need a bucket, the change
-  is wrong and should be redesigned, not worked around.
-- Models do not change. source('raw_datasf', 'raw_311_cases') resolves the
-  same on both engines whether the underlying table is materialized or
-  external.
+Constraints that are not negotiable:
+- ingest.py's incremental watermark is the subtlest code in the repo and
+  its failure mode is a silent full backfill of 8.8 million rows, not an
+  error. Change it deliberately, in its own commit-sized step, and verify
+  a resumed run fetches zero rows before you touch anything else.
+- The raw zone is append-only. A remote write adds objects; it never
+  rewrites a prefix. The one exception is --full-refresh, and swapping a
+  whole tree atomically is harder on object storage than on a filesystem,
+  so if you cannot do it atomically, say so rather than doing it
+  non-atomically.
+- RAW_ZONE_DIR must keep beating RAW_ZONE_URI. `make ci-build` depends on
+  it and so does every fork pull request.
+- Run `make check` in a clean shell AND with `.env` sourced. Both must be
+  green and both must stay local.
 
-Step 10 is a real ADR, not a note. ADR-9 supersedes ADR-4, because ADR-4's
-"loading replaces rather than appends" stops being true on BigQuery and
-docs/README.md has no vocabulary for a partial supersede. Restate what
-carries forward: the directory layout, the run manifests, the watermark
-coming only from the zone, and the (:updated_at, :id) ordering. Set ADR-4
-to status: superseded with a related pointer and change nothing else in
-it. Follow docs/decisions/TEMPLATE.md, and argue the options you rejected
-as seriously as the existing ADRs do.
+Then step 8: delete the cache step in .github/workflows/ingest.yml and
+rewrite the long comment at the top of that file, which is mostly about
+the cache. The cache existed to carry the local zone between runs, and
+step 6 is what makes it unnecessary.
 
-Then close PLAN-1: status done, steps 4 and 5 ticked.
+Then step 11: close PLAN-1. status: done, step 5 ticked, and point its
+remaining open question at ADR-9.
 
-Update CLAUDE.md, the Makefile header and ingest.py's docstring, all three
-of which currently describe data/raw as the durable zone. It is a cache
-now.
+One thing to decide and record rather than assume: after step 6, is
+data/raw still written at all, or does a remote run write only to the
+bucket? A local copy that is sometimes written and sometimes not is worse
+than either. Whichever you choose, say it in the dev note and in CLAUDE.md.
 
 Do not commit or push.
 ```
 
-**Checkpoint:** a clone with no `data/` directory runs `make load && make
-build`. `ingest.yml` has no cache step. One scheduled run has gone green.
+**Checkpoint:** a scheduled ingest run writes to the bucket, `ingest.yml` has no
+cache step, PLAN-1 is closed, and `make check` is green both with and without
+`.env` loaded.
 
 ---
 

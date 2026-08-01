@@ -1,24 +1,33 @@
 name: ingest
 
-# Daily ingestion. Two steps since ADR-4: pull Socrata into the Parquet raw
-# zone, then load that zone into BigQuery. Only the second step needs
-# credentials.
+# Daily ingestion. Three steps: pull Socrata into the Parquet raw zone,
+# recompute the derived zone from it, then point BigQuery at both. Every step
+# needs credentials now, because the zones are in GCS (ADR-9).
 #
-# THE RAW ZONE DOES NOT SURVIVE THE RUNNER. GitHub runners are ephemeral, so
-# data/raw starts empty unless it is restored, and an empty zone means
-# read_watermark returns nothing and ingestion backfills from start_date. The
-# cache step below is what stops that happening every night.
+# THE RUNNER HOLDS NOTHING. It does not need to. The zones are bucket prefixes,
+# named by RAW_ZONE_URI and DERIVED_ZONE_URI below, so ingest.py reads the
+# watermark from GCS and appends Parquet to GCS, and the runner's disk is
+# scratch space that nothing is expected to survive on.
 #
-# It is a mitigation, not the answer. Actions caches are evicted after 7 days
-# untouched and capped at 10 GB per repository, so a large enough raw zone
-# will start missing and quietly turn every run into a full backfill. Where
-# the Parquet actually lives long term is step 5 of
-# docs/plans/plan-1-duckdb-parquet.md and needs its own ADR.
+# This used to be the hard part of this file. An ephemeral runner starts with an
+# empty data/raw, an empty zone makes read_watermark return nothing, and
+# ingestion then backfills from start_date: 8.8 million rows for 311, unattended.
+# The mitigation was an actions/cache step keyed per run with a restore-keys
+# prefix, carrying the zone from one night to the next. It worked, and it had a
+# 7 day fuse: Actions caches are evicted after 7 days untouched and capped at
+# 10 GB per repository, so a large enough zone would start missing and quietly
+# turn every run into a full backfill. Deleted on 2026-08-01 with PLAN-4 step 6.
+# Durable storage is the answer to durable storage, and a cache that expires is
+# not it.
 #
-# Worth knowing about the failure mode, because it is much better than the one
-# ADR-1 was written about: a cache miss costs a slow expensive backfill, and
-# the load step then replaces the BigQuery table wholesale, so the result is
-# still correct. The old failure silently skipped rows instead.
+# What replaces it is not a smaller mitigation, it is the absence of the
+# problem. There is no restore to miss. The one failure mode left is a bucket
+# that cannot be listed, which raises rather than returning an empty zone, and
+# ingest.py now says out loud when it is backfilling rather than resuming.
+#
+# The load step is unchanged in what it produces and much cheaper in how:
+# BigQuery reads the Parquet where it lies through external tables, so there is
+# no copy of the raw bytes and no replace-on-load rewrite.
 
 on:
   schedule:
@@ -34,7 +43,14 @@ jobs:
   ingest:
     runs-on: ubuntu-latest
     env:
-      RAW_ZONE_DIR: ${{ github.workspace }}/data/raw
+      # The zones are the bucket, so every step below reads and writes GCS and
+      # nothing is kept on the runner. Deliberately NOT RAW_ZONE_DIR: DIR beats
+      # URI, so setting it here would silently send the whole job back to a
+      # local zone on an ephemeral disk, which is the arrangement this workflow
+      # just stopped depending on.
+      RAW_ZONE_URI: gs://${{ secrets.GCS_BUCKET }}/raw
+      DERIVED_ZONE_URI: gs://${{ secrets.GCS_BUCKET }}/derived
+      GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/sa.json
     steps:
       - uses: actions/checkout@v4
 
@@ -45,45 +61,33 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      # Restores the most recent zone and saves a new one at job end. The key
-      # is unique per run so every run writes a fresh entry; restore-keys is
-      # the prefix that finds the newest previous one.
-      - name: Restore the Parquet raw zone
-        uses: actions/cache@v4
-        with:
-          path: data/raw
-          key: raw-zone-${{ github.run_id }}
-          restore-keys: raw-zone-
-
-      - name: Report the watermark we are resuming from
-        run: |
-          echo "Raw zone contents before this run:"
-          du -sh data/raw 2>/dev/null || echo "  empty (this run will backfill)"
+      # First, not last. Ingestion itself needs the bucket now, so the key has
+      # to exist before the first step that touches a zone rather than before
+      # the BigQuery load.
+      - name: Write service account key
+        env:
+          GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
+        run: printf '%s' "$GCP_SA_KEY" > "$RUNNER_TEMP/sa.json"
 
       - name: Ingest into the Parquet raw zone
         env:
           SOCRATA_APP_TOKEN: ${{ secrets.SOCRATA_APP_TOKEN }}
         run: python ingestion/ingest.py --all
 
-      # Rebuilt from scratch every run rather than cached alongside the raw
-      # zone. The derived zone is a pure function of data/raw plus
-      # spatial.py, so caching it would only create a way for the two to
-      # disagree: a cache hit carrying cells computed by last week's code is
-      # indistinguishable from a fresh one, and the disagreement would surface
-      # as boundary assignments that quietly stopped matching the boundaries.
-      # It costs a few minutes and buys not having to think about that.
+      # Recomputed in full every run rather than carried over. The derived zone
+      # is a pure function of the raw zone plus spatial.py, so keeping a copy
+      # would only create a way for the two to disagree: cells computed by last
+      # week's code are indistinguishable from fresh ones, and the disagreement
+      # would surface as boundary assignments that quietly stopped matching the
+      # boundaries. It costs a few minutes and buys not having to think about
+      # that. It reads the raw zone over the network now, which is the slowest
+      # step in the job; PLAN-5 makes it incremental.
       - name: Precompute H3 cells and boundary membership
         run: python ingestion/spatial.py --all
 
-      - name: Write service account key
-        env:
-          GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
-        run: printf '%s' "$GCP_SA_KEY" > "$RUNNER_TEMP/sa.json"
-
-      - name: Load the raw zone into BigQuery
+      - name: Point BigQuery at both zones
         env:
           GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/sa.json
         run: python ingestion/load.py --all --target bigquery
 
       # The key is written to RUNNER_TEMP, which GitHub discards with the

@@ -1,7 +1,10 @@
 """Layout of the derived zone, and the only code that reads or writes it.
 
-    data/derived/<table>.parquet
-    data/derived/_manifest.json
+Under `data/derived`, or under a `gs://` prefix when `DERIVED_ZONE_URI` is set
+(ADR-9). One layout, one reader, one writer, either way:
+
+    <root>/<table>.parquet
+    <root>/_manifest.json
 
 The sibling of `raw_zone.py`, and deliberately almost its opposite. The raw
 zone is append-only, hive-partitioned, all-STRING, and holds what an API sent
@@ -29,16 +32,19 @@ Three consequences worth knowing:
   - Types are real. `h3_r9` is a BIGINT, not a string of digits. The
     all-STRING contract exists so that the raw zone cannot silently lose
     information the API sent; it buys nothing for a column we computed.
-  - Deleting `data/derived/` is always safe.
+  - Deleting the zone is always safe, local or remote. `make spatial` rebuilds
+    it exactly, which is why `write_table` is allowed to replace an object here
+    and `raw_zone.write_batch` is not.
 """
 
 import json
-import os
 from datetime import datetime, timezone
 from pathlib import Path
 
 import pyarrow as pa
 import pyarrow.parquet as pq
+
+import remote
 
 MANIFEST_NAME = "_manifest.json"
 
@@ -50,20 +56,29 @@ MANIFEST_NAME = "_manifest.json"
 RAW_INPUTS_KEY = "raw_inputs"
 
 
-def derived_root() -> Path:
-    """Root of the derived zone. DERIVED_ZONE_DIR exists so CI can isolate it."""
-    return Path(os.environ.get("DERIVED_ZONE_DIR", "data/derived"))
+def derived_root() -> Path | str:
+    """Root of the derived zone: a local directory, or a gs:// prefix.
+
+    `DERIVED_ZONE_DIR` exists so CI can isolate it, `DERIVED_ZONE_URI` so the
+    zone can live in a bucket (ADR-9). DIR wins when both are set, for the reason
+    in ingestion/remote.py: `make ci-build` sets DIR and must stay local.
+    """
+    location = remote.zone_location("DERIVED_ZONE_DIR", "DERIVED_ZONE_URI", "data/derived")
+    return location if remote.is_remote(location) else Path(location)
 
 
-def derived_path(table: str, root: Path | None = None) -> Path:
-    return (root or derived_root()) / f"{table}.parquet"
+def derived_path(table: str, root: Path | str | None = None) -> Path | str:
+    return remote.child(root if root is not None else derived_root(), f"{table}.parquet")
 
 
-def has_data(table: str, root: Path | None = None) -> bool:
-    return derived_path(table, root).exists()
+def has_data(table: str, root: Path | str | None = None) -> bool:
+    path = derived_path(table, root)
+    if remote.is_remote(path):
+        return bool(remote.glob(str(path)))
+    return path.exists()
 
 
-def read_sql(table: str, root: Path | None = None) -> str:
+def read_sql(table: str, root: Path | str | None = None) -> str:
     """SQL fragment that reads one derived table.
 
     No hive partitioning and no union_by_name, unlike the raw zone: there is
@@ -74,7 +89,9 @@ def read_sql(table: str, root: Path | None = None) -> str:
     return f"read_parquet('{path}')"
 
 
-def write_table(table: str, rows: list[dict], schema: pa.Schema, root: Path | None = None) -> Path:
+def write_table(
+    table: str, rows: list[dict], schema: pa.Schema, root: Path | str | None = None
+) -> Path | str:
     """Replace one derived table. Returns its path.
 
     The schema is passed in rather than inferred. Inference on a list of dicts
@@ -82,20 +99,28 @@ def write_table(table: str, rows: list[dict], schema: pa.Schema, root: Path | No
     out false would type the column differently from one where some were null,
     and the two Parquet files would then disagree about a column that never
     changed meaning.
+
+    Replacing is allowed here and forbidden in the raw zone, which is the whole
+    difference between the two. Overwriting one object in GCS is atomic in the
+    same sense the local write is: a reader gets the old file or the new one.
+    Neither is atomic across the six tables, remote or local, so a reader during
+    a `make spatial` can still see a mix; `_manifest.json` is written last so
+    that a mix is at least detectable afterwards.
     """
     destination = derived_path(table, root)
+    batch = pa.Table.from_pylist(rows, schema=schema)
+    if remote.is_remote(destination):
+        with remote.open_write(destination) as handle:
+            pq.write_table(batch, handle, compression="snappy")
+        return destination
     destination.parent.mkdir(parents=True, exist_ok=True)
-    pq.write_table(
-        pa.Table.from_pylist(rows, schema=schema),
-        destination,
-        compression="snappy",
-    )
+    pq.write_table(batch, destination, compression="snappy")
     return destination
 
 
 def write_manifest(
-    entries: list[dict], root: Path | None = None, raw_inputs: dict | None = None
-) -> Path:
+    entries: list[dict], root: Path | str | None = None, raw_inputs: dict | None = None
+) -> Path | str:
     """Record what this run of spatial.py built, next to what it built.
 
     `raw_inputs` is what it was built from. Omitted rather than written empty
@@ -103,27 +128,38 @@ def write_manifest(
     a spatial.py that did not record its inputs" apart from "built from an
     empty raw zone". The first cannot be checked for staleness; the second can.
     """
-    directory = root or derived_root()
-    directory.mkdir(parents=True, exist_ok=True)
-    destination = directory / MANIFEST_NAME
+    directory = root if root is not None else derived_root()
     payload: dict = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "tables": entries,
     }
     if raw_inputs is not None:
         payload[RAW_INPUTS_KEY] = raw_inputs
-    destination.write_text(json.dumps(payload, indent=2) + "\n")
+    text = json.dumps(payload, indent=2) + "\n"
+    if remote.is_remote(directory):
+        return remote.write_text(remote.child(directory, MANIFEST_NAME), text)
+    directory.mkdir(parents=True, exist_ok=True)
+    destination = directory / MANIFEST_NAME
+    destination.write_text(text)
     return destination
 
 
-def read_manifest(root: Path | None = None) -> dict | None:
+def read_manifest(root: Path | str | None = None) -> dict | None:
     """The manifest this zone was written with, or None if there is not one.
 
     None covers both "the zone was never built" and "the directory exists but
     the manifest does not", which are the same answer to every caller: there
     is nothing here to compare against.
     """
-    path = (root or derived_root()) / MANIFEST_NAME
+    location = root if root is not None else derived_root()
+    if remote.is_remote(location):
+        # The manifest travels with the zone, so a remote zone has a remote
+        # manifest. Read it through the same filesystem the Parquet goes through.
+        try:
+            return json.loads(remote.read_text(remote.child(location, MANIFEST_NAME)))
+        except (OSError, ValueError):
+            return None
+    path = location / MANIFEST_NAME
     if not path.exists():
         return None
     try:

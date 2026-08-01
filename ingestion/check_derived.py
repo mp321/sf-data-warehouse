@@ -41,6 +41,7 @@ from pathlib import Path
 
 import derived_zone
 import raw_zone
+import remote
 
 # The row counts have to be computed exactly the way spatial.py computed the
 # ones in the manifest, dedup and all, or the comparison invents a difference.
@@ -87,7 +88,7 @@ def compare(current: dict, recorded: dict) -> tuple[list[str], list[str]]:
     return stale, drifted
 
 
-def check(raw_root: Path | None, derived_root: Path | None) -> int:
+def check(raw_root: Path | str | None, derived_root: Path | str | None) -> int:
     """Report on the derived zone. Returns STALE_EXIT if it is behind, else 0."""
     manifest = derived_zone.read_manifest(derived_root)
     if manifest is None:
@@ -105,7 +106,7 @@ def check(raw_root: Path | None, derived_root: Path | None) -> int:
         )
         return 0
 
-    with raw_zone.connect() as con:
+    with raw_zone.connect(raw_root) as con:
         current = spatial.raw_input_state(con, raw_root)
 
     stale, drifted = compare(current, recorded)
@@ -146,15 +147,17 @@ def main() -> None:
     )
     parser.add_argument(
         "--raw-root",
-        type=Path,
+        type=remote.zone_root,
         default=None,
-        help="root of the raw zone (default: $RAW_ZONE_DIR or data/raw)",
+        help="root of the raw zone: a directory or a gs:// prefix "
+        "(default: $RAW_ZONE_DIR, else $RAW_ZONE_URI, else data/raw)",
     )
     parser.add_argument(
         "--derived-root",
-        type=Path,
+        type=remote.zone_root,
         default=None,
-        help="root of the derived zone (default: $DERIVED_ZONE_DIR or data/derived)",
+        help="root of the derived zone: a directory or a gs:// prefix "
+        "(default: $DERIVED_ZONE_DIR, else $DERIVED_ZONE_URI, else data/derived)",
     )
     args = parser.parse_args()
 

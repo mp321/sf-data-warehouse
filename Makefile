@@ -5,9 +5,9 @@
 #
 # The pipeline is five steps, and they are separate on purpose (ADR-4, ADR-5):
 #
-#   make ingest    APIs     -> data/raw/*.parquet    needs network, no creds
-#   make spatial   data/raw -> data/derived          needs neither
-#   make load      both     -> DuckDB or BigQuery    needs neither (DuckDB)
+#   make ingest    APIs      -> raw zone             needs network, no creds
+#   make spatial   raw zone  -> derived zone         needs neither
+#   make load      both      -> DuckDB or BigQuery   needs neither (DuckDB)
 #   make build     dbt run + test on the warehouse   needs neither (DuckDB)
 #   make publish   warehouse -> published/           needs neither (local)
 #
@@ -17,8 +17,22 @@
 # quieter failure than it sounds, so `make all` exists to run the four in
 # order.
 #
-# Only the BigQuery targets need Google Cloud credentials, and they are
-# marked (creds). Load them with:
+# WHERE THE ZONES ARE. `data/raw` and `data/derived` by default, and a bucket
+# when RAW_ZONE_URI and DERIVED_ZONE_URI are set (ADR-9). There is no target
+# for the remote zones and there does not need to be one: every target below
+# reads the environment, so `set -a; source .env; set +a; make all` runs the
+# whole pipeline against the bucket, and a shell that has not sourced .env runs
+# it against data/. A run writes to one zone or the other, never to both, so
+# after a remote run `data/` holds whatever the last local run left there and is
+# not a copy of the bucket. Credentials: the remote zones need
+# GOOGLE_APPLICATION_CREDENTIALS, the local ones need nothing.
+#
+# ci-build is the exception that has to stay an exception. It sets the DIR
+# variables on every command, and DIR beats URI, so `make check` is local and
+# credential-free even in a shell that has sourced a .env full of URIs.
+#
+# The BigQuery targets need Google Cloud credentials and are marked (creds).
+# Load them with:
 #   set -a; source .env; set +a
 
 .DEFAULT_GOAL := help

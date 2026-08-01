@@ -1,15 +1,19 @@
 ---
-status: active
+status: done
 date: 2026-07-30
-related: [adr-1-warehouse-targets, adr-2-spatial-strategy, plan-4-cloud-first-storage]
+related: [adr-1-warehouse-targets, adr-2-spatial-strategy, adr-9-cloud-raw-zone, plan-4-cloud-first-storage]
 ---
 
 # PLAN-1. Make DuckDB and Parquet the default path
 
-Seven of eight steps are done. Step 4 (BigQuery row-for-row parity) closed
-2026-07-31 under PLAN-4 step 3. Step 5 (where the Parquet actually lives) is
-the only one left, it is PLAN-4 steps 5 to 10, and closing this plan is PLAN-4
-step 11. Nothing new should be added here.
+**Closed 2026-08-01 under PLAN-4 step 11.** All eight steps are done. Step 4
+(BigQuery row-for-row parity) closed 2026-07-31 under PLAN-4 step 3, and step 5
+(where the Parquet actually lives) closed 2026-08-01: ADR-9 put both zones in
+GCS and PLAN-4 step 6 moved the writer there, so the bucket is written by the
+pipeline rather than synced by hand.
+
+One acceptance criterion below is deliberately left unticked rather than
+massaged; see the closing note. Nothing new should be added here.
 
 ## Goal
 
@@ -59,9 +63,14 @@ non-durable and keeps the silent-full-backfill failure mode live.
 5. Decide where Parquet actually lives long term. `data/` is gitignored and
    therefore durable against BigQuery expiry but not against losing the
    laptop. Candidates: a GCS bucket on the free tier, or Cloudflare R2. This
-   step needs its own ADR. (Still open. The scheduled workflow now caches the
-   zone between runs, which is a mitigation with a 7 day eviction and a 10 GB
-   ceiling, not an answer. See ADR-4.)
+   step needs its own ADR. (**Done 2026-08-01. GCS, ADR-9.** Answered in two
+   halves on the same day: the reader landed under PLAN-4 step 5, DuckDB
+   through fsspec and BigQuery through external tables, and the writer under
+   PLAN-4 step 6, so `ingest.py` appends Parquet straight to the bucket and
+   `spatial.py` writes the derived zone there. The zone is no longer synced by
+   hand and no longer depends on this laptop. Local stays the default and CI
+   stays credential-free, which ADR-1 required and which `RAW_ZONE_DIR` beating
+   `RAW_ZONE_URI` is what enforces.)
 6. Teach `ingest.py` to write Parquet as its output of record, with BigQuery
    becoming a load target fed from those files. (Done 2026-07-31, ADR-4. The
    load became its own command, `ingestion/load.py`, rather than a mode of
@@ -90,17 +99,39 @@ non-durable and keeps the silent-full-backfill failure mode live.
       point staging models. The gap this bullet described was real: CI's
       BigQuery compile proved the SQL was valid there and three of the four
       defects were type errors that only executing could find.
-- [ ] The scheduled BigQuery workflow still goes green untouched. It was not
-      left untouched: `ingest.yml` had to change, because ingestion no longer
-      writes to BigQuery, and a workflow that silently does nothing is worse
-      than one that fails.
-- [ ] Parquet files live somewhere that survives losing this machine.
+- [ ] The scheduled BigQuery workflow still goes green untouched. **Left
+      unticked on purpose.** The premise stopped being true on 2026-07-31 and
+      is now thoroughly false: `ingest.yml` had to change because ingestion no
+      longer writes to BigQuery, and it changed again on 2026-08-01 when the
+      cache step went and the zones became bucket prefixes. A workflow that
+      silently does nothing is worse than one that fails, so "untouched" was the
+      wrong thing to ask for. What is worth asking for is that it goes green
+      after all that, which needs a scheduled run and is tracked in PLAN-4's own
+      Done-when list rather than here.
+- [x] Parquet files live somewhere that survives losing this machine.
+      `gs://<bucket>/raw` and `/derived`, read and written directly by the
+      pipeline (ADR-9, PLAN-4 step 6). Verified 2026-08-01 by ingesting 395,947
+      rows into the bucket and rebuilding the warehouse from it alone.
 - [x] `ingestion/export_parquet.py` is deleted.
+
+## Closing note
+
+This plan closes with one Done-when box unticked, which is the honest state
+rather than an oversight. Everything the plan set out to do is done; that one
+bullet asked for evidence about a workflow the plan itself made obsolete, and
+the evidence that replaced it belongs to PLAN-4. The remaining substantive
+question this plan raised, whether anything reconciles the run manifests against
+the data, is unanswered and carried to PLAN-4 rather than closed here.
 
 ## Open questions
 
-- Where does the Parquet actually live (step 5)? Needs an ADR. Still the one
-  thing blocking this plan from closing.
+- ~~Where does the Parquet actually live (step 5)?~~ **Answered by ADR-9.** GCS,
+  read through fsspec by DuckDB and as external tables by BigQuery, and written
+  there by `ingest.py` and `spatial.py` themselves since PLAN-4 step 6. Read
+  ADR-9 rather than this plan for the reasoning: it records why fsspec beat
+  httpfs on credentials, why a synced local cache was rejected outright, and
+  what the arrangement costs in read time and in a dependency ceiling. The
+  qualifier this bullet used to carry, that the writer was still local, is gone.
 - ~~Does `get_watermark` read from Parquet or stay on BigQuery?~~ Answered by
   ADR-4: Parquet, and only Parquet. The zone is the record, so it holds the
   position, and there is never a second watermark to drift from.
@@ -110,4 +141,6 @@ non-durable and keeps the silent-full-backfill failure mode live.
 - New, from doing the work: does anything reconcile the run manifests against
   the data? Today nothing does, and `mart_pipeline_freshness` is built so a
   disagreement is visible rather than averaged away, which is not the same as
-  catching it.
+  catching it. **Carried to PLAN-4, still open there.** It outlived this plan
+  because it is about trusting the zone's metadata, not about where the zone
+  lives, and moving the zone to a bucket changed nothing about it.

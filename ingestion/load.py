@@ -45,6 +45,7 @@ import duckdb
 
 import derived_zone
 import raw_zone
+import remote
 from datasets import DATASETS
 
 # Schema the dbt sources point at, on both engines. Keeping the name identical
@@ -79,7 +80,7 @@ def require_env(name: str) -> str:
     return value
 
 
-def _select_all(table: str, root: Path | None) -> str:
+def _select_all(table: str, root: Path | str | None) -> str:
     return f"select * from {raw_zone.read_sql(table, root)}"
 
 
@@ -89,10 +90,23 @@ def _select_all(table: str, root: Path | None) -> str:
 
 
 def load_duckdb(
-    names: list[str], root: Path | None, duckdb_path: Path, derived_root: Path | None = None
+    names: list[str],
+    root: Path | str | None,
+    duckdb_path: Path,
+    derived_root: Path | str | None = None,
 ) -> None:
     duckdb_path.parent.mkdir(parents=True, exist_ok=True)
     with duckdb.connect(str(duckdb_path)) as con:
+        # This connection is opened here rather than by raw_zone.connect(), so it
+        # needs the gs:// filesystem registering explicitly. DuckDB resolves
+        # filesystems per connection, so forgetting this reads a remote zone as a
+        # relative path and fails with "No files found". The arguments win over
+        # the environment, because they are what the rest of this function reads.
+        remote.register(
+            con,
+            root if root is not None else raw_zone.raw_root(),
+            derived_root if derived_root is not None else derived_zone.derived_root(),
+        )
         con.execute(f"create schema if not exists {RAW_SCHEMA}")
         con.execute(f"create schema if not exists {DERIVED_SCHEMA}")
         for name in names:
@@ -113,7 +127,7 @@ def load_duckdb(
     print(f"\nLoaded into {duckdb_path}")
 
 
-def _load_derived_duckdb(con: duckdb.DuckDBPyConnection, derived_root: Path | None) -> None:
+def _load_derived_duckdb(con: duckdb.DuckDBPyConnection, derived_root: Path | str | None) -> None:
     """Materialise the derived zone, or empty tables shaped like it.
 
     Empty rather than absent when `make spatial` has not run: every spatial
@@ -141,9 +155,8 @@ def _load_derived_duckdb(con: duckdb.DuckDBPyConnection, derived_root: Path | No
         )
 
 
-def _load_runs_duckdb(con: duckdb.DuckDBPyConnection, root: Path | None) -> None:
-    manifests = list((root or raw_zone.raw_root()).glob(f"*/{raw_zone.RUNS_DIRNAME}/*.json"))
-    if not manifests:
+def _load_runs_duckdb(con: duckdb.DuckDBPyConnection, root: Path | str | None) -> None:
+    if not _has_run_manifests(root):
         # The freshness mart left-joins this table, so it has to exist even
         # when nothing has ever been ingested. An empty table with the right
         # columns is a better answer than a missing relation.
@@ -155,6 +168,20 @@ def _load_runs_duckdb(con: duckdb.DuckDBPyConnection, root: Path | None) -> None
     )
     count = con.execute(f"select count(*) from {RAW_SCHEMA}.{RUNS_TABLE}").fetchone()[0]
     print(f"[_runs] {count} ingestion runs in {RAW_SCHEMA}.{RUNS_TABLE}")
+
+
+def _has_run_manifests(root) -> bool:
+    """Is there at least one ingestion run manifest in the zone?
+
+    Local and remote need different listing calls, and both are needed: the
+    freshness mart left-joins this table, so an empty one has to be created when
+    nothing has ever been ingested.
+    """
+    location = root if root is not None else raw_zone.raw_root()
+    pattern = f"*/{raw_zone.RUNS_DIRNAME}/*.json"
+    if remote.is_remote(location):
+        return bool(remote.glob(f"{location}/{pattern}"))
+    return bool(list(location.glob(pattern)))
 
 
 def _empty_runs_ddl() -> str:
@@ -173,7 +200,9 @@ def _empty_runs_ddl() -> str:
 # ---------------------------------------------------------------------------
 
 
-def load_bigquery(names: list[str], root: Path | None, derived_root: Path | None = None) -> None:
+def load_bigquery(
+    names: list[str], root: Path | str | None, derived_root: Path | str | None = None
+) -> None:
     # Deferred on purpose, so importing this module costs nothing on the
     # DuckDB path, which is the one that runs on every PR and every local
     # build. Module-scope would make the credential-free path import the
@@ -195,11 +224,24 @@ def load_bigquery(names: list[str], root: Path | None, derived_root: Path | None
         dataset.location = location
         client.create_dataset(dataset, exists_ok=True)
 
+    raw_location = root if root is not None else raw_zone.raw_root()
+    derived_location = derived_root if derived_root is not None else derived_zone.derived_root()
+
     with raw_zone.connect() as reader, tempfile.TemporaryDirectory() as tmp:
+        remote.register(reader, raw_location, derived_location)
         for name in names:
             table = DATASETS[name]["table"]
             if not raw_zone.has_data(table, root):
                 print(f"[{name}] no Parquet in the raw zone; skipped")
+                continue
+            if remote.is_remote(raw_location):
+                _external_table(
+                    client,
+                    f"{project}.{raw_dataset}.{table}",
+                    uris=[f"{remote.child(raw_location, table)}/*.parquet"],
+                    hive_prefix=str(remote.child(raw_location, table)),
+                    label=name,
+                )
                 continue
             _upload(
                 client,
@@ -210,7 +252,7 @@ def load_bigquery(names: list[str], root: Path | None, derived_root: Path | None
                 label=name,
             )
 
-        if list((root or raw_zone.raw_root()).glob(f"*/{raw_zone.RUNS_DIRNAME}/*.json")):
+        if _has_run_manifests(root):
             _upload(
                 client,
                 reader,
@@ -224,6 +266,18 @@ def load_bigquery(names: list[str], root: Path | None, derived_root: Path | None
             if not derived_zone.has_data(table, derived_root):
                 print(f"[spatial] no derived zone for {table}; skipped. Run `make spatial`.")
                 continue
+            if remote.is_remote(derived_location):
+                # No hive partitioning: the derived zone is one file per table,
+                # written by spatial.py, so there are no partition directories to
+                # recover and nothing to infer a key from.
+                _external_table(
+                    client,
+                    f"{project}.{derived_dataset}.{table}",
+                    uris=[str(derived_zone.derived_path(table, derived_root))],
+                    hive_prefix=None,
+                    label="spatial",
+                )
+                continue
             _upload(
                 client,
                 reader,
@@ -232,6 +286,55 @@ def load_bigquery(names: list[str], root: Path | None, derived_root: Path | None
                 Path(tmp) / f"{table}.parquet",
                 label="spatial",
             )
+
+
+def _external_table(client, table_ref: str, *, uris: list[str], hive_prefix, label: str) -> None:
+    """Point BigQuery at the Parquet in GCS instead of copying it in (ADR-9).
+
+    Zero BigQuery storage, and no replace-on-load rewrite: the zone is the record
+    and BigQuery reads it where it lies. It also removes the arrangement that ran
+    out of room, which was a 6.44 GB all-STRING copy of a 162 MB Parquet zone
+    against a 10 GiB free tier, since BigQuery's logical bytes for STRING columns
+    are roughly ten times the Parquet on disk.
+
+    Three details are load bearing, and each one was found by trying the
+    alternative:
+
+      *.parquet, not *   The run manifests live at `<table>/_runs/*.json`, inside
+                         the table directory. A bare `*` picks them up and the
+                         table fails to read with "Incompatible partition
+                         schemas", because a JSON file has no ingest_date=
+                         directory above it.
+      mode=STRINGS       Keeps `ingest_date` a STRING. BigQuery otherwise infers
+                         DATE from `ingest_date=2026-07-31`, which would put one
+                         non-STRING column in an all-STRING raw table and break
+                         the contract every staging model is written against.
+                         This is the exact counterpart of DuckDB's
+                         `hive_types_autocast = 0` in raw_zone.read_sql.
+      delete then create BigQuery cannot convert a materialized table into an
+                         external one in place, and this step exists partly to
+                         remove those copies.
+    """
+    from google.cloud import bigquery  # noqa: PLC0415  (see load_bigquery)
+
+    external = bigquery.ExternalConfig("PARQUET")
+    external.source_uris = uris
+    external.autodetect = True
+    if hive_prefix:
+        options = bigquery.HivePartitioningOptions()
+        options.mode = "STRINGS"
+        options.source_uri_prefix = hive_prefix
+        external.hive_partitioning = options
+
+    table = bigquery.Table(table_ref)
+    table.external_data_configuration = external
+    client.delete_table(table_ref, not_found_ok=True)
+    client.create_table(table)
+    # An external table reports num_rows as 0, so count instead of reading
+    # metadata. It is also the only cheap proof that the URIs actually resolve:
+    # create_table succeeds against a prefix that matches nothing at all.
+    rows = next(iter(client.query(f"select count(*) as n from `{table_ref}`").result())).n
+    print(f"[{label}] {rows} rows in {table_ref} (external, reading {uris[0]})")
 
 
 def _upload(client, reader, table_ref: str, query: str, staged: Path, *, label: str) -> None:
@@ -274,15 +377,17 @@ def main() -> None:
     )
     parser.add_argument(
         "--raw-root",
-        type=Path,
+        type=remote.zone_root,
         default=None,
-        help="root of the raw zone (default: $RAW_ZONE_DIR or data/raw)",
+        help="root of the raw zone: a directory or a gs:// prefix "
+        "(default: $RAW_ZONE_DIR, else $RAW_ZONE_URI, else data/raw)",
     )
     parser.add_argument(
         "--derived-root",
-        type=Path,
+        type=remote.zone_root,
         default=None,
-        help="root of the derived zone (default: $DERIVED_ZONE_DIR or data/derived)",
+        help="root of the derived zone: a directory or a gs:// prefix "
+        "(default: $DERIVED_ZONE_DIR, else $DERIVED_ZONE_URI, else data/derived)",
     )
     args = parser.parse_args()
 

@@ -114,38 +114,112 @@ replace-on-load rewrite entirely.
    is gone. Human decision, recorded because it is not reversible: the old rows
    were not snapshotted. `raw_datasf` still holds materialized raw tables, and
    emptying it of those is step 7, not this step.
-   **Blocked as of 2026-07-31 on one IAM grant.** Steps 5 through 9 all need the
-   service account to reach the bucket, and it cannot: `sf-dw-pipeline@` gets
-   403 `storage.buckets.get` on `gs://sf-data-bucket-mp`. The bucket was created
-   under a human identity and never shared with the pipeline identity. Unblock
-   with, from an identity that owns the bucket:
+   **Unblocked 2026-08-01.** `roles/storage.objectAdmin` was granted to
+   `sf-dw-pipeline@` and every object read and write works. Note the grant looks
+   like it failed if you test it wrong: objectAdmin deliberately does not include
+   `storage.buckets.get`, so `client.get_bucket()` still returns 403 while
+   `client.bucket()` plus object operations succeed. `publish/export.py` already
+   used the latter. The command that granted it, for the record:
 
        gcloud storage buckets add-iam-policy-binding gs://sf-data-bucket-mp \
          --member=serviceAccount:sf-dw-pipeline@sf-data-warehouse.iam.gserviceaccount.com \
          --role=roles/storage.objectAdmin
 
-   Nothing below this line has been attempted, so treat the two routes in the
-   open question as still open.
+   Steps 6 and 8 below are the two that remain.
 5. **Teach `raw_zone.py` a GCS prefix.** `RAW_ZONE_URI` alongside
    `RAW_ZONE_DIR`: when set, `read_sql()` reads
    `gs://<bucket>/raw/<table>/**/*.parquet` through DuckDB's httpfs with the
    same three load-bearing options, and `write_batch` writes there. Local
    remains the default. `read_sql()` stays the single reader; do not add a
    second one for the remote case.
+
+   **Done 2026-08-01, reads only.** fsspec rather than httpfs, decided by
+   measurement and recorded in ADR-9. The new `ingestion/remote.py` owns the
+   local-or-bucket question and the authentication, `read_sql()` is still the
+   single reader in both zone modules, and `DERIVED_ZONE_URI` got the same
+   treatment because `load.py` and BigQuery both need the derived zone too.
+   `write_batch`, `write_table` and `write_manifest` raise `NotImplementedError`
+   on a remote root rather than writing a local directory called `gs:`, which is
+   what `pathlib` does with a URI. Writing remotely is step 6 and is deliberately
+   still open.
 6. **`ingest.py` writes to the zone URI when it is set.** `data/raw` becomes a
    local cache rather than the record. Say so in the module docstring, in
    CLAUDE.md's directory conventions, and in the Makefile header, all three of
    which currently describe `data/raw` as the durable zone.
+
+   **Done 2026-08-01, and the step's own wording had to be corrected.** `data/raw`
+   is not a cache. A run writes to the configured zone and to nothing else, so a
+   remote run leaves `data/` holding whatever the last local run put there. The
+   alternative, writing both, is ADR-9's rejected option D: two copies with
+   nothing to detect divergence, and worse than the ADR's version because only
+   the machines that happen to run `make ingest` would have the second copy.
+   Recorded that way in the three places named plus `.env.example`.
+
+   The writer is in `raw_zone.write_batch`, `raw_zone.write_run_manifest`,
+   `derived_zone.write_table` and `derived_zone.write_manifest`, all four of
+   which used to raise `NotImplementedError` on a remote root. `remote.py` grew
+   `open_write`, `write_text` and `read_text`, so it is still the only module
+   that knows what a bucket is. Three findings:
+
+   - **`type=Path` on `--raw-root` was the silent-backfill bug, sitting in the
+     open.** `Path("gs://b/raw")` collapses to `gs:/b/raw`, so `read_watermark`
+     found nothing, returned None, and `resolve_watermark` fell through to
+     `start_date`: 8.8 million rows for 311, no error. Harmless while writes
+     raised, live the moment they stopped. Fixed with `remote.zone_root`, used by
+     all four CLIs, and `resolve_watermark` now announces a backfill instead of
+     performing one quietly.
+   - **`--full-refresh` cannot be done atomically on GCS, so it is refused.**
+     Locally it renames a finished tree into place. Object storage has no rename
+     and no multi-object transaction, so the same swap is a delete of everything
+     followed by a copy of everything, and an interruption inside that window
+     loses the raw zone outright. Refusing before the first API call, with the
+     local-then-upload recipe in the message, beat doing it non-atomically.
+   - **Nothing about the layout had to change.** Hive partitioning, the
+     `_runs/` directory, `union_by_name` across files with different column
+     sets, and BIGINT round trips all work identically on the bucket, verified
+     against a scratch prefix before the real zone was touched.
 7. **`load.py --target bigquery` creates external tables over the GCS prefix**
    instead of loading bytes. Same dataset name, same table names, same schema.
    `load.py --target duckdb` is unchanged. The derived zone follows the same
    pattern.
+
+   **Done 2026-08-01.** 15 external tables, every row count identical to DuckDB,
+   and `dbt build --target bigquery` green on them. BigQuery storage went from
+   8.02 GB to 40.96 MB. Two things had to be discovered by trying the
+   alternative: the source URI must be `<table>/*.parquet` and not `<table>/*`,
+   because the run manifests live inside the table directory and a bare wildcard
+   fails the whole table with "Incompatible partition schemas"; and hive
+   partitioning needs `mode=STRINGS` or BigQuery infers DATE for `ingest_date`
+   and puts a non-STRING column in an all-STRING raw table. One exception:
+   `raw_ingest_runs` stays materialized, because the manifests are JSON arrays
+   rather than newline-delimited JSON.
 8. **Delete the cache step in `ingest.yml`.** The restore-key hack and the
    silent-backfill failure mode it mitigated both go away with it. Update the
    long comment at the top of that file, which is mostly about the cache.
+
+   **Done 2026-08-01.** The cache step is gone and the header is rewritten around
+   what replaced it, which is not a smaller mitigation but the absence of the
+   problem: there is no restore to miss. Three consequential edits beyond the
+   deletion. The job's `env:` no longer sets `RAW_ZONE_DIR`, because DIR beats
+   URI and leaving it would have quietly sent the whole workflow back to a local
+   zone on an ephemeral disk. It sets `RAW_ZONE_URI` and `DERIVED_ZONE_URI` from
+   a new `GCS_BUCKET` repository secret, so SETUP.md now asks for four secrets
+   rather than three. And the service account key is written first rather than
+   just before the BigQuery load, because ingestion itself now needs the bucket.
+   Not run: a scheduled run has not happened, so the Done-when box below stays
+   open until one does.
 9. **Run `make publish PUBLISH_DEST=gs://<bucket>/published` once, for real.**
    ADR-8's remote path stops being code that has never been executed. Verify
    the manifest lands last, as the ADR says it should.
+
+   **Done 2026-08-01.** 2,885 objects uploaded, and `published/manifest.json`
+   confirmed as the last object written, so ADR-8's ordering requirement holds in
+   practice and not just in the code. The number is the finding: 2,885 objects is
+   2,885 Class A operations against a free tier of 5,000 per month, so a second
+   publish in the same month leaves the free tier. It also took 6 minutes 39 for
+   17 MB, because the cost is per object and the H3 mart partitions into
+   thousands of small ones. Either batch the upload or coarsen the partitioning
+   before this runs on a schedule.
 10. **Write ADR-9.** It supersedes ADR-4, because ADR-4's "loading replaces
     rather than appends" no longer holds on BigQuery, and the rule in
     `docs/README.md` has no vocabulary for a partial supersede. Restate what
@@ -155,6 +229,16 @@ replace-on-load rewrite entirely.
     nothing else in it.
 11. **Close PLAN-1.** Set `status: done`, tick steps 4 and 5, and point its
     remaining open question at ADR-9.
+
+    **Done 2026-08-01.** `status: done`, steps 4 and 5 both closed, and the
+    "where does the Parquet live" question now points at ADR-9 with the "but the
+    writer is local" qualifier removed. Two things were not tidied away. Its
+    Done-when box asking that the scheduled workflow "still goes green
+    untouched" is left unticked on purpose, because the premise is false twice
+    over: `ingest.yml` changed under PLAN-1 and changed again under step 8 above,
+    and a green run after those changes is tracked here rather than there. And
+    the run-manifest reconciliation question is marked carried to this plan
+    rather than closed, because it is still true that nothing reconciles them.
 
 ## Out of scope
 
@@ -172,16 +256,26 @@ replace-on-load rewrite entirely.
 - [x] `stg_datasf__311_cases` returns identical rows on both targets, or the
       disagreement has been fixed with a macro and re-verified. All six point
       staging models are identical, verified by `scripts/parity-check.py`.
-- [ ] The zone is listed under `gs://<bucket>/raw/`, and a clone with no
-      `data/` directory can run `make load && make build`. Blocked on the IAM
-      grant above.
-- [ ] `raw_datasf` in BigQuery contains no materialized raw table. Still four,
-      now reproducible from the zone rather than orphaned. Needs step 7.
-- [ ] `ingest.yml` has no cache step and one scheduled run has gone green.
-- [x] `make ci-build` still passes with no credentials and no bucket.
-- [ ] `published/` has been written to a real bucket once.
-- [ ] ADR-9 written, ADR-4 superseded, PLAN-1 closed. PLAN-1 step 4 is closed;
-      step 5 is what ADR-9 is about and it is still open.
+- [x] The zone is listed under `gs://<bucket>/raw/`, and a clone with no
+      `data/` directory can run `make load && make build`. Verified 2026-08-01
+      into a scratch warehouse: 37 second load from the bucket, `PASS=196`.
+- [x] `raw_datasf` in BigQuery contains no materialized raw table. Nine
+      external, plus `raw_ingest_runs`, which cannot be external and is 19 rows
+      of metadata rather than a raw DataSF table.
+- [ ] `ingest.yml` has no cache step and one scheduled run has gone green. The
+      cache step is gone (step 8). The scheduled run has not happened, and
+      cannot until the change is committed and the `GCS_BUCKET` secret exists.
+      **This is the only thing left in this plan.**
+- [x] `make ci-build` still passes with no credentials and no bucket. Re-verified
+      2026-08-01 after the writer landed, in a clean shell and in one with `.env`
+      sourced, and the write path was asserted directly: with both DIR and URI
+      set, `write_batch` and `write_run_manifest` land on disk.
+- [x] `published/` has been written to a real bucket once.
+- [x] ADR-9 written, ADR-4 superseded, PLAN-1 closed under step 11.
+- [x] New, added by doing the work: the pipeline writes the zone it reads.
+      `ingest.py` appended 395,947 rows to `gs://<bucket>/raw` and `spatial.py`
+      wrote all six derived tables to `gs://<bucket>/derived`, then a warehouse
+      built from those two prefixes alone came out `PASS=196 ERROR=0`.
 - [x] New, added by doing the work: a repeatable cross-engine row comparison
       exists rather than a one-off hash captured in a dev note.
 
@@ -206,18 +300,20 @@ replace-on-load rewrite entirely.
   are Python rather than C++, and it conflicts with having httpfs loaded, so
   the two cannot be mixed in one connection.
 
-  Recommendation, to be confirmed by measurement rather than accepted: start
-  with fsspec, because one credential is worth more here than throughput on a
-  zone measured in hundreds of megabytes. Measure a full `load.py` run both
-  ways before committing to it in ADR-9, and record both numbers there. If
-  fsspec turns out to be minutes rather than seconds slower, HMAC wins and the
-  second credential is the price.
+  **Answered 2026-08-01: fsspec, recorded in ADR-9.** httpfs was tested and
+  cannot use the service account at all: `provider credential_chain` is rejected
+  for `type gcs` and a bare gcs secret 403s, so it is HMAC or nothing. fsspec
+  costs 8.83 seconds against 1.48 local for a full scan of the three largest
+  tables, and 37 seconds for a whole `load.py` run from the bucket, which is not
+  worth a second credential. The real cost turned out to be a version ceiling
+  rather than throughput: `gcsfs` 2026.x and `dbt-bigquery` cannot coexist, so
+  `requirements.txt` pins `gcsfs<2026` with the reason written down.
 
   Note this only affects DuckDB reading the zone. BigQuery external tables
   read GCS with the querying identity's own credentials and need neither.
-- Where do the run manifests live once the zone is remote? They are JSON
-  beside the Parquet today and `runs_read_sql()` globs them locally. The
-  simplest answer is that they move with the zone, but it needs checking that
-  `read_json` over `gs://` behaves the same.
+- ~~Where do the run manifests live once the zone is remote?~~ Answered: they
+  move with the zone, and `read_json` over `gs://` reads all 19 of them
+  correctly. They are also the reason external table URIs need `*.parquet`
+  rather than `*`, since they sit inside the table directory.
 - Does anything reconcile the run manifests against the data? Carried forward
   from PLAN-1 and still true: nothing does.

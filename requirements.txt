@@ -34,6 +34,26 @@ duckdb>=1.0
 # major bump is a rewrite of spatial.py rather than an upgrade.
 h3>=4.0,<5.0
 
+# Object storage, for the Parquet zones in GCS and for `make publish` uploads
+# (ADR-9). Two bounds, both load bearing and both discovered the hard way:
+#
+#   gcsfs<2026            2026.x requires google-cloud-storage>=3.11, and
+#                         dbt-bigquery caps it below 3.2, so the newest gcsfs
+#                         and this project's dbt adapter cannot coexist.
+#                         Installing it anyway leaves an importable gcsfs that
+#                         raises ModuleNotFoundError on
+#                         google.cloud.storage.asyncio at first use.
+#   google-cloud-storage  pinned explicitly rather than inherited from
+#                         dbt-bigquery, because publish/export.py imports it
+#                         directly and a transitive dependency that a dbt
+#                         upgrade could drop is not a dependency.
+#
+# fsspec rather than DuckDB's httpfs is a decision, not a default: httpfs needs
+# HMAC interoperability keys, which means a second credential. ADR-9 has the
+# argument and the measurements.
+gcsfs>=2025.5,<2026
+google-cloud-storage>=2.14,<3.2
+
 # numpy is already present transitively via pyarrow, and is pinned here
 # because ingestion/geometry.py imports it directly for the vectorised
 # point-in-polygon test. Point by point in pure Python that step took
