@@ -49,7 +49,21 @@ sf_data_warehouse:
 
     bigquery:
       type: bigquery
-      method: service-account
+      # The method depends on whether a key file exists, and that is load
+      # bearing for the credential-free BigQuery compile that gates every pull
+      # request. `service-account` makes the adapter read `keyfile` while it is
+      # building the connection, and with no credentials that path is the empty
+      # string, so it fails as `[Errno 2] No such file or directory: ''` before
+      # a single model is rendered. The message names neither the profile, the
+      # target, nor the variable that is missing. Whether it fails at all turns
+      # out to depend on the resolved google-auth version, so it appeared in CI
+      # on Python 3.11 while the same commands passed locally on 3.14.
+      #
+      # `oauth` asks google-auth to find credentials in the ambient environment
+      # rather than in a named file. With none, nothing is opened and nothing
+      # raises until something actually queries, which is exactly the property
+      # `dbt compile` needs: it renders SQL and never connects.
+      method: "{{ 'service-account' if env_var('GOOGLE_APPLICATION_CREDENTIALS', '') else 'oauth' }}"
       keyfile: "{{ env_var('GOOGLE_APPLICATION_CREDENTIALS', '') }}"
       project: "{{ env_var('GCP_PROJECT_ID', '') }}"
       dataset: dbt_dev

@@ -30,12 +30,37 @@
 {%- endmacro -%}
 
 
+{#-
+    Both on-run-start hooks return an empty string on `compile` and `parse`,
+    which makes dbt skip the hook entirely rather than execute it.
+
+    This is what keeps `dbt compile --target bigquery` credential-free, and it
+    is load bearing rather than tidy. The hooks are ordinary DDL, so dbt opens a
+    warehouse connection to run them, on every command including compile. On
+    BigQuery with no credentials that connection fails as
+    `[Errno 2] No such file or directory: ''`, the empty keyfile path, which
+    names neither the profile nor the hook. That failure is the whole
+    cross-engine dialect gate on a pull request: compiling every model against
+    BigQuery is how DuckDB-only syntax gets caught without a warehouse, and it
+    is the one check a fork PR can run against the second engine.
+
+    There is nothing to audit on a compile in any case. No node executes, so
+    on-run-end has no results to write and the table it would write into does
+    not need to exist.
+-#}
+{%- macro _skip_audit_ddl() -%}
+    {{- return(flags.WHICH in ('compile', 'parse')) -}}
+{%- endmacro -%}
+
+
 {%- macro ensure_run_results_schema() -%}
+    {%- if _skip_audit_ddl() -%}{{- return('') -}}{%- endif -%}
     create schema if not exists {{ target.schema }}
 {%- endmacro -%}
 
 
 {%- macro ensure_run_results_table() -%}
+    {%- if _skip_audit_ddl() -%}{{- return('') -}}{%- endif -%}
     create table if not exists {{ run_results_relation() }} (
         invocation_id {{ x_type('string') }},
         run_started_at {{ x_type('timestamp') }},
