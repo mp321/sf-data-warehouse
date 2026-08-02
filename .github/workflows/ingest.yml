@@ -50,7 +50,12 @@ jobs:
       # just stopped depending on.
       RAW_ZONE_URI: gs://${{ secrets.GCS_BUCKET }}/raw
       DERIVED_ZONE_URI: gs://${{ secrets.GCS_BUCKET }}/derived
-      GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/sa.json
+      # GOOGLE_APPLICATION_CREDENTIALS is deliberately not here. The `runner`
+      # context does not exist at job level, only from `steps` down, so
+      # `${{ runner.temp }}` in this block fails the whole workflow at
+      # validation with "Unrecognized named-value: 'runner'". The key step below
+      # exports it through $GITHUB_ENV instead, which reaches every later step
+      # and keeps the key in RUNNER_TEMP rather than in the workspace.
     steps:
       - uses: actions/checkout@v4
 
@@ -67,7 +72,9 @@ jobs:
       - name: Write service account key
         env:
           GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
-        run: printf '%s' "$GCP_SA_KEY" > "$RUNNER_TEMP/sa.json"
+        run: |
+          printf '%s' "$GCP_SA_KEY" > "$RUNNER_TEMP/sa.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/sa.json" >> "$GITHUB_ENV"
 
       - name: Ingest into the Parquet raw zone
         env:
