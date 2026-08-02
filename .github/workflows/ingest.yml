@@ -69,11 +69,25 @@ jobs:
       # First, not last. Ingestion itself needs the bucket now, so the key has
       # to exist before the first step that touches a zone rather than before
       # the BigQuery load.
+      # Checked here rather than trusted, because an unset or empty secret
+      # writes a 0 byte file and nothing notices until gcsfs json.loads() the
+      # token on first use, 200 lines down, as
+      # "JSONDecodeError: Expecting value: line 1 column 1 (char 0)" with no
+      # mention of a credential. grep is -q so nothing from the key reaches the
+      # log.
       - name: Write service account key
         env:
           GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
         run: |
           printf '%s' "$GCP_SA_KEY" > "$RUNNER_TEMP/sa.json"
+          if [ ! -s "$RUNNER_TEMP/sa.json" ]; then
+            echo "::error::GCP_SA_KEY is empty or unset. Settings > Secrets and variables > Actions, and paste the whole of keys/sa.json including the braces."
+            exit 1
+          fi
+          if ! grep -q '"type": *"service_account"' "$RUNNER_TEMP/sa.json"; then
+            echo "::error::GCP_SA_KEY is not a service account key. Paste the entire keys/sa.json file, not a fragment of it."
+            exit 1
+          fi
           echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/sa.json" >> "$GITHUB_ENV"
 
       - name: Ingest into the Parquet raw zone

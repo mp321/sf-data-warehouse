@@ -419,7 +419,15 @@ def main() -> None:
     if args.full_refresh:
         reject_remote_full_refresh(args.raw_root)
 
-    app_token = os.environ.get("SOCRATA_APP_TOKEN", "")
+    # Stripped, because "unset" arrives in more than one shape. GitHub will not
+    # store an empty repository secret, so anyone following the old SETUP.md
+    # advice to "create it with an empty value" ends up typing a space, and a
+    # space is truthy: the X-App-Token header goes out as " " and requests
+    # rejects the request before it is sent, with a message about header
+    # whitespace that says nothing about tokens. A real token pasted with a
+    # trailing newline fails the same way. The token is optional, so the only
+    # correct reading of whitespace is "not set".
+    app_token = os.environ.get("SOCRATA_APP_TOKEN", "").strip()
     root = args.raw_root if args.raw_root is not None else raw_zone.raw_root()
     print(f"Raw zone: {root}")
 

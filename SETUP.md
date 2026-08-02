@@ -357,8 +357,14 @@ lineage graph. This is a great screen-share artifact in interviews.
      from it, and those are the zones it reads and writes (ADR-9). A bucket
      name is not really a secret, but it goes here rather than in the
      workflow file because project identifiers do not belong in the repo.
-   - `SOCRATA_APP_TOKEN`: your token, or create the secret with an empty
-     value if you skipped it
+   - `SOCRATA_APP_TOKEN`: your token. **If you skipped it, do not create this
+     secret at all.** GitHub will not store an empty secret value, so the
+     obvious workaround is to type a space, and a space is not nothing: it
+     becomes an `X-App-Token: " "` header that `requests` refuses to send, and
+     the error talks about header whitespace rather than about tokens. An
+     absent secret renders as an empty string, which ingestion reads as "no
+     token" and runs anonymously. Recommended for the scheduled job, though:
+     see the note below.
 2. Actions tab: enable workflows if prompted.
 3. Open the `ingest` workflow, Run workflow (this is the manual trigger)
    and watch it go green. Do the same for `dbt`.
@@ -367,6 +373,24 @@ From now on ingestion runs daily and dbt builds plus tests weekly, with
 no laptop involved.
 
 Checkpoint: both workflows have a green manual run.
+
+### Get the Socrata token for the scheduled job
+
+Optional locally and worth two minutes for CI, for a reason that is about
+GitHub rather than about Socrata. Anonymous Socrata requests are rate
+limited **per IP address**, and GitHub's hosted runners share their IPs
+across every customer using them, so the anonymous budget you are drawing
+on is not yours and you cannot see how much of it is left. A token moves
+you onto a per-token budget you control. The nightly `--all` run is
+roughly 100 requests, which is small either way, but the failure mode of
+running out is a `429` partway through a dataset rather than a clean stop.
+
+Get one at
+https://data.sfgov.org/profile/edit/developer_settings, then set the
+`SOCRATA_APP_TOKEN` repository secret to it. Paste the token alone with
+no quotes and no trailing newline. Ingestion strips whitespace before
+deciding whether a token is present, so a stray space means "no token"
+rather than a failed run.
 
 ---
 
