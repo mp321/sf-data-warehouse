@@ -385,12 +385,33 @@ you onto a per-token budget you control. The nightly `--all` run is
 roughly 100 requests, which is small either way, but the failure mode of
 running out is a `429` partway through a dataset rather than a clean stop.
 
-Get one at
-https://data.sfgov.org/profile/edit/developer_settings, then set the
-`SOCRATA_APP_TOKEN` repository secret to it. Paste the token alone with
-no quotes and no trailing newline. Ingestion strips whitespace before
-deciding whether a token is present, so a stray space means "no token"
-rather than a failed run.
+**An invalid token is worse than no token.** Anonymous requests are
+served normally; a token Socrata does not recognise is refused outright
+with `403 permission_denied, "Invalid app_token specified"`. So do not
+set this secret speculatively, and check a token before you rely on it.
+
+The page at https://data.sfgov.org/profile/edit/developer_settings
+issues **two** values, and only one of them works here:
+
+| Value | Length | Use |
+|---|---|---|
+| **App Token** | ~25 chars | This. Goes in `X-App-Token`. |
+| Secret Token | longer | Not this. For OAuth flows, and Socrata rejects it as an app token. |
+
+Verify before setting the secret. This prints the HTTP status and
+nothing else, and 200 is the only acceptable answer:
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' \
+  -H "X-App-Token: PASTE_THE_APP_TOKEN_HERE" \
+  'https://data.sfgov.org/resource/vw6y-z8j6.json?$limit=1'
+```
+
+Then set `SOCRATA_APP_TOKEN` to that value, alone, with no quotes and no
+trailing newline. Ingestion strips whitespace before deciding whether a
+token is present, so a stray space means "no token" rather than a failed
+run, and a rejected token now fails immediately with a message naming the
+variable rather than with a bare 403.
 
 ---
 

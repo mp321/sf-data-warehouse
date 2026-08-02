@@ -136,10 +136,38 @@ def socrata_pages(socrata_id: str, watermark: str, app_token: str):
         time.sleep(0.3)  # be polite to the API
 
 
+def _check_app_token(resp: requests.Response) -> None:
+    """Turn Socrata's 403 for a bad app token into a sentence about the token.
+
+    Worth special-casing for two reasons. It is not transient, so the retry loop
+    below would sleep 15 seconds to fail the same way three times. And the
+    request succeeds without any token at all, so an invalid token is strictly
+    worse than no token: the header is the only reason this call is refused.
+
+    The likely cause is pasting the wrong value. Socrata's developer settings
+    page issues an App Token and a Secret Token, and only the first goes in
+    `X-App-Token`.
+    """
+    if resp.status_code != 403 or "app_token" not in resp.text:
+        return
+    raise RuntimeError(
+        "Socrata rejected the app token: "
+        f"{resp.json().get('message', resp.text[:200])}. "
+        "SOCRATA_APP_TOKEN is set to something Socrata does not recognise. "
+        "The token is optional and this request works without one, so an "
+        "invalid token is worse than none: unset it, or replace it with the "
+        "App Token (not the Secret Token) from "
+        "https://data.sfgov.org/profile/edit/developer_settings"
+    )
+
+
 def _get_with_retries(session: requests.Session, url: str, params: dict, headers: dict) -> list:
     for attempt in range(1, MAX_RETRIES + 1):
         try:
             resp = session.get(url, params=params, headers=headers, timeout=90)
+            # Before raise_for_status, so the token case is reported as itself
+            # rather than as a generic 403 against a URL nobody can read.
+            _check_app_token(resp)
             resp.raise_for_status()
             return resp.json()
         except (requests.RequestException, ValueError) as exc:
