@@ -176,9 +176,12 @@ compile-duckdb: ## Parse and compile against DuckDB. No credentials needed.
 	cd $(DBT_DIR) && $(DBT) parse --target duckdb
 	cd $(DBT_DIR) && $(DBT) compile --target duckdb
 
+# --no-populate-cache is not an optimisation. Populating the relation cache
+# means listing schemas, which means a connection, which is the one thing this
+# target must not need. Compiling itself is pure Jinja and needs nothing.
 compile-bigquery: ## Parse and compile against BigQuery. No credentials needed.
 	cd $(DBT_DIR) && $(DBT) parse --target bigquery
-	cd $(DBT_DIR) && $(DBT) compile --target bigquery
+	cd $(DBT_DIR) && $(DBT) compile --target bigquery --no-populate-cache
 
 # ---------------------------------------------------------------------------
 # Docs

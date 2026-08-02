@@ -89,9 +89,19 @@
 
 
 {%- macro log_run_results() -%}
-    {%- if not execute or not results -%}
-        {#- Parse time, or a task with no nodes. Returning an empty string
-            makes dbt skip the hook rather than execute a no-op query. -#}
+    {%- if not execute or not results or _skip_audit_ddl() -%}
+        {#- Parse time, a task with no nodes, or a compile.
+
+            The `_skip_audit_ddl()` arm is the one that is easy to get wrong.
+            `dbt compile` sets `execute` true and produces a non-empty
+            `results`, one entry per compiled node, so the first two arms do
+            not catch it and this hook renders a real INSERT. dbt then opens a
+            connection to run it, which is how a command that only renders SQL
+            ends up needing warehouse credentials. Compiling nothing is not a
+            run and has no results worth recording.
+
+            Returning an empty string makes dbt skip the hook rather than
+            execute a no-op query. -#}
         {{- return('') -}}
     {%- endif -%}
 

@@ -184,16 +184,23 @@ jobs:
         working-directory: dbt
         run: dbt deps
 
-      # Compiling does not open a warehouse connection, so the whole BigQuery
-      # dialect can be checked on a fork PR with no secrets. This is what
-      # catches DuckDB-only syntax that the end-to-end job above cannot see,
-      # such as try_cast or json_extract_string leaking past the dispatch
-      # macros in macros/cross_engine.sql. GCP_PROJECT_ID is a placeholder and
-      # is never used: nothing connects.
+      # Renders every model as BigQuery SQL with no warehouse and no secrets,
+      # which is what catches DuckDB-only syntax that the end-to-end job above
+      # cannot see, such as try_cast or json_extract_string leaking past the
+      # dispatch macros in macros/cross_engine.sql. It is also the only check a
+      # fork pull request can run against the second engine.
+      #
+      # Compiling is pure Jinja, but three things around it will open a
+      # connection if allowed to, and all three had to be shut off: relation
+      # cache population (--no-populate-cache), the two on-run-start hooks, and
+      # the on-run-end hook, which dbt runs on a compile with a non-empty
+      # `results`. See macros/audit_run_results.sql.
+      #
+      # Delegated to the Makefile rather than restated here, per the same rule
+      # the lint scripts follow: this drifted from `make compile-bigquery` and
+      # the drift is what made the failure hard to reproduce locally.
+      # GCP_PROJECT_ID is a placeholder and is never used.
       - name: dbt compile against BigQuery
-        working-directory: dbt
         env:
           GCP_PROJECT_ID: compile-only-no-connection
-        run: |
-          dbt parse --target bigquery
-          dbt compile --target bigquery
+        run: make compile-bigquery DBT=dbt DBT_DIR=dbt
