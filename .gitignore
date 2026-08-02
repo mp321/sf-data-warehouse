@@ -55,6 +55,12 @@ data/
 *.sqlite
 *.parquet
 
+# The published export (ADR-8). Regenerated wholesale by `make publish` from
+# the warehouse, so it is a build artifact rather than a source, and it is
+# large: mart_activity_by_h3 alone is a quarter of a million rows. The whole
+# point of publishing is that it goes to a bucket, not into git.
+published/
+
 # ---------------------------------------------------------------------------
 # os and editor noise
 # ---------------------------------------------------------------------------
@@ -63,3 +69,4 @@ Thumbs.db
 .idea/
 .vscode/
 *.swp
+USER-NOTES.md

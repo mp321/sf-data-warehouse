@@ -1,7 +1,7 @@
 ---
-status: active
+status: superseded
 date: 2026-07-30
-related: [adr-1-warehouse-targets, adr-2-spatial-strategy]
+related: [adr-1-warehouse-targets, adr-2-spatial-strategy, adr-7-dataset-scope-2]
 ---
 
 # ADR-3. Dataset scope: two core sources, two demoted

@@ -4,6 +4,12 @@
 # Keep this in sync with the lint job in .github/workflows/ci.yml. If they
 # drift, CI becomes something people discover rather than something they
 # pre-empt.
+#
+# That sync is manual for every hook that pins a `rev`, and those pins are a
+# second toolchain that requirements-dev.txt does not constrain. sqlfluff used
+# to be one of them and is not any more: it runs from the venv now, for the
+# reason recorded above the local hooks. ruff is still pinned here and floats
+# in requirements-dev.txt, so bumping one means bumping the other.
 
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
@@ -22,30 +28,65 @@ repos:
       - id: no-commit-to-branch
         args: ["--branch", "main"]
 
+  # Ruff keeps its own isolated environment, unlike sqlfluff below. That is
+  # the approach ruff upstream recommends and it is safe here for a reason
+  # that does not apply to sqlfluff: ruff is a self-contained binary with no
+  # dependency graph, so this rev cannot fail to resolve the way a pinned
+  # dbt-core did. The only risk it carries is being a different version from
+  # the one CI installs.
+  #
+  # So this rev and `ruff==` in requirements-dev.txt must be the same version.
+  # The check-lint-pins hook below fails the commit if they are not. Bumping
+  # ruff means editing both lines; the check exists because the last time they
+  # disagreed, the hook was green locally while CI was red on a rule the hook
+  # had never heard of.
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.8.6
+    rev: v0.16.1
     hooks:
-      - id: ruff
+      # `ruff-check`, not `ruff`. The latter still works but is a legacy alias
+      # as of the 0.16 hooks and announces itself as one on every run.
+      - id: ruff-check
         args: ["--fix"]
       - id: ruff-format
-
-  - repo: https://github.com/sqlfluff/sqlfluff
-    rev: 3.3.0
-    hooks:
-      - id: sqlfluff-lint
-        # Only the dbt models. Anything else that ends in .sql here is a
-        # macro, and sqlfluff on bare Jinja macros is more noise than signal.
-        files: ^dbt/models/.*\.sql$
-        additional_dependencies:
-          - dbt-core==1.9.1
-          - dbt-duckdb==1.9.1
-          - sqlfluff-templater-dbt==3.3.0
 
   # Local hooks run from the repo, not downloaded. leak-check is ours and
   # has to stay ours: a hook that scans for our credential shapes cannot be
   # outsourced to a pinned third-party rev.
+  #
+  # sqlfluff is local for a different reason. The upstream sqlfluff hook pins
+  # its own sqlfluff, dbt-core and dbt-duckdb in additional_dependencies,
+  # which is a second toolchain that requirements-dev.txt does not constrain
+  # and that CI never exercises, because the CI lint job runs sqlfluff from
+  # requirements-dev.txt directly. They drifted, and the drift only showed up
+  # on machines whose default python was newer than the pinned dbt-core
+  # supported. Running the venv's sqlfluff makes the hook and CI resolve the
+  # same versions by construction. This needs `make setup` to have run, which
+  # is the price of a hook that cannot drift.
   - repo: local
     hooks:
+      - id: check-lint-pins
+        name: check lint pins (ruff, config vs requirements)
+        entry: bash scripts/check-lint-pins.sh
+        language: system
+        # Cheap and only meaningful when one of the two files it compares has
+        # changed, which is the only way they can come apart.
+        files: ^(requirements-dev\.txt|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+
+      - id: sqlfluff-lint
+        name: sqlfluff lint (dbt models)
+        entry: bash scripts/sqlfluff-lint.sh
+        language: system
+        # The trigger is wider than what gets linted. Models are the only
+        # thing linted, but a macro or a sources yml can change what a model
+        # compiles to, so a change to either has to re-run the lint. Anything
+        # under dbt/ that a model can reach is in scope for triggering.
+        files: ^dbt/(models|macros|tests)/.*\.(sql|yml)$
+        # The script lints dbt/models as a whole, the same command CI runs.
+        # Passing staged filenames would lint a subset for no saving, since
+        # the dbt templater compiles the entire project either way.
+        pass_filenames: false
+
       - id: leak-check
         name: leak-check (credential scan)
         entry: bash scripts/leak-check.sh --staged

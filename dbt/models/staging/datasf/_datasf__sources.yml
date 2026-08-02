@@ -3,10 +3,12 @@ version: 2
 sources:
   - name: raw_datasf
     description: >
-      Raw landing zone loaded by ingestion/ingest.py. Every column is a
-      STRING on purpose; all typing happens in staging models. Tables are
-      append-only, so the same record can appear multiple times as it is
-      updated at the source. Staging deduplicates to the latest version.
+      Raw landing zone. ingestion/ingest.py writes Parquet under data/raw/
+      and ingestion/load.py materialises these tables from it, on DuckDB and
+      on BigQuery alike (ADR-4). Every DataSF column is a STRING on purpose;
+      all typing happens in staging models. The Parquet zone is append-only,
+      so the same record can appear multiple times as it is updated at the
+      source, and staging deduplicates to the latest version.
     schema: raw_datasf
     tables:
       - name: raw_311_cases
@@ -22,6 +24,48 @@ sources:
         freshness:
           warn_after: {count: 7, period: day}
 
+      - name: raw_business_locations
+        description: >
+          Registered business locations, one row per business location
+          registration. Point-bearing, and the source of the "per 1000
+          businesses" denominator. About a fifth of rows carry coordinates
+          outside San Francisco, which is correct data rather than dirty
+          data: the registry records where a business is, and plenty of
+          businesses registered here are located elsewhere.
+        loaded_at_field: "cast(_socrata_updated_at as timestamp)"
+        freshness:
+          warn_after: {count: 7, period: day}
+
+      - name: raw_street_trees
+        description: >
+          Every street tree DPW maintains or knows about. Point-bearing,
+          dense and evenly spread across the city, which makes it the best
+          stress test available for the H3 machinery.
+        loaded_at_field: "cast(_socrata_updated_at as timestamp)"
+        freshness:
+          warn_after: {count: 30, period: day}
+
+      - name: raw_analysis_neighborhoods
+        description: >
+          The 41 analysis neighborhoods as MultiPolygons, in the_geom. A
+          reference boundary set: 41 rows that change every several years,
+          so there is no freshness SLA and staleness is not a signal.
+
+      - name: raw_supervisor_districts
+        description: >
+          The 11 supervisor districts as drawn in 2022, as MultiPolygons in
+          the `polygon` column. Note that rows in the event datasets carrying
+          a supervisor_district from before 2022 were stamped under the
+          previous boundaries and will not agree with a fresh assignment.
+
+      - name: raw_census_block_groups
+        description: >
+          The 681 San Francisco census block groups from the 2020 Census,
+          with POP100 and HU100. The only source here that is not DataSF: it
+          comes from the Census TIGERweb service, because api.census.gov now
+          requires an API key and ADR-1 keeps credentials off the ingestion
+          path. See ingestion/census.py and ADR-7.
+
       - name: raw_city_budget
         description: >
           City budget line items. Updated roughly annually at the source,
@@ -31,3 +75,16 @@ sources:
         description: >
           Films and TV shows shot in San Francisco, including location and
           fun facts. Small, updated occasionally, no freshness check.
+
+      - name: raw_ingest_runs
+        description: >
+          One row per ingestion run, loaded from the run manifests that
+          ingest.py writes to data/raw/<table>/_runs/. This is the only table
+          in the schema that is not all-STRING, because it is pipeline
+          metadata rather than DataSF data.
+
+          It exists because the data alone cannot distinguish "ingestion ran
+          and found nothing new" from "ingestion has not run in three days":
+          a run that fetches zero rows writes no Parquet file. Those two mean
+          opposite things to anyone reading mart_pipeline_freshness, which is
+          the only consumer.

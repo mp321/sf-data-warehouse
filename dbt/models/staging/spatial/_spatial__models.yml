@@ -1,0 +1,242 @@
+version: 2
+
+models:
+  - name: stg_spatial__point_geography
+    description: >
+      One row per point-bearing raw row, across every point dataset. The one
+      place a point staging model joins to get its geography: coordinates,
+      H3 cells at three resolutions, and the neighborhood, supervisor
+      district and block group the point is exactly inside.
+
+      Its grain is (source_table, row_key), which is why neither column is
+      unique on its own and the uniqueness test below is a combination.
+    columns:
+      - name: source_table
+        description: >
+          The raw table name from ingestion/datasets.py, e.g. raw_311_cases.
+          Half the grain, and the string every point staging model filters on.
+        tests:
+          - not_null
+
+      - name: row_key
+        description: >
+          The row's key in its own dataset, matching that dataset's grain_key
+          in the registry. Half the grain.
+        tests:
+          - not_null
+
+      - name: is_usable_coordinate
+        description: Whether the coordinate parsed and landed inside the San Francisco box.
+        tests:
+          - not_null
+
+      - name: coordinate_status
+        description: One of ok, missing, unparseable, impossible, out_of_bounds.
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["ok", "missing", "unparseable", "impossible", "out_of_bounds"]
+
+      - name: h3_r8
+        description: H3 cell at resolution 8 as a BIGINT. Null unless the coordinate parsed.
+
+      - name: h3_r9
+        description: H3 cell at resolution 9 as a BIGINT.
+
+      - name: h3_r10
+        description: >
+          H3 cell at resolution 10 as a BIGINT. The membership resolution:
+          this is the column boundary assignment was decided at.
+
+      - name: analysis_neighborhood
+        description: >
+          Exact neighborhood membership (ADR-6). Null means outside every
+          neighborhood, which is a real answer and not a failure.
+
+      - name: neighborhood_assignment_method
+        description: >
+          interior_cell where the cell alone settled it, exact_refinement
+          where a point-in-polygon test was needed. The ratio between them is
+          the diagnostic for whether the membership resolution is still fine
+          enough: measured at 79 percent interior for neighborhoods at r10.
+        tests:
+          - accepted_values:
+              arguments:
+                values: ["interior_cell", "exact_refinement"]
+
+    tests:
+      - unique:
+          arguments:
+            column_name: "source_table || '|' || row_key"
+
+  - name: stg_spatial__polygon_h3
+    description: >
+      One row per boundary per resolution per covering H3 cell. The bridge
+      table, and the reason no query in this warehouse needs a geometry
+      engine.
+
+      Three flags, each for a different job, and picking the wrong one is the
+      easiest mistake available here. is_interior: the cell is entirely
+      inside, so no test is needed. is_primary: this boundary owns the cell,
+      at most one per cell, so joining on it cannot fan out. Use it to label
+      a cell. is_allocation_cell: use it, and only it, to spread a measure
+      like population across cells, because is_primary discards losing
+      boundaries and would discard their residents with them.
+    columns:
+      - name: boundary_set
+        description: analysis_neighborhood, supervisor_district or census_block_group.
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["analysis_neighborhood", "supervisor_district", "census_block_group"]
+
+      - name: boundary_id
+        description: The boundary's key within its set.
+        tests:
+          - not_null
+
+      - name: resolution
+        description: H3 resolution. 8, 9 or 10, matching RESOLUTIONS in ingestion/spatial.py.
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                # quote: false because resolution is an integer. dbt quotes the
+                # values by default, and `int64 in ('8', '9', '10')` is an error
+                # on BigQuery rather than an implicit cast as it is on DuckDB.
+                values: [8, 9, 10]
+                quote: false
+
+      - name: h3_cell
+        description: The covering cell, as a BIGINT.
+        tests:
+          - not_null
+
+      - name: is_primary
+        description: >
+          Whether this boundary owns the cell. At most one row per
+          (boundary_set, resolution, h3_cell) has this true, which is what
+          makes a membership join safe. That uniqueness is asserted below,
+          because a duplicate would silently double-count every event in the
+          cell rather than erroring.
+        tests:
+          - not_null
+
+    tests:
+      - unique:
+          arguments:
+            column_name: "boundary_set || '|' || boundary_id || '|' || resolution || '|' || h3_cell"
+
+  - name: stg_spatial__h3_population
+    description: >
+      One row per H3 cell per resolution: population and housing units from
+      the 2020 Census, areally interpolated from block groups.
+
+      Fractional on purpose and not rounded here. Rounding per cell and then
+      summing loses residents in proportion to how many cells were summed,
+      which is worst exactly where the aggregation is coarsest.
+    columns:
+      - name: h3_cell
+        description: The cell, as a BIGINT.
+        tests:
+          - not_null
+
+      - name: resolution
+        description: H3 resolution.
+        tests:
+          - not_null
+
+      - name: population
+        description: >
+          Interpolated residents. Assumes population is uniform within a
+          block group, so a cell covering half a park gets half a park's
+          worth of people who are not there.
+        tests:
+          - not_null
+          - accepted_range:
+              arguments: {min_value: 0}
+
+      - name: housing_units
+        description: Interpolated housing units, same method and same caveat.
+        tests:
+          - accepted_range:
+              arguments: {min_value: 0}
+
+    tests:
+      - unique:
+          arguments:
+            column_name: "resolution || '|' || h3_cell"
+
+  - name: stg_spatial__boundary
+    description: >
+      One row per boundary across every set: 41 neighborhoods, 11 supervisor
+      districts and 681 block groups. Names, spherical areas and shapes. The
+      dimension models select from this and filter to one set.
+    columns:
+      - name: boundary_set
+        description: Which set this boundary belongs to.
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["analysis_neighborhood", "supervisor_district", "census_block_group"]
+
+      - name: boundary_id
+        description: The boundary's key within its set.
+        tests:
+          - not_null
+
+      - name: area_sq_km
+        description: >
+          Spherical area computed in ingestion/geometry.py. Exact on a sphere
+          and therefore off by the Earth's flattening, about 0.3 percent,
+          which is far below the uncertainty in what a boundary means.
+
+          The upper bound below is 500 rather than something near San
+          Francisco's 121 square kilometres of land, because two boundaries
+          are legitimately enormous: Supervisorial District 4 reaches out to
+          the Farallon Islands 43 km offshore and covers 261 square
+          kilometres, and block group 060759804011 is the ocean water block
+          group at 248. A tighter bound fails on correct data, which is how
+          this number was arrived at.
+        tests:
+          - not_null
+          - accepted_range:
+              arguments: {min_value: 0, max_value: 500}
+
+      - name: population
+        description: Population, on block groups only. Null for the other two sets.
+
+    tests:
+      - unique:
+          arguments:
+            column_name: "boundary_set || '|' || boundary_id"
+
+  - name: stg_spatial__pip_sample
+    description: >
+      One row per sampled point per boundary set: the exact point-in-polygon
+      answer, computed in Python by an implementation separate from the one
+      that assigns boundaries.
+
+      The oracle for the two singular tests in dbt/tests/, and an input to
+      nothing else. Do not join a mart to this. The sample is a few thousand
+      rows chosen by hashing the row key, so any aggregate over it is an
+      aggregate over an arbitrary subset of the city.
+    columns:
+      - name: source_table
+        description: Which dataset the sampled point came from.
+        tests:
+          - not_null
+
+      - name: row_key
+        description: The point's key in its own dataset.
+        tests:
+          - not_null
+
+      - name: exact_boundary_id
+        description: >
+          The boundary the point is really inside, by exact geometry. Null
+          means it is outside every boundary in the set, which is a correct
+          answer and is credited as agreement by the tests.

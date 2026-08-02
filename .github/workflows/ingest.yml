@@ -1,9 +1,33 @@
 name: ingest
 
-# Daily ingestion into BigQuery. Unchanged in behaviour: this is the job
-# that keeps the raw zone current and it is deliberately left alone.
-# See ADR-1 for why the raw zone is moving to Parquet, and
-# docs/plans/plan-1-duckdb-parquet.md for the sequencing.
+# Daily ingestion. Three steps: pull Socrata into the Parquet raw zone,
+# recompute the derived zone from it, then point BigQuery at both. Every step
+# needs credentials now, because the zones are in GCS (ADR-9).
+#
+# THE RUNNER HOLDS NOTHING. It does not need to. The zones are bucket prefixes,
+# named by RAW_ZONE_URI and DERIVED_ZONE_URI below, so ingest.py reads the
+# watermark from GCS and appends Parquet to GCS, and the runner's disk is
+# scratch space that nothing is expected to survive on.
+#
+# This used to be the hard part of this file. An ephemeral runner starts with an
+# empty data/raw, an empty zone makes read_watermark return nothing, and
+# ingestion then backfills from start_date: 8.8 million rows for 311, unattended.
+# The mitigation was an actions/cache step keyed per run with a restore-keys
+# prefix, carrying the zone from one night to the next. It worked, and it had a
+# 7 day fuse: Actions caches are evicted after 7 days untouched and capped at
+# 10 GB per repository, so a large enough zone would start missing and quietly
+# turn every run into a full backfill. Deleted on 2026-08-01 with PLAN-4 step 6.
+# Durable storage is the answer to durable storage, and a cache that expires is
+# not it.
+#
+# What replaces it is not a smaller mitigation, it is the absence of the
+# problem. There is no restore to miss. The one failure mode left is a bucket
+# that cannot be listed, which raises rather than returning an empty zone, and
+# ingest.py now says out loud when it is backfilling rather than resuming.
+#
+# The load step is unchanged in what it produces and much cheaper in how:
+# BigQuery reads the Parquet where it lies through external tables, so there is
+# no copy of the raw bytes and no replace-on-load rewrite.
 
 on:
   schedule:
@@ -18,6 +42,20 @@ permissions:
 jobs:
   ingest:
     runs-on: ubuntu-latest
+    env:
+      # The zones are the bucket, so every step below reads and writes GCS and
+      # nothing is kept on the runner. Deliberately NOT RAW_ZONE_DIR: DIR beats
+      # URI, so setting it here would silently send the whole job back to a
+      # local zone on an ephemeral disk, which is the arrangement this workflow
+      # just stopped depending on.
+      RAW_ZONE_URI: gs://${{ secrets.GCS_BUCKET }}/raw
+      DERIVED_ZONE_URI: gs://${{ secrets.GCS_BUCKET }}/derived
+      # GOOGLE_APPLICATION_CREDENTIALS is deliberately not here. The `runner`
+      # context does not exist at job level, only from `steps` down, so
+      # `${{ runner.temp }}` in this block fails the whole workflow at
+      # validation with "Unrecognized named-value: 'runner'". The key step below
+      # exports it through $GITHUB_ENV instead, which reaches every later step
+      # and keeps the key in RUNNER_TEMP rather than in the workspace.
     steps:
       - uses: actions/checkout@v4
 
@@ -28,18 +66,54 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      # First, not last. Ingestion itself needs the bucket now, so the key has
+      # to exist before the first step that touches a zone rather than before
+      # the BigQuery load.
+      # Checked here rather than trusted, because an unset or empty secret
+      # writes a 0 byte file and nothing notices until gcsfs json.loads() the
+      # token on first use, 200 lines down, as
+      # "JSONDecodeError: Expecting value: line 1 column 1 (char 0)" with no
+      # mention of a credential. grep is -q so nothing from the key reaches the
+      # log.
       - name: Write service account key
         env:
           GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
-        run: printf '%s' "$GCP_SA_KEY" > "$RUNNER_TEMP/sa.json"
+        run: |
+          printf '%s' "$GCP_SA_KEY" > "$RUNNER_TEMP/sa.json"
+          if [ ! -s "$RUNNER_TEMP/sa.json" ]; then
+            echo "::error::GCP_SA_KEY is empty or unset. Settings > Secrets and variables > Actions, and paste the whole of keys/sa.json including the braces."
+            exit 1
+          fi
+          if ! grep -q '"type": *"service_account"' "$RUNNER_TEMP/sa.json"; then
+            echo "::error::GCP_SA_KEY is not a service account key. Paste the entire keys/sa.json file, not a fragment of it."
+            exit 1
+          fi
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/sa.json" >> "$GITHUB_ENV"
 
-      - name: Run ingestion
+      - name: Ingest into the Parquet raw zone
         env:
-          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/sa.json
           SOCRATA_APP_TOKEN: ${{ secrets.SOCRATA_APP_TOKEN }}
         run: python ingestion/ingest.py --all
 
+      # Recomputed in full every run rather than carried over. The derived zone
+      # is a pure function of the raw zone plus spatial.py, so keeping a copy
+      # would only create a way for the two to disagree: cells computed by last
+      # week's code are indistinguishable from fresh ones, and the disagreement
+      # would surface as boundary assignments that quietly stopped matching the
+      # boundaries. It costs a few minutes and buys not having to think about
+      # that. It reads the raw zone over the network now, which is the slowest
+      # step in the job; PLAN-5 makes it incremental.
+      - name: Precompute H3 cells and boundary membership
+        run: python ingestion/spatial.py --all
+
+      - name: Point BigQuery at both zones
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+        run: python ingestion/load.py --all --target bigquery
+
+      # The key is written to RUNNER_TEMP, which GitHub discards with the
+      # runner, but removing it explicitly costs nothing and means a step
+      # added below this line later cannot read it by accident.
       - name: Remove service account key
         if: always()
         run: rm -f "$RUNNER_TEMP/sa.json"

@@ -1,0 +1,75 @@
+version: 2
+
+models:
+  - name: stg_census__block_groups
+    description: >
+      One row per census block group, 681 of them in San Francisco. The
+      population denominator behind every per-capita rate in this warehouse.
+
+      Two vintage facts to know before dividing by it, both argued in ADR-7.
+      This is the 2020 Decennial enumeration, not an ACS 5-year estimate, so
+      it is an actual count with no margin of error and it is fixed at April
+      2020. And it comes from the Census TIGERweb service rather than the ACS
+      API, because api.census.gov now requires a key and ADR-1 keeps
+      credentials off the ingestion path.
+
+      The city total is 873,965, which matches the published 2020 count
+      exactly. ingestion/spatial.py asserts that total survives interpolation
+      onto H3 cells at every resolution rather than trusting that it does.
+    columns:
+      - name: block_group_geoid
+        description: >
+          The 12-character GEOID: state, county, tract, block group. The
+          grain of this model. Kept a string because its leading zeros are
+          meaningful ("06" is California) and a numeric cast eats them.
+        tests:
+          - unique
+          - not_null
+
+      - name: population
+        description: >
+          2020 Census population (POP100). Zero is legitimate and occurs on
+          block groups that are entirely park, water or industrial, which is
+          why every rate divides through x_safe_divide.
+        tests:
+          - not_null
+          - accepted_range:
+              arguments: {min_value: 0, max_value: 50000}
+
+      - name: housing_units
+        description: 2020 Census housing units (HU100). Zero is legitimate.
+        tests:
+          - not_null
+          - accepted_range:
+              arguments: {min_value: 0, max_value: 50000}
+
+      - name: land_area_sq_km
+        description: >
+          Land area, converted from the square metres the Census publishes.
+          Kept separate from water: several San Francisco block groups are
+          mostly bay, and a density over total area understates them badly.
+        tests:
+          - accepted_range:
+              arguments: {min_value: 0, max_value: 500}
+
+      - name: water_area_sq_km
+        description: Water area, converted from square metres.
+
+      - name: internal_point_latitude
+        description: >
+          A point the Census guarantees is inside the polygon. Not the
+          centroid, which for a crescent-shaped block group can be outside it.
+        tests:
+          - accepted_range:
+              arguments: {min_value: 37.60, max_value: 37.93}
+
+      - name: internal_point_longitude
+        description: Longitude of that internal point.
+        tests:
+          - accepted_range:
+              arguments: {min_value: -123.20, max_value: -122.28}
+
+      - name: geojson
+        description: The block group polygon as text.
+        tests:
+          - not_null
