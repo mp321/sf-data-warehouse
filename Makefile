@@ -168,20 +168,39 @@ publish: ## Export marts to published/ as partitioned Parquet with a manifest
 
 # compile renders every model to real SQL without touching a warehouse, which
 # is what catches engine-specific syntax that slipped past the cross_engine
-# macros. Both of these run without credentials, including the BigQuery one:
-# compiling does not open a connection. That is what makes a cross-engine
-# check possible on a fork pull request.
+# macros. Both of these run without real credentials, including the BigQuery
+# one. That is what makes a cross-engine check possible on a fork pull request.
 compile-duckdb: ## Parse and compile against DuckDB. No credentials needed.
 	mkdir -p $(RAW_DIR)
 	cd $(DBT_DIR) && $(DBT) parse --target duckdb
 	cd $(DBT_DIR) && $(DBT) compile --target duckdb
 
-# --no-populate-cache is not an optimisation. Populating the relation cache
-# means listing schemas, which means a connection, which is the one thing this
-# target must not need. Compiling itself is pure Jinja and needs nothing.
+# Three things are load bearing here, and the order matters.
+#
+# The throwaway key. This target used to rest on "compiling does not open a
+# connection", a property of dbt's internals that broke on two separate dbt
+# upgrades and cannot be observed locally, because a shell that has sourced
+# .env has real credentials and every connection dbt opens quietly succeeds.
+# scripts/fake-bq-key.sh replaces that with a property this repo owns: building
+# a BigQuery client from a service account key is local and offline, so opening
+# a connection costs nothing and reaches nothing.
+#
+# --no-populate-cache. Now the only thing still standing between this target
+# and the network: populating the relation cache lists schemas, which is a real
+# query, and a real query with a fake key fails at token fetch. Compiling itself
+# issues none, which is the property that has to hold and the one that fails
+# loudly rather than confusingly if it stops holding.
+#
+# The environment is overridden, not inherited. Both variables are set here so
+# that this target runs identically in CI and in a shell that has sourced .env.
+# Inheriting them is what hid the CI failure for two sessions.
 compile-bigquery: ## Parse and compile against BigQuery. No credentials needed.
-	cd $(DBT_DIR) && $(DBT) parse --target bigquery
-	cd $(DBT_DIR) && $(DBT) compile --target bigquery --no-populate-cache
+	@key="$$(bash scripts/fake-bq-key.sh)"; \
+	export GOOGLE_APPLICATION_CREDENTIALS="$$key"; \
+	export GCP_PROJECT_ID=compile-only-no-connection; \
+	cd $(DBT_DIR) && \
+	$(DBT) parse --target bigquery && \
+	$(DBT) compile --target bigquery --no-populate-cache
 
 # ---------------------------------------------------------------------------
 # Docs

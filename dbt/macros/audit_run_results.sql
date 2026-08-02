@@ -31,22 +31,24 @@
 
 
 {#-
-    Both on-run-start hooks return an empty string on `compile` and `parse`,
-    which makes dbt skip the hook entirely rather than execute it.
+    All three hooks return an empty string on `compile` and `parse`, which
+    makes dbt skip the hook entirely rather than execute it.
 
-    This is what keeps `dbt compile --target bigquery` credential-free, and it
-    is load bearing rather than tidy. The hooks are ordinary DDL, so dbt opens a
-    warehouse connection to run them, on every command including compile. On
-    BigQuery with no credentials that connection fails as
-    `[Errno 2] No such file or directory: ''`, the empty keyfile path, which
-    names neither the profile nor the hook. That failure is the whole
-    cross-engine dialect gate on a pull request: compiling every model against
-    BigQuery is how DuckDB-only syntax gets caught without a warehouse, and it
-    is the one check a fork PR can run against the second engine.
+    The reason is the plain one: there is nothing to audit on a compile. No node
+    executes, so on-run-end has no results worth recording and the table it
+    would write into does not need to exist. A hook that writes a row about
+    nothing is a hook that will one day be believed.
 
-    There is nothing to audit on a compile in any case. No node executes, so
-    on-run-end has no results to write and the table it would write into does
-    not need to exist.
+    What this guard is NOT is the thing that keeps
+    `dbt compile --target bigquery` credential-free. It was added on 2026-08-01
+    for that reason and the reason was wrong: in dbt 1.12 `CompileTask` does not
+    run on-run-start or on-run-end at all. `safe_run_hooks` is reached only from
+    `RunTask.before_run` and `RunTask.after_run`, and `CompileTask` inherits
+    `GraphRunnableTask.before_run`, which opens no hook. So this guard could
+    never have been what was connecting, and removing it would not restore the
+    bug it was written for. Keep it on its own merits; do not credit it with
+    the other thing. That job belongs to the compile-bigquery target in the
+    Makefile and to scripts/fake-bq-key.sh.
 -#}
 {%- macro _skip_audit_ddl() -%}
     {{- return(flags.WHICH in ('compile', 'parse')) -}}
@@ -92,13 +94,12 @@
     {%- if not execute or not results or _skip_audit_ddl() -%}
         {#- Parse time, a task with no nodes, or a compile.
 
-            The `_skip_audit_ddl()` arm is the one that is easy to get wrong.
-            `dbt compile` sets `execute` true and produces a non-empty
-            `results`, one entry per compiled node, so the first two arms do
-            not catch it and this hook renders a real INSERT. dbt then opens a
-            connection to run it, which is how a command that only renders SQL
-            ends up needing warehouse credentials. Compiling nothing is not a
-            run and has no results worth recording.
+            The `_skip_audit_ddl()` arm covers the case the first two miss.
+            `dbt compile` sets `execute` true and would produce a non-empty
+            `results`, one entry per compiled node, so a guard written as
+            `not execute or not results` reads as though it covers every
+            non-run command and does not. Compiling is not a run and has no
+            outcome worth recording.
 
             Returning an empty string makes dbt skip the hook rather than
             execute a no-op query. -#}

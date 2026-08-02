@@ -220,7 +220,10 @@ tests/fixtures/     committed JSON so CI can run without network. Includes
 scripts/            leak-check.sh, sqlfluff-lint.sh, check-lint-pins.sh, and
                     parity-check.py, which compares a model row for row across
                     DuckDB and BigQuery and needs credentials, so it is run by
-                    hand rather than in CI.
+                    hand rather than in CI. fake-bq-key.sh mints a throwaway
+                    key so make compile-bigquery needs none; it is the reason
+                    that target is credential-free, and the on-run hook guards
+                    and the profiles.yml oauth fallback are not.
                     These are the real implementation; pre-commit, the
                     Makefile and CI call them rather than restating the
                     command, so a hook and a make target cannot disagree

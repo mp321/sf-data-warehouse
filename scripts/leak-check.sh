@@ -62,7 +62,14 @@ PATTERNS=(
 
 # Files that are allowed to contain pattern-shaped text: this script defines
 # the patterns, and the docs describe them.
-ALLOWLIST_REGEX='^(scripts/leak-check\.sh|\.pre-commit-config\.yaml|docs/.*|CLAUDE\.md)$'
+#
+# scripts/fake-bq-key.sh is the one that needs justifying. It writes the literal
+# `"type": "service_account"`, so it matches, but it holds no key: it generates
+# 2048 bits of local RSA at run time and writes the result outside the repo,
+# where the file list above never looks. It authorises nothing and exists only
+# so that `make compile-bigquery` does not need real credentials. Read its
+# header before deciding this line is a shortcut.
+ALLOWLIST_REGEX='^(scripts/leak-check\.sh|scripts/fake-bq-key\.sh|\.pre-commit-config\.yaml|docs/.*|CLAUDE\.md)$'
 
 # ---------------------------------------------------------------------------
 # Build the file list

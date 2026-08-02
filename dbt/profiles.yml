@@ -49,20 +49,26 @@ sf_data_warehouse:
 
     bigquery:
       type: bigquery
-      # The method depends on whether a key file exists, and that is load
-      # bearing for the credential-free BigQuery compile that gates every pull
-      # request. `service-account` makes the adapter read `keyfile` while it is
-      # building the connection, and with no credentials that path is the empty
-      # string, so it fails as `[Errno 2] No such file or directory: ''` before
-      # a single model is rendered. The message names neither the profile, the
-      # target, nor the variable that is missing. Whether it fails at all turns
-      # out to depend on the resolved google-auth version, so it appeared in CI
-      # on Python 3.11 while the same commands passed locally on 3.14.
+      # The method depends on whether a key file is named, which lets one
+      # profile serve three callers: a scheduled build with a real service
+      # account, a developer running against their gcloud ADC login, and
+      # `make compile-bigquery`, which mints a throwaway key of its own.
       #
-      # `oauth` asks google-auth to find credentials in the ambient environment
-      # rather than in a named file. With none, nothing is opened and nothing
-      # raises until something actually queries, which is exactly the property
-      # `dbt compile` needs: it renders SQL and never connects.
+      # `service-account` makes the adapter read `keyfile` while it builds the
+      # connection, so with the variable unset that path is the empty string and
+      # it fails as `[Errno 2] No such file or directory: ''` before a single
+      # model is rendered, naming neither the profile nor the variable. `oauth`
+      # instead asks google-auth to find credentials in the ambient
+      # environment, which is what a developer with a gcloud login wants and
+      # what produces the clearer "default credentials were not found" when
+      # there is nothing to find.
+      #
+      # Note what this ternary does NOT do. It was added to keep the BigQuery
+      # compile gate credential-free and it does not achieve that on its own:
+      # `oauth` still raises the moment anything opens a connection. What makes
+      # the gate work is scripts/fake-bq-key.sh, which means there is always a
+      # key file and this branch is never taken there. See the compile-bigquery
+      # target in the Makefile.
       method: "{{ 'service-account' if env_var('GOOGLE_APPLICATION_CREDENTIALS', '') else 'oauth' }}"
       keyfile: "{{ env_var('GOOGLE_APPLICATION_CREDENTIALS', '') }}"
       project: "{{ env_var('GCP_PROJECT_ID', '') }}"
