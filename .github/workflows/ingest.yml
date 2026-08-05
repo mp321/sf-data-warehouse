@@ -59,6 +59,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Checked here rather than trusted, for the same reason as the key check
+      # below and after the same kind of failure. With the secret unset the
+      # job-level env above interpolates to `gs:///raw`, a URI with an empty
+      # bucket, and the first error names a path rather than a secret. The
+      # second case is the one that actually happens: pasting the bucket with
+      # its `gs://` prefix, which is how every other line in this file writes
+      # it, produces `gs://gs://bucket/raw` and a 404 on a bucket named `gs:`.
+      - name: Check GCS_BUCKET is set
+        run: |
+          case "$RAW_ZONE_URI" in
+            gs://gs:*)
+              echo "::error::GCS_BUCKET includes the gs:// prefix. Set it to the bucket name alone, for example my-bucket, not gs://my-bucket."
+              exit 1
+              ;;
+            gs:///*)
+              echo "::error::GCS_BUCKET is empty or unset. Settings > Secrets and variables > Actions, and set it to the bucket name alone, with no gs:// prefix and no trailing slash."
+              exit 1
+              ;;
+          esac
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"

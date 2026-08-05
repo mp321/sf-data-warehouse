@@ -260,7 +260,10 @@ models:
   - name: mart_activity_by_h3
     description: >
       One row per H3 cell per dataset per category per month, at
-      var('h3_mart_resolution'), currently 9.
+      var('h3_mart_resolution'), currently 8. ADR-10 moved it off 9 when that
+      resolution was dropped, and chose 8 over 10 on a measurement: this is
+      the largest published artifact in the project at any resolution, and 8
+      is the one that is still a readable map.
 
       The hexagon map. Read the rate, not the count: a raw count per cell is
       close to a map of where people live, so the densest 311 cells are the
@@ -453,85 +456,3 @@ models:
 
       - name: neighborhoods_for_title
         description: How many distinct neighborhoods this title was shot in.
-
-  - name: mart_budget_by_department_year
-    description: >
-      One row per fiscal year per department per ledger type. The non-spatial
-      mart: city budget rolled up from line items, with year-over-year change
-      and each department's share of the year.
-
-      What it deliberately does not do is join budget to 311. That needs a
-      crosswalk between budget department_code and the 311 agency_responsible
-      field, two independently maintained taxonomies with no reason to agree.
-      ADR-3 blocked any budget mart until that crosswalk existed; ADR-7
-      revisits it, on the grounds that the objection was always to the
-      crosswalk rather than to the budget data. The spend-versus-demand
-      question is still open.
-
-      ledger_type is part of the grain and must stay in your group by:
-      revenue and spending are rows of the same shape, and summing without
-      splitting them nets a department's income against its outgoings.
-    columns:
-      - name: fiscal_year
-        description: Fiscal year. Part of the grain.
-        tests:
-          - not_null
-          - accepted_range:
-              arguments: {min_value: 2000, max_value: 2100}
-
-      - name: ledger_type
-        description: Revenue or Spending. Part of the grain, and not optional.
-        tests:
-          - not_null
-          - accepted_values:
-              arguments:
-                values: ["Revenue", "Spending"]
-              config:
-                severity: warn
-
-      - name: department_code
-        description: >
-          Short department code, e.g. HSA. Part of the grain, and the column
-          a future crosswalk to 311 agency_responsible would join on.
-        tests:
-          - not_null
-
-      - name: budget_amount
-        description: >
-          Summed dollars over the lines whose amount parsed. Negative values
-          are legitimate transfers out and appropriation reversals; filtering
-          them to make a chart behave breaks the totals.
-
-          Null, deliberately and without a not_null test, when not one line in
-          the group had a readable amount. Zero would be a claim about the
-          city's budget; null is a statement about our data, and
-          unparseable_line_count says how big the gap is. Real DataSF extracts
-          have not produced this, but the fixtures do, which is the whole
-          reason the fixtures carry a malformed amount.
-
-      - name: unparseable_line_count
-        description: >
-          Lines in this group whose amount could not be parsed. Zero on every
-          group in the real dataset. Above zero means budget_amount understates
-          the group, and equal to line_item_count means budget_amount is null.
-        tests:
-          - not_null
-
-      - name: year_over_year_change
-        description: >
-          Change against the same department and ledger type last year. Null
-          in a department's first year, which is a real absence.
-
-      - name: year_over_year_pct_change
-        description: >
-          The normalised companion. Null rather than infinite where a
-          department had nothing last year, and computed against the absolute
-          prior amount so a negative baseline does not flip the sign.
-
-      - name: pct_of_citywide_amount
-        description: Share of that year's citywide total for the same ledger type.
-
-    tests:
-      - unique_combination:
-          arguments:
-            columns: [fiscal_year, ledger_type, department_code]

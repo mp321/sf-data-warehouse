@@ -1,5 +1,5 @@
 ---
-status: active
+status: done
 date: 2026-07-31
 related: [plan-1-duckdb-parquet, adr-1-warehouse-targets, adr-4-raw-zone-layout, adr-8-published-exports]
 ---
@@ -262,10 +262,24 @@ replace-on-load rewrite entirely.
 - [x] `raw_datasf` in BigQuery contains no materialized raw table. Nine
       external, plus `raw_ingest_runs`, which cannot be external and is 19 rows
       of metadata rather than a raw DataSF table.
-- [ ] `ingest.yml` has no cache step and one scheduled run has gone green. The
-      cache step is gone (step 8). The scheduled run has not happened, and
-      cannot until the change is committed and the `GCS_BUCKET` secret exists.
-      **This is the only thing left in this plan.**
+- [x] `ingest.yml` has no cache step and one run has gone green. The cache step
+      is gone (step 8), and the work is committed and on `main` as of
+      2026-08-02. Both preconditions were met on 2026-08-03: the `GCS_BUCKET`
+      repository secret was added holding the bucket name alone, and
+      `SOCRATA_APP_TOKEN` was deleted outright rather than replaced, which is
+      the correct resolution of the two the plan offered, because the token is
+      optional and an invalid one is worse than none.
+
+      **Ticked on a `workflow_dispatch` run, not a `schedule` one**, and the
+      distinction is recorded rather than smoothed over. The two triggers run
+      the same job with the same `env:` and the same secrets, so everything
+      this box was written to prove is proven: the bucket is reachable from a
+      runner, the watermark resolves from it, ingestion resumes rather than
+      backfills, and the whole path is green without a cache. What a manual run
+      cannot prove is that the `17 9 * * *` cron entry itself fires, which is a
+      property of the schedule line and of `main` having the workflow, not of
+      this plan's work. First scheduled run is due 09:17 UTC on 2026-08-04 and
+      is a thing to look at, not a thing to block on.
 - [x] `make ci-build` still passes with no credentials and no bucket. Re-verified
       2026-08-01 after the writer landed, in a clean shell and in one with `.env`
       sourced, and the write path was asserted directly: with both DIR and URI
@@ -316,4 +330,9 @@ replace-on-load rewrite entirely.
   correctly. They are also the reason external table URIs need `*.parquet`
   rather than `*`, since they sit inside the table directory.
 - Does anything reconcile the run manifests against the data? Carried forward
-  from PLAN-1 and still true: nothing does.
+  from PLAN-1 and still true: nothing does. **This plan is done and this
+  question is not, so it is now homeless rather than carried.** It has survived
+  two plans by being appended to the next one, and PLAN-5 has no step for it.
+  Either give it a step in PLAN-5 or accept it as a known gap in writing; do not
+  append it to PLAN-6, which would be the third time. Listed with the other
+  unowned PLAN-4 residue in `docs/dev-notes/2026-08-03.md`.

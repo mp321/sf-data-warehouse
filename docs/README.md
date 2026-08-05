@@ -8,11 +8,12 @@ anything else in here.
 | Plan | Status | What it is |
 |---|---|---|
 | PLAN-1 duckdb-parquet | done | Parquet raw zone and DuckDB default. Closed 2026-08-01 under PLAN-4 step 11, once the writer moved to the bucket. One Done-when box is left unticked on purpose; the plan says why. |
-| PLAN-2 ingestion-lint | draft, nearly closed | Ruff exemptions gone. One item left, carried into PLAN-5 step 7. |
+| PLAN-2 ingestion-lint | done | Ruff exemptions gone 2026-07-31. Closed 2026-08-05 under PLAN-5 step 7, when `ingestion/datasets.py` became `dataset_registry.py` and stopped shadowing a PyPI package name. |
 | PLAN-3 geography-and-marts | done | H3, boundaries, marts, published exports. Delivered 2026-07-31. |
-| **PLAN-4 cloud-first-storage** | **active, one item left** | All eleven steps done 2026-08-01. BigQuery is built and proven row for row against DuckDB, both zones live in GCS and are now read *and written* there by the pipeline itself, the CI cache step is gone and PLAN-1 is closed. Left: commit, add the `GCS_BUCKET` secret, and get one scheduled `ingest` run green. |
-| PLAN-5 narrow-and-polish | draft | Cut two datasets and one H3 resolution, one registry, pytest on the geometry code. After PLAN-4. |
+| PLAN-4 cloud-first-storage | done | Parquet raw zone in GCS, BigQuery on external tables and proven row for row against DuckDB, the CI cache step gone. Closed 2026-08-03 when `ingest.yml` went green on a runner against the bucket. Its residue is now homed: assurance items in PLAN-7, the publish object count in PLAN-5 step 12, the `dbt_dev` expiry question closed by measurement. |
+| **PLAN-5 narrow-and-polish** | **active** | Cut two datasets and one H3 resolution, one registry, pytest on the geometry code. Steps 1, 2, 3 and 10 done 2026-08-04: the narrowing has landed and is recorded in ADR-10. Steps 5 and 6 followed the same day: `geometry.py` has direct pytest coverage, gating the dbt job in CI, and `spatial.py` is four files. Steps 4, 7 and 8 done 2026-08-05: one dataset registry rather than two, the `datasets.py` rename that closed PLAN-2, and a 50-run retention window on `meta_dbt_run_results`. Remaining is incrementality, the publish object count, and a final obsolescence sweep. |
 | PLAN-6 context-pack | draft | The versioned context artifact with explicit refusal boundaries. Last, deliberately. |
+| PLAN-7 pipeline-assurance | draft | Reconcile run manifests against the data; assert the BigQuery column sets against DuckDB's. PLAN-4 residue that had been carried forward three times. Small: two steps. |
 
 | ADR | Status |
 |---|---|
@@ -20,11 +21,20 @@ anything else in here.
 | ADR-2 spatial strategy | superseded by ADR-6 |
 | ADR-3 dataset scope | superseded by ADR-7 |
 | ADR-4 raw zone layout | superseded by ADR-9 |
-| ADR-5 H3 computation | active, superseded by ADR-10 when PLAN-5 lands |
+| ADR-5 H3 computation | active, amended by ADR-10 |
 | ADR-6 polygon membership | active |
-| ADR-7 dataset scope, second pass | active, superseded by ADR-10 when PLAN-5 lands |
+| ADR-7 dataset scope, second pass | superseded by ADR-10 |
 | ADR-8 published exports | active |
 | ADR-9 cloud raw zone | active |
+| ADR-10 narrowed scope | active |
+
+**ADR-5 is amended rather than superseded, and the distinction is load
+bearing.** ADR-10 changed one line of it, the H3 resolution list. Its actual
+decision, that cells are computed in Python and stored as BIGINTs because
+BigQuery has no H3 function, is still a hard constraint. Filing it under
+history would mean the next reader skips a live rule, which is the failure the
+superseding convention exists to prevent. If a future ADR changes only part of
+another, say so in the new ADR and leave the old one active.
 
 `review-2026-07-31-scope-and-cloud.md` is an outside assessment that produced
 PLAN-4, PLAN-5 and PLAN-6. It is not one of the three kinds below and can be

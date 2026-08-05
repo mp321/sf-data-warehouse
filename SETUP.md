@@ -278,7 +278,7 @@ incremental watermark working.
 Then load the other two:
 
 ```bash
-python ingestion/ingest.py building_permits city_budget
+python ingestion/ingest.py building_permits film_locations
 ```
 
 Checkpoint: in the BigQuery console you see a `raw_datasf` dataset

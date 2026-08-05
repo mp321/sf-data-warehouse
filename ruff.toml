@@ -33,20 +33,39 @@ ignore = [
 ]
 
 [lint.isort]
-# `datasets` and `raw_zone` are sibling modules in ingestion/, imported by the
-# scripts that live beside them. Ruff otherwise classifies `datasets` as
-# third-party, because a PyPI package owns that name, and demands it be sorted
-# into the third-party block where it would read as an external dependency.
+# These are the sibling modules in ingestion/, imported by the scripts that
+# live beside them. Ruff would otherwise classify any of them that a PyPI
+# package also claims as third-party and demand it be sorted into the
+# third-party block, where it would read as an external dependency.
 #
-# This makes the grouping correct. It does not remove the underlying hazard,
-# which is that `ingestion/datasets.py` shadows and is shadowed by the
-# HuggingFace `datasets` package if that ever lands in the venv. The fix for
-# that is a rename and is still tracked in docs/plans/plan-2-ingestion-lint.md.
+# `datasets` is not on this list any more. It was renamed to
+# `dataset_registry` in PLAN-5 step 7, which closed PLAN-2, because
+# known-first-party fixed the grouping and left the hazard: `import datasets`
+# resolves to whichever of ingestion/ and site-packages comes first on
+# sys.path, and ingestion/ wins, so a venv holding the PyPI `datasets` package
+# would keep working for us and break for whatever pulled it in.
+#
+# THE OTHER NAMES HERE KEEP THEIRS, deliberately. The hazard is not
+# "generic-sounding name", it is "name a package this dependency tree could
+# plausibly acquire". `datasets` is that: HuggingFace `datasets` is a routine
+# transitive arrival in anything data-adjacent. `boundaries`, `population`,
+# `derived_zone`, `h3_points`, `spatial` and `raw_zone` have no such package in
+# reach of dbt, pyarrow, h3, duckdb or gcsfs. `census` and `geometry` are the
+# nearest runners-up, since both names exist on PyPI and `census` is even
+# thematically apt, but nothing here imports either and neither is a
+# dependency of anything here. Renaming six modules against a hazard with no
+# arrival path is churn, and it would not fix the class anyway: the only real
+# fix is making ingestion/ a package, which tests/conftest.py argues against
+# and which is a bigger decision than a lint config. Revisit the day one of
+# these names shows up in `pip list`.
 known-first-party = [
+    "boundaries",
     "census",
-    "datasets",
+    "dataset_registry",
     "derived_zone",
     "geometry",
+    "h3_points",
+    "population",
     "raw_zone",
     "remote",
     "spatial",

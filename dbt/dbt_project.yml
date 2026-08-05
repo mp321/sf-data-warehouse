@@ -16,84 +16,233 @@ clean-targets:
 # ---------------------------------------------------------------------------
 # Capture dbt's own run results into a table so mart_pipeline_freshness can
 # read them. See macros/audit_run_results.sql, which explains why the mart
-# necessarily reports the previous run's results rather than the current one.
+# necessarily reports the previous run's results rather than the current one,
+# and why the retention window is 50 runs rather than a number of days.
 #
-# Two separate on-run-start hooks rather than one statement: adapters differ
-# on whether a semicolon-separated batch is accepted, and BigQuery needs the
+# Separate on-run-start hooks rather than one statement: adapters differ on
+# whether a semicolon-separated batch is accepted, and BigQuery needs the
 # dataset to exist before the table, which dbt does not guarantee this early.
+# The prune is third because it reads the table the second one creates.
 # ---------------------------------------------------------------------------
 on-run-start:
   - "{{ ensure_run_results_schema() }}"
   - "{{ ensure_run_results_table() }}"
+  - "{{ prune_run_results() }}"
 
 on-run-end:
   - "{{ log_run_results() }}"
 
 vars:
-  # The registry mart_pipeline_freshness loops over to build one row per
-  # source. It duplicates part of ingestion/datasets.py on purpose: that file
-  # is what Python ingests, this is what dbt reports on, and neither language
-  # can read the other's. Adding a dataset means adding it in both places.
+  # ---------------------------------------------------------------------
+  # THE DATASET REGISTRY. This is the whole of it, for both halves of the
+  # project. There is no second copy.
   #
-  # stale_after_hours is the freshness SLA and mirrors the thresholds in
-  # models/staging/datasf/_datasf__sources.yml. null means the source has no
-  # SLA, which per ADR-3 is the demoted tier: it is still ingested, and its
-  # staleness is reported but never counted as a failure.
+  # It used to be two: this list, and a Python dict in ingestion/datasets.py.
+  # The duplication was documented rather than prevented, so adding a dataset
+  # to one and not the other was a thing `make check` let through. PLAN-5
+  # step 4 collapsed them here. ingestion/dataset_registry.py reads this file
+  # with PyYAML and hands the result to ingest.py, spatial.py and load.py;
+  # dbt reads it natively as var('pipeline_sources'). Neither side owns a
+  # list the other cannot see.
+  #
+  # Why this file and not a neutral one at the repo root: dbt cannot read an
+  # arbitrary YAML file. Its Jinja sandbox has no file access, and
+  # dbt_project.yml has no include. Python can read anything, so the single
+  # copy has to live where the less capable reader already looks. That is the
+  # entire argument; it is not a claim that a dataset registry belongs in a
+  # dbt config file.
+  #
+  # ADDING A DATASET means adding one entry here, plus a source table in
+  # models/staging/<system>/_<system>__sources.yml, plus a staging model, plus
+  # a fixture in tests/fixtures/socrata/. Forgetting any of those fails:
+  # tests/test_dataset_registry.py checks this list against the source yml and
+  # the staging models at `make test-python`, dbt fails at parse on a source()
+  # that resolves to nothing, and `make ci-build` fails at ingest on a missing
+  # fixture.
+  #
+  # FIELDS. The first five are read by dbt, the rest by Python, and `name` and
+  # `table` by both.
+  #   name              the friendly name. Python keys the registry by it and
+  #                     mart_pipeline_freshness reports it.
+  #   table             the raw table name. It is the directory under the raw
+  #                     zone, the table ingestion/load.py creates in DuckDB and
+  #                     BigQuery, and the source() dbt reads, so one name
+  #                     identifies the dataset everywhere downstream.
+  #   staging_model     the model that types and deduplicates it. Used to
+  #                     attribute test results back to a source.
+  #   tier              core, reference or demoted. See ADR-3, ADR-10.
+  #   stale_after_hours the freshness SLA, mirroring the thresholds in
+  #                     models/staging/datasf/_datasf__sources.yml. null means
+  #                     no SLA: staleness is still reported, never counted as
+  #                     a failure.
+  #   socrata_id        the dataset id on data.sfgov.org, visible in its URL.
+  #                     Absent for datasets that are not Socrata; see `api`.
+  #   api               which transport ingest.py uses. socrata (the default)
+  #                     or tigerweb for the Census block groups, which come
+  #                     from the Census Bureau's ArcGIS service.
+  #   start_date        how far back the first load reaches, using Socrata's
+  #                     system field :updated_at. Override per run with
+  #                     --since. Quoted, so YAML keeps it a string.
+  #   kind              point or polygon. This is what ingestion/spatial.py
+  #                     dispatches on, and it is the difference between a
+  #                     dataset that gets H3 cells and one that gets a
+  #                     covering set of them. There was a third value,
+  #                     nonspatial, until city_budget was cut; see ADR-10.
+  #                     Every dataset here is now spatial, which is the claim
+  #                     this project makes rather than an accident of what
+  #                     survived.
+  #   grain_key         the raw column that identifies a row, before staging
+  #                     renames it. spatial.py writes this into
+  #                     derived_point_h3 as row_key and the staging model
+  #                     joins back on it, so it must match the column the
+  #                     staging model's dedup partitions by.
+  #   geometry          where the coordinates or the polygon live in the raw
+  #                     row. Points use either {latitude, longitude} for flat
+  #                     columns or {geojson_point} for a GeoJSON object that
+  #                     normalize_record stored as JSON text. Polygons use
+  #                     {boundary_set, geojson, boundary_id, boundary_name},
+  #                     plus optional measure columns.
+  #
+  # On start dates: 311 and permits are large, so the default backfill starts
+  # at 2024. Widen it later with, e.g.
+  #     python ingestion/ingest.py 311_cases --since 2020-01-01T00:00:00.000Z
+  # The film, boundary and census datasets are small and backfill fully.
+  # business_locations backfills fully despite its size (365k rows) because it
+  # is a current-state registry rather than an event log: a partial backfill
+  # by :updated_at gives you the businesses that happened to be edited
+  # recently, which is not a subset anyone can reason about. See ADR-7, and
+  # ADR-10 for why street_trees no longer sits beside it.
+  # ---------------------------------------------------------------------
   pipeline_sources:
     - name: "311_cases"
-      source_table: raw_311_cases
+      table: raw_311_cases
       staging_model: stg_datasf__311_cases
       tier: core
       stale_after_hours: 48
+      socrata_id: vw6y-z8j6
+      start_date: "2024-01-01T00:00:00.000Z"
+      kind: point
+      grain_key: service_request_id
+      geometry: {latitude: lat, longitude: long}
+      description: >
+        SF311 service requests: potholes, graffiti, street cleaning, etc.
+
     - name: building_permits
-      source_table: raw_building_permits
+      table: raw_building_permits
       staging_model: stg_datasf__building_permits
       tier: core
       stale_after_hours: 168
+      socrata_id: i98e-djp9
+      start_date: "2024-01-01T00:00:00.000Z"
+      kind: point
+      grain_key: record_id
+      geometry: {geojson_point: location}
+      description: >
+        Building permit applications filed with the city.
+
     - name: business_locations
-      source_table: raw_business_locations
+      table: raw_business_locations
       staging_model: stg_datasf__business_locations
       tier: core
       stale_after_hours: 168
-    - name: street_trees
-      source_table: raw_street_trees
-      staging_model: stg_datasf__street_trees
-      tier: core
-      stale_after_hours: 720
+      socrata_id: g8m3-pdis
+      start_date: "1970-01-01T00:00:00.000Z"
+      kind: point
+      grain_key: uniqueid
+      geometry: {geojson_point: location}
+      description: >
+        Registered business locations: every business with a San Francisco tax
+        certificate, open or closed. About 365k rows, and the denominator
+        behind 'per 1000 businesses' rates.
+
     # Reference boundary sets. They change every several years, so staleness
     # is not a signal and they carry no SLA, but they are not demoted either:
     # every spatial mart depends on them, which is what `reference` means.
     - name: analysis_neighborhoods
-      source_table: raw_analysis_neighborhoods
+      table: raw_analysis_neighborhoods
       staging_model: stg_datasf__analysis_neighborhoods
       tier: reference
       stale_after_hours: null
+      socrata_id: ajp5-b2md
+      start_date: "1970-01-01T00:00:00.000Z"
+      kind: polygon
+      grain_key: nhood
+      geometry:
+        boundary_set: analysis_neighborhood
+        geojson: the_geom
+        boundary_id: nhood
+        boundary_name: nhood
+      description: >
+        The 41 analysis neighborhoods, as MultiPolygons. The city's standard
+        reporting geography, and the one most DataSF datasets already stamp
+        onto rows as a string.
+
     - name: supervisor_districts
-      source_table: raw_supervisor_districts
+      table: raw_supervisor_districts
       staging_model: stg_datasf__supervisor_districts
       tier: reference
       stale_after_hours: null
+      socrata_id: f2zs-jevy
+      start_date: "1970-01-01T00:00:00.000Z"
+      kind: polygon
+      grain_key: sup_dist_num
+      geometry:
+        boundary_set: supervisor_district
+        geojson: polygon
+        boundary_id: sup_dist_num
+        boundary_name: sup_dist_name
+      description: >
+        The 11 supervisor districts as drawn in the 2022 redistricting, as
+        MultiPolygons. The 2012 boundaries (keex-zmn4) are a different
+        dataset; rows stamped with a district before 2022 were assigned under
+        those.
+
     - name: census_block_groups
-      source_table: raw_census_block_groups
+      table: raw_census_block_groups
       staging_model: stg_census__block_groups
       tier: reference
       stale_after_hours: null
-    - name: city_budget
-      source_table: raw_city_budget
-      staging_model: stg_datasf__city_budget
-      tier: demoted
-      stale_after_hours: null
+      api: tigerweb
+      start_date: "1970-01-01T00:00:00.000Z"
+      kind: polygon
+      grain_key: geoid
+      geometry:
+        boundary_set: census_block_group
+        geojson: the_geom
+        boundary_id: geoid
+        boundary_name: name
+        # The only boundary set carrying measures rather than just a shape.
+        # These are what every "per 1000 residents" rate in the marts is
+        # ultimately divided by.
+        population: pop100
+        housing_units: hu100
+      description: >
+        The 681 San Francisco census block groups from the 2020 Census, as
+        polygons carrying POP100 and HU100. The population denominator, and
+        the only source here that is not DataSF. See ingestion/census.py and
+        ADR-7 for why this is the Decennial count rather than an ACS estimate.
+
     - name: film_locations
-      source_table: raw_film_locations
+      table: raw_film_locations
       staging_model: stg_datasf__film_locations
       tier: demoted
       stale_after_hours: null
+      socrata_id: yitu-d5am
+      start_date: "1970-01-01T00:00:00.000Z"
+      kind: point
+      grain_key: _socrata_id
+      geometry: {latitude: latitude, longitude: longitude}
+      description: >
+        Movies and TV filmed in San Francisco, with locations and fun facts.
+        The fun one, and the pipeline canary: small enough to ingest end to
+        end in seconds. It does carry usable coordinates on about 19 rows in
+        20, which ADR-3 got wrong and ADR-7 corrects.
 
   # ---------------------------------------------------------------------
-  # Spatial settings. These have to agree with RESOLUTIONS and
-  # MEMBERSHIP_RESOLUTION in ingestion/spatial.py, which is the code that
-  # actually computes the cells; nothing here can conjure a resolution the
-  # derived zone does not hold. Changing either of the first two means
+  # Spatial settings. These have to agree with RESOLUTIONS in
+  # ingestion/h3_points.py and MEMBERSHIP_RESOLUTION in ingestion/boundaries.py,
+  # which is the code that actually computes the cells; nothing here can conjure
+  # a resolution the derived zone does not hold. Changing either of the first two means
   # re-running `make spatial`, not just rebuilding dbt.
   # ---------------------------------------------------------------------
 
@@ -102,16 +251,20 @@ vars:
   h3_membership_resolution: 10
 
   # The resolution mart_activity_by_h3 aggregates to. Coarser than membership
-  # on purpose: a city map at r10 is 40,000 hexagons, at r9 it is 4,000.
-  h3_mart_resolution: 9
+  # on purpose: this mart is the readable map, and membership is a join key.
+  # Measured on the real zone before ADR-10 chose between them: the mart is
+  # 140,342 rows at r8, 238,742 at r9 and 330,960 at r10. It is the largest
+  # published artifact either way, so the map resolution is the one that keeps
+  # it smallest while still being a map.
+  h3_mart_resolution: 8
 
   # Average hexagon area in square kilometres, per resolution. Constants from
   # the H3 specification, kept here because a density needs an area and the
   # engines have no h3 function to ask (ADR-5). Keys are strings so that
-  # var(...)[resolution | string] works in a model.
+  # var(...)[resolution | string] works in a model. Only the resolutions in
+  # RESOLUTIONS need an entry; r9 went with ADR-10.
   h3_cell_area_sq_km:
     "8": 0.7373275976
-    "9": 0.1053325134
     "10": 0.0150475019
 
 models:

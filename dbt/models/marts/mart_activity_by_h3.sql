@@ -29,11 +29,16 @@
 --                              neighborhood mart, where areas genuinely
 --                              differ, and for no other reason.
 --
--- Built at one resolution, var('h3_mart_resolution'), currently 9: about
--- 0.1 km per cell, roughly a couple of city blocks. Coarse enough that a map
--- of the city is a few thousand hexagons rather than tens of thousands, fine
--- enough that a neighborhood is many cells. Changing the var rebuilds this
--- at another resolution; the cells are already stored at 8, 9 and 10.
+-- Built at one resolution, var('h3_mart_resolution'), currently 8: about
+-- 0.74 sq km per cell, roughly a four-block square. Coarse enough that a map
+-- of the city is hundreds of hexagons rather than tens of thousands, fine
+-- enough that a neighborhood is many cells. Changing the var rebuilds this at
+-- another resolution, but only to one the derived zone holds: after ADR-10
+-- that is 8 or 10, and 10 is the membership resolution rather than a map.
+--
+-- This is the largest published artifact in the project, which is why the
+-- resolution was measured rather than chosen: 140,342 rows at r8 against
+-- 238,742 at r9 and 330,960 at r10, on the real zone in August 2026.
 --
 -- Named mart_ rather than agg_ following the plan that commissioned it. See
 -- CLAUDE.md, where the naming rule was widened to match.

@@ -3,14 +3,14 @@
 --
 -- Grain: one row per dated event, across every point dataset that has a date.
 --
--- The spine both activity marts are built on. Four datasets reduced to one
+-- The spine both activity marts are built on. Three datasets reduced to one
 -- shape: what happened, when, what kind of thing it was, and where. Written
 -- once here because mart_activity_by_h3 and mart_activity_by_neighborhood ask
 -- the same question at two different geographies, and a union that appears in
 -- both is a union that will diverge.
 --
--- This is the project's first intermediate model. It exists because it is
--- neither a staging model (it unions five sources and picks an event date,
+-- This is the project's only intermediate model. It exists because it is
+-- neither a staging model (it unions several sources and picks an event date,
 -- which is a modelling decision) nor a mart (nothing queries it directly).
 -- CLAUDE.md's directory conventions were updated to name the layer.
 --
@@ -21,9 +21,10 @@
 --      filed, not issued: filing is the demand signal and issuing is the
 --      city's response to it, and mixing them makes a permitting backlog look
 --      like a drop in construction. Businesses use when the location opened.
---      Trees use the plant date, which is null on most rows, so most trees do
---      not appear here at all. Every one of these is defensible and none is
---      the only answer.
+--      Both of these are defensible and neither is the only answer.
+--      street_trees was a fourth branch here until ADR-10 cut the dataset; it
+--      keyed on plant date, which is null on well over half its rows, so most
+--      trees never reached a mart in the first place.
 --
 --   2. **film_locations is deliberately absent.** It has no event timestamp,
 --      only a release year, and a release year is not when the shoot
@@ -45,7 +46,6 @@ with cases as (
         -- Top-level request type: "Street and Sidewalk Cleaning", "Graffiti".
         service_category as category,
         h3_r8,
-        h3_r9,
         h3_r10,
         analysis_neighborhood,
         supervisor_district_id
@@ -61,7 +61,6 @@ permits as (
         {{ x_month_start('filed_at') }} as event_month,
         permit_type as category,
         h3_r8,
-        h3_r9,
         h3_r10,
         analysis_neighborhood,
         supervisor_district_id
@@ -77,27 +76,10 @@ businesses as (
         {{ x_month_start('location_started_at') }} as event_month,
         business_category as category,
         h3_r8,
-        h3_r9,
         h3_r10,
         analysis_neighborhood,
         supervisor_district_id
     from {{ ref('stg_datasf__business_locations') }}
-
-),
-
-trees as (
-
-    select
-        'street_trees' as dataset,
-        tree_id as event_id,
-        {{ x_month_start('planted_at') }} as event_month,
-        plant_type as category,
-        h3_r8,
-        h3_r9,
-        h3_r10,
-        analysis_neighborhood,
-        supervisor_district_id
-    from {{ ref('stg_datasf__street_trees') }}
 
 ),
 
@@ -108,8 +90,6 @@ combined as (
     select * from permits
     union all
     select * from businesses
-    union all
-    select * from trees
 
 ),
 
@@ -129,7 +109,6 @@ final as (
         event_id,
         event_month,
         h3_r8,
-        h3_r9,
         h3_r10,
         analysis_neighborhood,
         supervisor_district_id,

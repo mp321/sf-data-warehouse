@@ -13,7 +13,7 @@ models:
     columns:
       - name: source_table
         description: >
-          The raw table name from ingestion/datasets.py, e.g. raw_311_cases.
+          The raw table name from the dataset registry, e.g. raw_311_cases.
           Half the grain, and the string every point staging model filters on.
         tests:
           - not_null
@@ -40,9 +40,6 @@ models:
 
       - name: h3_r8
         description: H3 cell at resolution 8 as a BIGINT. Null unless the coordinate parsed.
-
-      - name: h3_r9
-        description: H3 cell at resolution 9 as a BIGINT.
 
       - name: h3_r10
         description: >
@@ -98,15 +95,15 @@ models:
           - not_null
 
       - name: resolution
-        description: H3 resolution. 8, 9 or 10, matching RESOLUTIONS in ingestion/spatial.py.
+        description: H3 resolution. 8 or 10, matching RESOLUTIONS in ingestion/h3_points.py.
         tests:
           - not_null
           - accepted_values:
               arguments:
                 # quote: false because resolution is an integer. dbt quotes the
-                # values by default, and `int64 in ('8', '9', '10')` is an error
-                # on BigQuery rather than an implicit cast as it is on DuckDB.
-                values: [8, 9, 10]
+                # values by default, and `int64 in ('8', '10')` is an error on
+                # BigQuery rather than an implicit cast as it is on DuckDB.
+                values: [8, 10]
                 quote: false
 
       - name: h3_cell

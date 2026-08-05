@@ -61,20 +61,40 @@ Read this before assuming the ADRs describe running code.
 | Derived zone | Parquet, same arrangement as raw, under `DERIVED_ZONE_URI` | same | ADR-5, ADR-9 |
 | Warehouse load | `ingestion/load.py`. DuckDB materialises; BigQuery creates external tables over GCS and stores no raw bytes | same | ADR-9 |
 | Parquet durability | written to GCS by `ingest.py` and `spatial.py` themselves | same | ADR-9, PLAN-4 step 6 |
-| Spatial | H3 cells plus exact boundary membership | same | ADR-5, ADR-6 |
-| Staging models | one per source, all nine | same | ADR-7 |
-| Marts | 5 city marts, 2 dims, 1 metadata mart | same | ADR-7 |
-| Published export | local `published/`, and uploaded to GCS once on 2026-08-01 | scheduled | ADR-8 |
-| BigQuery build | run by hand 2026-07-31, `PASS=196 ERROR=0`, and compared row for row against DuckDB | same, plus in CI | PLAN-4 step 3 |
+| Spatial | H3 cells at r8 and r10, plus exact boundary membership | same | ADR-5, ADR-6, ADR-10 |
+| Staging models | one per source, all seven, plus five spatial | same | ADR-10 |
+| Marts | 3 city marts, 2 dims, 1 metadata mart | same | ADR-10 |
+| Published export | local `published/` on every PR, and uploaded to GCS once by hand on 2026-08-01 | stays manual until the upload is batched | ADR-8 |
+| BigQuery build | last run by hand 2026-08-01 on external tables, `PASS=196 ERROR=0`, compared row for row against DuckDB. That node count predates ADR-10; the project is 19 models and 148 tests now | same, plus the weekly `dbt.yml` cron | PLAN-4 step 3 |
+| Scheduled ingest | `ingest.yml`, daily at 09:17 UTC, reads and writes the bucket. Green on a manual dispatch 2026-08-03; no cron-triggered run yet | same | PLAN-4 step 8 |
 
 The rows that used to be the embarrassing ones are closed. `dbt build
 --target bigquery` ran for the first time on 2026-07-31 and found four
 cross-engine defects, three of which `dbt compile --target bigquery` cannot
 catch because compiling never asks the warehouse whether a type exists. All four
 are fixed, both targets build green, and `scripts/parity-check.py` compares the
-six point staging models row for row on demand. The zones moved to GCS on
+point staging models row for row on demand. The zones moved to GCS on
 2026-08-01 (ADR-9), the writer followed the same day (PLAN-4 step 6), and
-`make publish` has uploaded to a real bucket once.
+`make publish` has uploaded to a real bucket once. PLAN-4 closed on 2026-08-03
+when `ingest.yml` went green on a runner.
+
+ADR-10 narrowed the project on 2026-08-04: `city_budget` and `street_trees`
+cut, H3 resolution 9 dropped, `mart_activity_by_h3` moved to r8. Nine datasets
+became seven, and every remaining one is spatial. Steps 5 and 6 followed on
+2026-08-03: `ingestion/geometry.py` has direct pytest coverage and
+`ingestion/spatial.py` is four files. Steps 4, 7 and 8 followed on 2026-08-05:
+there is one dataset registry rather than two, `ingestion/datasets.py` is
+`dataset_registry.py` and PLAN-2 is closed, and `meta_dbt_run_results` is
+bounded. PLAN-5 steps 9, 12 and 13 are still open.
+
+**The publish intent changed from "scheduled" to "manual" on evidence, not on
+preference.** One publish is 2,885 objects, so 2,885 Class A operations against
+a free tier of 5,000 a month, and it took 6 minutes 39 for 17 MB because the
+cost is per object and the H3 mart partitions into thousands of small ones. A
+daily publish would leave the free tier on day two and break the zero-cost
+claim at the top of this file. Batch the upload or coarsen that partitioning
+before putting it on a cron; until then, running it by hand is the correct
+behaviour rather than a missing feature.
 
 **There is one zone at a time, and it is never two.** This is the thing to have
 straight before reading anything else about storage. A run reads and writes
@@ -137,6 +157,7 @@ make build            # dbt build against DuckDB (default target)
 make publish          # export marts to published/ with a manifest
 make rebuild          # drop the warehouse and rebuild it from the zones
 make test             # dbt test only
+make test-python      # pytest over ingestion/. Fastest gate in the set.
 make docs             # dbt docs generate, refresh docs/dbt/ artifacts
 make lint             # ruff + sqlfluff
 make leak-check       # scripts/leak-check.sh, exits nonzero on a hit
@@ -160,17 +181,25 @@ the source of truth it claims to be. CI runs it on every PR.
 
 1. This file.
 2. `docs/decisions/` in number order. These are the constraints you inherit.
-   ADR-2 and ADR-3 are superseded; read them for the reasoning, then read
-   ADR-6 and ADR-7 for what actually holds.
-3. `docs/plans/` for anything with `status: active`.
+   ADR-2, ADR-3, ADR-4 and ADR-7 are superseded; read them for the reasoning,
+   then read ADR-6, ADR-9 and ADR-10 for what actually holds. ADR-5 is the
+   one to read carefully: it is `active`, but ADR-10 amended its resolution
+   list, so its "8, 9 and 10" is the only line in it that is out of date.
+3. `docs/plans/` for anything with `status: active` or `status: draft`.
 4. The most recent two files in `docs/dev-notes/`.
-5. `ingestion/datasets.py` for what is in scope, then `ingestion/raw_zone.py`
-   for the raw zone layout, then `ingest.py` and `load.py`.
+5. `vars.pipeline_sources` in `dbt/dbt_project.yml` for what is in scope. That
+   is the dataset registry itself and the only copy of it;
+   `ingestion/dataset_registry.py` is the loader that hands it to Python. Then
+   `ingestion/raw_zone.py` for the raw zone layout, then `ingest.py` and
+   `load.py`.
 6. `dbt/models/staging/datasf/stg_datasf__311_cases.sql`, the reference model.
-7. If the work is spatial: `ingestion/spatial.py`'s header, then
+7. If the work is spatial: `ingestion/spatial.py`'s header for what the step
+   produces and which of the three modules produces it, then
+   `ingestion/boundaries.py`'s header for the three containment modes, then
    `dbt/models/staging/spatial/stg_spatial__polygon_h3.sql` for the three
    flags on the bridge table and why using the wrong one is the easiest
-   mistake available here.
+   mistake available here. `tests/test_geometry.py` is where the contract for
+   points on an edge or a vertex is written down.
 
 `SETUP.md` is the human onboarding path and is more detailed than this file on
 Google Cloud setup. It is not authoritative on architecture.
@@ -178,7 +207,13 @@ Google Cloud setup. It is not authoritative on architecture.
 ## Directory conventions
 
 ```
-ingestion/          datasets.py is the dataset registry. raw_zone.py owns the
+ingestion/          dataset_registry.py loads the dataset registry, which is
+                    not here: it is vars.pipeline_sources in
+                    dbt/dbt_project.yml, one list read by dbt natively and by
+                    this module through PyYAML. There is no second copy, which
+                    is the point (PLAN-5 step 4); the file's docstring has the
+                    argument for why the one copy lives on the dbt side.
+                    raw_zone.py owns the
                     Parquet layout and is the only thing that reads or writes
                     it; derived_zone.py is its sibling for the derived zone, and
                     remote.py is the one place that knows a zone can be a gs://
@@ -189,8 +224,17 @@ ingestion/          datasets.py is the dataset registry. raw_zone.py owns the
                     transport, spatial.py computes the derived zone,
                     check_derived.py asserts the derived zone is not behind the
                     raw one, and load.py loads both into a warehouse. geometry.py is
-                    pure-Python point-in-polygon and area, used only by
-                    spatial.py and never at query time.
+                    pure-Python point-in-polygon and area, used only by the
+                    spatial step and never at query time.
+                    spatial.py is the entry point of four files, split in
+                    PLAN-5 step 6: it owns the CLI, the Arrow schemas, the run
+                    order and the manifest, and calls h3_points.py (coordinate
+                    classification, cells, RESOLUTIONS, the shared dedup read),
+                    boundaries.py (the covering-cell bridge, exact membership,
+                    the pip-sample oracle, and the explanation of the three
+                    containment modes) and population.py (block group
+                    population spread over cells). h3_points.py is the base:
+                    the other two import from it and nothing imports back.
 publish/            export.py writes marts to published/ with a manifest.
                     Standalone: it imports nothing from ingestion/.
 dbt/models/staging/ one view per raw or derived table. Rename, cast,
@@ -204,7 +248,10 @@ dbt/models/marts/   hand-written analysis tables. Reference staging and
                     intermediate models, except mart_pipeline_freshness,
                     which is about the pipeline and says why in its header.
 dbt/macros/         cross_engine.sql holds the adapter dispatch macros.
-                    audit_run_results.sql persists dbt's own run results.
+                    audit_run_results.sql persists dbt's own run results and
+                    prunes them to the last 50 runs, a window its header
+                    explains and which cannot go below 2 without breaking
+                    mart_pipeline_freshness.
                     point_geography.sql attaches geography to point staging
                     models. generic/ holds custom generic tests.
 dbt/tests/          singular tests. The three spatial assertions live here
@@ -214,6 +261,16 @@ docs/plans/         plan-<n>-<slug>.md, forward-looking intent.
 docs/decisions/     adr-<n>-<slug>.md, one decision each, immutable once accepted.
 docs/dev-notes/     YYYY-MM-DD.md, append-only session log.
 docs/dbt/           committed manifest.json and catalog.json. Refresh: make docs.
+tests/              the pytest suite, run by `make test-python` and by the
+                    python-tests job in ci.yml, which the end-to-end dbt job
+                    waits on. test_geometry.py covers ingestion/geometry.py
+                    directly, edge and vertex contract included.
+                    test_dataset_registry.py checks the registry against the
+                    things that have to agree with it and are not in the same
+                    file: the dbt source tables, the staging models and the
+                    ingest fixtures, in both directions. conftest.py is what
+                    puts ingestion/ on sys.path, since it is scripts and not a
+                    package. Everything else here is tested through dbt.
 tests/fixtures/     committed JSON so CI can run without network. Includes
                     real boundary polygons with thinned vertices, so the
                     fixture run genuinely exercises the H3 machinery.
@@ -223,7 +280,11 @@ scripts/            leak-check.sh, sqlfluff-lint.sh, check-lint-pins.sh, and
                     hand rather than in CI. fake-bq-key.sh mints a throwaway
                     key so make compile-bigquery needs none; it is the reason
                     that target is credential-free, and the on-run hook guards
-                    and the profiles.yml oauth fallback are not.
+                    and the profiles.yml oauth fallback are not. It is exactly
+                    half the reason: the other half is --no-populate-cache on
+                    the compile. Both were measured on 2026-08-03 and neither
+                    is redundant, so do not delete one to tidy up. The
+                    Makefile target's header carries the evidence.
                     These are the real implementation; pre-commit, the
                     Makefile and CI call them rather than restating the
                     command, so a hook and a make target cannot disagree
@@ -274,6 +335,14 @@ files are `_<source>__sources.yml`.
   upload the result. Warehouse raw tables are derived mirrors of the zone,
   rebuilt wholesale by `load.py`; never write an UPDATE or DELETE against
   them either. Deduplication belongs in staging.
+- **The dataset registry has one copy, and it is `vars.pipeline_sources` in
+  `dbt/dbt_project.yml`.** Python reads it through
+  `ingestion/dataset_registry.py`. Do not add a Python-side list "for
+  convenience": that is what was there until 2026-08-05, and two lists with
+  nothing checking they agree is how a dataset gets ingested and never
+  reported on. Adding one means an entry there, a source table in the
+  relevant `_<system>__sources.yml`, a staging model, and a fixture;
+  `tests/test_dataset_registry.py` fails on any of the four being missing.
 - SQL must compile on both BigQuery and DuckDB. Use the dispatch macros in
   `dbt/macros/cross_engine.sql` instead of engine-specific functions such as
   `safe_cast`, `float64`, `try_cast` or `json_extract_string`. Do not compare
@@ -298,8 +367,10 @@ files are `_<source>__sources.yml`.
 
 - Decisions: `docs/decisions/`. ADR-1 warehouse targets, ADR-2 spatial
   strategy (superseded by ADR-6), ADR-3 dataset scope (superseded by ADR-7),
-  ADR-4 raw zone layout, ADR-5 H3 computation, ADR-6 polygon membership,
-  ADR-7 dataset scope second pass, ADR-8 published exports.
+  ADR-4 raw zone layout (superseded by ADR-9), ADR-5 H3 computation (amended
+  by ADR-10), ADR-6 polygon membership, ADR-7 dataset scope second pass
+  (superseded by ADR-10), ADR-8 published exports, ADR-9 cloud raw zone,
+  ADR-10 narrowed scope.
 - Plans: `docs/plans/`
 - Session log: `docs/dev-notes/`
 - Human onboarding: `SETUP.md`

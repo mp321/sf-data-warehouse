@@ -77,10 +77,6 @@ PUBLISHED_MARTS = {
         "partition_by": None,
         "description": "Film and TV shoot locations joined to their neighborhood.",
     },
-    "mart_budget_by_department_year": {
-        "partition_by": None,
-        "description": "City budget by department and fiscal year, with year-over-year change.",
-    },
     "dim_neighborhood": {
         "partition_by": None,
         "description": "The 41 analysis neighborhoods with area, population and denominators.",

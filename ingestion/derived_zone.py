@@ -29,7 +29,7 @@ Three consequences worth knowing:
     so an empty table can be told apart from a step that never ran. The input
     counts are also what make the zone's staleness checkable without
     recomputing it; `check_derived.py` compares them against the raw zone.
-  - Types are real. `h3_r9` is a BIGINT, not a string of digits. The
+  - Types are real. `h3_r8` is a BIGINT, not a string of digits. The
     all-STRING contract exists so that the raw zone cannot silently lose
     information the API sent; it buys nothing for a column we computed.
   - Deleting the zone is always safe, local or remote. `make spatial` rebuilds

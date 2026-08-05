@@ -1,7 +1,7 @@
 ---
-status: active
+status: superseded
 date: 2026-07-31
-related: [adr-3-dataset-scope, adr-5-h3-computation, adr-6-polygon-membership]
+related: [adr-3-dataset-scope, adr-5-h3-computation, adr-6-polygon-membership, adr-10-narrowed-scope]
 ---
 
 # ADR-7. Dataset scope, second pass: geography sources in, tiers redrawn

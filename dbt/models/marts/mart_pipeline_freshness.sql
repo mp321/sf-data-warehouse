@@ -27,6 +27,11 @@
 -- The source list is var('pipeline_sources') in dbt_project.yml, and the
 -- loop below turns it into one union-all branch per source. Adding a source
 -- there adds a row here.
+--
+-- That var is the whole dataset registry as of PLAN-5 step 4, not a reporting
+-- copy of one: ingestion/dataset_registry.py reads the same list, so a source
+-- dbt reports on and a source Python ingests are the same seven entries by
+-- construction. This model uses five of the fields and ignores the rest.
 {% endraw %}
 
 {%- set sources = var('pipeline_sources') -%}
@@ -42,7 +47,7 @@ with row_counts as (
         count(*) as row_count,
         max({{ x_safe_cast('_ingested_at', 'timestamp') }}) as last_load_at,
         max(_ingest_run_id) as last_ingest_run_id
-    from {{ source('raw_datasf', s.source_table) }}
+    from {{ source('raw_datasf', s.table) }}
     {%- if not loop.last %}
     union all
     {% endif %}
@@ -57,7 +62,7 @@ registry as (
     {% for s in sources %}
     select
         '{{ s.name }}' as source_name,
-        '{{ s.source_table }}' as source_table,
+        '{{ s.table }}' as source_table,
         '{{ s.staging_model }}' as staging_model,
         '{{ s.tier }}' as tier,
         {{ s.stale_after_hours if s.stale_after_hours is not none else 'null' }}

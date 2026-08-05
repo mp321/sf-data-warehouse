@@ -59,7 +59,7 @@ import requests
 import raw_zone
 import remote
 from census import census_pages
-from datasets import DATASETS
+from dataset_registry import DATASETS
 
 SOCRATA_DOMAIN = "https://data.sfgov.org"
 PAGE_SIZE = 5000  # rows per API request

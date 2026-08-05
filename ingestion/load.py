@@ -46,7 +46,7 @@ import duckdb
 import derived_zone
 import raw_zone
 import remote
-from datasets import DATASETS
+from dataset_registry import DATASETS
 
 # Schema the dbt sources point at, on both engines. Keeping the name identical
 # across warehouses is what lets one set of models build against either.

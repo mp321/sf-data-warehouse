@@ -6,7 +6,8 @@
     no warehouse can query. These two hooks copy it into a real table.
 
     Wiring is in dbt_project.yml:
-      on-run-start  creates the schema and table if they are missing
+      on-run-start  creates the schema and table if they are missing, then
+                    prunes it to the retention window below
       on-run-end    appends one row per node from the run that just finished
 
     The ordering consequence is worth stating plainly, because it looks like a
@@ -16,9 +17,27 @@
     completed dbt run" is the honest reading of that column and is what the
     model description says.
 
-    The table is append-only and grows by one row per node per run. Nothing
-    prunes it yet; at a handful of runs a day that is years away from
-    mattering, and the fix is a retention delete in on-run-start.
+    RETENTION: THE LAST 50 COMPLETED RUNS. The table was append-only and grew
+    by one row per node per run forever; at 19 models and 148 tests that is
+    roughly 170 rows a run, so a daily build reached a million rows in about
+    sixteen years and a busy CI branch much sooner. `prune_run_results()` runs
+    in on-run-start and deletes every row whose invocation is not one of the
+    50 most recent. The steady state is about 8,500 rows, and it is a ceiling
+    rather than a trend.
+
+    Why a run count and not an age. The paragraph above about reporting the
+    PREVIOUS run is the constraint: a window that can hold fewer than two runs
+    does not prune mart_pipeline_freshness, it breaks it, because the run this
+    build is reporting on is the one that would have been deleted. "Older than
+    30 days" can hold zero runs after a quiet month. "The last 50 runs" cannot
+    hold fewer than 50 while 50 exist, whatever the calendar does, and 50 is
+    far enough above the floor of 2 that a fortnight of history survives at a
+    handful of runs a day. Lower it if you like; below about 5 you are trading
+    a table this project cannot notice the size of against the only column in
+    the mart that reports test outcomes.
+
+    The prune fires before this run inserts, so the table holds at most 51
+    runs at the moment on-run-end finishes. That is the arithmetic, not a bug.
 #}
 
 
@@ -74,6 +93,42 @@
         status {{ x_type('string') }},
         failures {{ x_type('int') }},
         execution_time_seconds {{ x_type('float') }}
+    )
+{%- endmacro -%}
+
+
+{%- macro run_results_retention_runs() -%}
+    {#- The window, in completed runs. Deliberately a literal in this file and
+        not a var in dbt_project.yml: the header comment above states the
+        number, and a number stated in one place and configured in another is
+        the exact failure PLAN-5 step 4 spent a session removing from the
+        dataset registry. Change it here and change the header with it. -#}
+    {{- return(50) -}}
+{%- endmacro -%}
+
+
+{%- macro prune_run_results() -%}
+    {%- if _skip_audit_ddl() -%}{{- return('') -}}{%- endif -%}
+    {#- Keeps whole invocations rather than a row count, because a partially
+        deleted run would report a passing build with some of its tests
+        missing, which is worse than no history at all. The subquery ranks by
+        max(run_started_at) per invocation: every row of one invocation shares
+        that timestamp, and max() is what makes it legal to group by.
+
+        `not in` rather than a join because both engines take it in DML and
+        neither takes the same anti-join syntax. If the subquery ever yields a
+        null invocation_id, `not in` matches nothing and the delete is a no-op,
+        which is the safe direction to fail in. -#}
+    delete from {{ run_results_relation() }}
+    where invocation_id not in (
+        select invocation_id
+        from (
+            select invocation_id, max(run_started_at) as last_started_at
+            from {{ run_results_relation() }}
+            group by invocation_id
+            order by last_started_at desc
+            limit {{ run_results_retention_runs() }}
+        ) as kept_runs
     )
 {%- endmacro -%}
 
