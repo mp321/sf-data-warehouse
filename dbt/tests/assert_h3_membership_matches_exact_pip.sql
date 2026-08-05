@@ -30,6 +30,10 @@
 --   analysis_neighborhood   r8 72.6%   r9 88.2%   r10 94.7%
 --   supervisor_district     r8 83.6%   r9 92.7%   r10 96.8%
 --
+-- The r9 column is history: ADR-10 stopped computing that resolution. It is
+-- kept here because the point of the table is the trend, and three points
+-- make the case for the finest resolution that two do not.
+--
 -- The floors below sit a few points under those, so ordinary boundary churn
 -- does not fail the build but a real regression does.
 {% endraw %}

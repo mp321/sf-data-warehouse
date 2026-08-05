@@ -69,7 +69,6 @@ final as (
         films.longitude,
         films.is_usable_coordinate,
         films.h3_r8,
-        films.h3_r9,
         films.h3_r10,
 
         -- where, as DataSF stamped it. Kept for comparison only.

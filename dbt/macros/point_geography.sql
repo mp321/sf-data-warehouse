@@ -16,7 +16,7 @@
 
     Arguments:
       upstream_cte  name of the CTE to attach geography to
-      source_table  the raw table name from ingestion/datasets.py. This is the
+      source_table  the raw table name from the dataset registry. This is the
                     string spatial.py wrote into derived_point_h3, so it has
                     to match the registry's `table` value exactly.
       key_column    the column in upstream_cte holding the row key, which must
@@ -42,7 +42,6 @@ select
     -- H3 cells as BIGINTs (ADR-5). These are what boundary joins and cell
     -- aggregations use; nothing downstream needs a geometry function.
     geography.h3_r8,
-    geography.h3_r9,
     geography.h3_r10,
 
     -- exact boundary membership (ADR-6), null where the point is outside

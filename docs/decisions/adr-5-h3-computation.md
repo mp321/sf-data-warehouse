@@ -1,7 +1,7 @@
 ---
 status: active
 date: 2026-07-31
-related: [adr-1-warehouse-targets, adr-2-spatial-strategy, adr-6-polygon-membership]
+related: [adr-1-warehouse-targets, adr-2-spatial-strategy, adr-6-polygon-membership, adr-10-narrowed-scope]
 ---
 
 # ADR-5. H3 cells are computed in Python, in a derived zone, as BIGINTs

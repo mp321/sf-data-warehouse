@@ -60,8 +60,8 @@ pivoted as (
 final as (
 
     select
-        -- identity. source_table is the raw table name from
-        -- ingestion/datasets.py, so it is the same string on both sides of
+        -- identity. source_table is the raw table name from the dataset
+        -- registry, so it is the same string on both sides of
         -- every join a point staging model makes.
         point_h3.source_table,
         point_h3.row_key,
@@ -75,7 +75,6 @@ final as (
         -- H3 cells as BIGINTs, which is what makes membership an integer
         -- predicate rather than a string compare (ADR-5).
         point_h3.h3_r8,
-        point_h3.h3_r9,
         point_h3.h3_r10,
 
         -- exact boundary membership (ADR-6). Null where the point falls

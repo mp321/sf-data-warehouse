@@ -37,11 +37,13 @@ publishes, with values borrowed from real rows.
 
 That record is built from the dataset's metadata, not from the scan, and the
 difference matters. The scan is ordered by `:updated_at`, so a column only
-populated on recently-touched rows is invisible in the oldest 400. Not one of
-the 400 oldest street trees carries `latitude`, `longitude`, `location`,
-`xcoord` or `ycoord`, so the first fixture built from a scan alone produced a
-tree dataset with no coordinates at all and broke `make spatial`. The
-generator now reads the column list from `/api/views/<id>.json` and fetches a
+populated on recently-touched rows is invisible in the oldest 400. The worked
+example outlived the dataset and is kept because the failure mode is a
+property of Socrata rather than of that dataset: not one of the 400 oldest
+`street_trees` rows carried `latitude`, `longitude`, `location`, `xcoord` or
+`ycoord`, so the first fixture built from a scan alone produced a dataset with
+no coordinates at all and broke `make spatial`. ADR-10 later cut street trees.
+The generator reads the column list from `/api/views/<id>.json` and fetches a
 real value for anything the scan missed.
 
 **The fixtures must pass the tests.** Adversarial values go only on columns
@@ -69,10 +71,6 @@ the numbers quoted in ADR-6 come from `make spatial` on the real zone.
   to null them rather than error.
 - A permit with no `location`, so the JSON coordinate extraction has to cope
   with a missing document.
-- A negative budget amount, which is legitimate and must survive, and an
-  unparseable one, which makes a whole department-year group sum to NULL. That
-  is the only reason `mart_budget_by_department_year.budget_amount` is
-  nullable, and the model's header argues why NULL beats zero there.
 - A film with no release year and one with no coordinates, both of which exist
   upstream.
 - A business located in Georgia, which is correct data and must come out
@@ -81,7 +79,10 @@ the numbers quoted in ADR-6 come from `make spatial` on the real zone.
 - A business whose coordinates are State Plane feet in a degree column, which
   must come out `impossible`. This is what the Earth-bounds `accepted_range`
   test on latitude and longitude exists to catch.
-- A street tree with a diameter of 9999 inches, the classic not-recorded
-  sentinel, which the staging model has to null rather than average in.
-- A street tree with no plant date, which is most of them upstream and which
-  `int_point_activity` therefore has to drop rather than bucket into a month.
+
+Both flat `latitude`/`longitude` datasets and both `geojson_point` datasets
+are represented, and the adversarial coordinate cases are split across the
+two shapes on purpose: the unparseable pair sits on `311_cases`, which is
+flat, and the out-of-bounds and impossible pair on `business_locations`,
+which is GeoJSON. ADR-10 checked this before cutting `street_trees`, which
+was flat and carried no coordinate case of its own.

@@ -23,7 +23,6 @@ select
     longitude,
     exact_boundary_id,
     h3_r8,
-    h3_r9,
     h3_r10
 
 from {{ source('derived_spatial', 'derived_pip_sample') }}

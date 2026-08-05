@@ -23,9 +23,9 @@ per resident, and only one of those is interesting.
 
 ```mermaid
 flowchart LR
-    A[DataSF Socrata API] -->|ingest.py, incremental by :updated_at| B[(data/raw: Parquet)]
+    A[DataSF Socrata API] -->|ingest.py, incremental by :updated_at| B[(raw zone: Parquet)]
     A2[Census TIGERweb] -->|census.py| B
-    B -->|spatial.py, H3 in Python| G[(data/derived: Parquet)]
+    B -->|spatial.py, H3 in Python| G[(derived zone: Parquet)]
     B -->|load.py, idempotent replace| C[(raw_datasf)]
     G -->|load.py| C2[(derived_spatial)]
     C -->|dbt staging: rename, cast, dedupe| D[(staging views)]
@@ -41,33 +41,41 @@ Five steps, separate on purpose (ADR-4, ADR-5). Only the BigQuery targets need
 credentials:
 
 ```
-make ingest    APIs      -> data/raw          network, no credentials
-make spatial   data/raw  -> data/derived      no network, no credentials
+make ingest    APIs      -> raw zone          network, no credentials
+make spatial   raw zone  -> derived zone      no network, no credentials
 make load      both      -> DuckDB            no network, no credentials
 make build     dbt run + test                 no network, no credentials
 make publish   warehouse -> published/        no network, no credentials
 ```
 
+**There is one zone at a time, and it is never two.** A run reads and writes
+whichever zone its environment names: `data/raw` and `data/derived` by default,
+which is every fresh clone and all of CI, or `gs://<bucket>/...` with
+`RAW_ZONE_URI` and `DERIVED_ZONE_URI` set (ADR-9). A remote run does not also
+write the local directories, so they are not a cache or a mirror of the bucket.
+Point at the zone you mean.
+
 `make all` runs the first four in order. Running `ingest` without `spatial`
-leaves the new rows with no geography, so `make build` checks that
-`data/derived` is not behind `data/raw` before it runs anything.
+leaves the new rows with no geography, so `make build` checks that the derived
+zone is not behind the raw zone before it runs anything.
 
 `make ci-build` runs all of it from committed fixtures with no network at all.
 
 ## Data sources
 
-Nine datasets in three tiers (ADR-7).
+Seven datasets in three tiers (ADR-7, narrowed by ADR-10). Every one of them
+is spatial, which is a claim rather than an accident: the project answers one
+question about where things are, and a dataset that does not carry a location
+dilutes that rather than broadening it.
 
 | Dataset | Tier | Why it is here |
 |---|---|---|
 | 311 cases | core | High volume, daily updates, a real record lifecycle. The anchor. |
 | Building permits | core | Messy money and unit fields, and it joins to 311 on geography and time. |
-| Registered business locations | core | Both a subject and a denominator: the only source that says where commercial activity is. |
-| Street tree list | core | Dense, evenly spread, stable. The only dataset that would expose a broken cell assignment; 311 and permits cluster hard enough to hide one. |
+| Registered business locations | core | Both a subject and a denominator: the only source that says where commercial activity is. At 365k rows it is also the H3 stress test. |
 | Analysis neighborhoods | reference | The 41 polygons every spatial mart joins to. |
 | Supervisor districts | reference | The 11 polygons, 2022 boundaries. |
 | Census block groups | reference | 681 polygons with 2020 population. The denominator. |
-| City budget | demoted | One non-spatial mart. Does not join to 311; see below. |
 | Film locations | demoted | The pipeline canary and the demo mart, because a portfolio should have one dataset that is fun. |
 
 ## Stack and decisions
@@ -98,33 +106,50 @@ Nine datasets in three tiers (ADR-7).
   per 1000 housing units, per 1000 businesses and per square kilometre, which
   disagree with each other on purpose. Bayview Hunters Point is 4th by 311
   count and 18th per resident.
-- **Testing and observability.** 196 tests on every build, including accepted
-  ranges on coordinates, relationship tests from every point table to the
-  neighborhood dimension, a population reconciliation check, and two spatial
-  assertions comparing the H3 machinery against exact geometry.
+- **Testing and observability.** 148 dbt tests on every build, including
+  accepted ranges on coordinates, relationship tests from every point table to
+  the neighborhood dimension, a population reconciliation check, and three
+  spatial assertions comparing the H3 machinery against exact geometry.
   `mart_pipeline_freshness` reports staleness and the per-source coordinate
-  drop rate.
+  drop rate. The hand-written point-in-polygon and spherical area code has its
+  own pytest suite (`make test-python`), which is the one thing here not tested
+  through SQL: it pins the areas against a closed form and states the contract
+  for a point that lands exactly on an edge or a vertex, where a ray-casting
+  test has no right answer and consistency is the guarantee instead.
 - **CI runs the whole thing.** Every pull request builds the raw zone from
   fixtures, runs the spatial precompute against real polygons, loads, builds,
   tests, publishes, then drops the warehouse and rebuilds it to prove the
   zones are the source of truth. It also compiles every model against
-  BigQuery, which needs no credentials.
+  BigQuery, which needs no credentials. The geometry unit tests gate that
+  end-to-end job rather than running beside it: they take a tenth of a second
+  and they cover the code the whole spatial layer rests on, so a failure there
+  should not arrive alongside five minutes of downstream noise.
 
 ## What it does not do
 
 Stated plainly, because a portfolio project that overstates itself is worse
 than a small one that does not.
 
-- **It does not join city spending to 311 demand.** That needs a crosswalk
+- **It does not carry city spending at all.** The budget dataset was ingested
+  and modelled for a while, and was cut under PLAN-5 along with its mart. The
+  join anyone actually wants, spending against 311 demand, needs a crosswalk
   between budget department codes and the 311 `agency_responsible` field, two
-  independently maintained taxonomies with no reason to agree. Building it is
-  a project in itself. The budget mart stays inside one taxonomy. (ADR-7)
-- **`dbt build --target bigquery` has never run.** No session has had Google
-  Cloud credentials. CI compiles every model against BigQuery on every PR,
-  which proves the SQL is valid there, not that it returns the same rows.
-- **The remote half of `make publish` has never run against a real bucket.**
-  The local export is exercised on every PR; the R2 and GCS upload paths are
-  code that has not been executed.
+  independently maintained taxonomies with no reason to agree; building it is a
+  project in itself. A budget mart that stayed inside one taxonomy did not
+  answer that question and was the only non-spatial thing here, so it went.
+- **The BigQuery build is run by hand, not by every PR.** It has run: first on
+  2026-07-31, which found four cross-engine defects that compiling could not,
+  and again on 2026-08-01 against external tables over GCS. What CI does on
+  every PR is compile every model for BigQuery without credentials, which
+  proves the SQL is valid there rather than that it returns the same rows.
+  `scripts/parity-check.py` proves the second, on demand, row for row.
+- **`make publish` is manual and stays manual until the upload is batched.**
+  It has run against a real bucket, once, on 2026-08-01. One publish is 2,885
+  objects against a free tier of 5,000 Class A operations a month, so putting
+  it on a daily cron would leave the free tier on day two and break the
+  zero-cost claim above. The object count comes from partitioning by month
+  over a date range that starts in 1967, not from the data volume: 17 MB took
+  6 minutes 39 because the cost is per object.
 - **Population is the 2020 Decennial count**, not a current estimate, because
   the ACS API now requires a key and ADR-1 keeps credentials off the ingestion
   path. Every per-capita rate divides by an April 2020 denominator.
@@ -133,13 +158,19 @@ than a small one that does not.
 ## Repo layout
 
 ```
-ingestion/          registry, raw zone, TIGERweb transport, H3 precompute, loader
+ingestion/          registry loader, raw zone, TIGERweb transport, H3
+                    precompute, loader. The registry itself is
+                    vars.pipeline_sources in dbt/dbt_project.yml, one list
+                    that both dbt and dataset_registry.py read.
+                    the precompute is spatial.py (entry point, schemas) over
+                    h3_points.py, boundaries.py and population.py
 publish/            export.py: marts to partitioned Parquet with a manifest
 dbt/                models/staging, models/intermediate, models/marts, macros, tests
 docs/decisions/     ADRs. Start here for why anything is the way it is.
 docs/plans/         forward-looking intent
 docs/dev-notes/     append-only session log, including what broke
-tests/fixtures/     committed JSON so CI runs with no network
+tests/              pytest over the geometry code and the dataset registry;
+                    fixtures/ is committed JSON so CI runs with no network
 .github/workflows/  ci.yml (every PR), ingest.yml (daily), dbt.yml (weekly)
 CLAUDE.md           canonical context. Authoritative on architecture.
 SETUP.md            step-by-step reproduction guide
@@ -147,12 +178,20 @@ SETUP.md            step-by-step reproduction guide
 
 ## Roadmap
 
-- Run both warehouses and compare `stg_datasf__311_cases` row for row
-  (PLAN-1 step 4). Until that happens, "compiles on both engines" is all
-  anyone can honestly claim.
-- Off-machine durability for the raw zone (PLAN-1 step 5), which still needs
-  its own ADR.
+Current work is PLAN-5, which narrows the project rather than growing it. See
+`docs/README.md` for the plan index and status.
+
+- Finish narrowing. Mostly done: there is one dataset registry rather than
+  two, `ingestion/datasets.py` is `dataset_registry.py` and PLAN-2 is closed,
+  the geometry code has direct pytest coverage, and `ingestion/spatial.py` is
+  now an entry point over three modules. What is left of PLAN-5 is below.
+- Make `make spatial` incremental. It recomputes every point on every run,
+  about 40 seconds per 700k points, and the derived zone has to stay a pure
+  function of the raw zone plus the code (PLAN-5 step 9).
+- Reconcile the run manifests against the data, and assert the BigQuery
+  external-table column sets against DuckDB's rather than comparing them by
+  eye (PLAN-7).
 - Per-boundary-set H3 resolution. The measurements in ADR-6 show block groups
   want a finer one and supervisor districts would be fine with a coarser one.
 - A model-agnostic context pack so any capable LLM can query this warehouse
-  correctly, and knows what it must refuse to answer (PLAN-2).
+  correctly, and knows what it must refuse to answer (PLAN-6).

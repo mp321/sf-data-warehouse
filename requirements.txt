@@ -54,6 +54,15 @@ h3>=4.0,<5.0
 gcsfs>=2025.5,<2026
 google-cloud-storage>=2.14,<3.2
 
+# PyYAML, because ingestion/dataset_registry.py reads the dataset registry out
+# of dbt/dbt_project.yml (PLAN-5 step 4). dbt-core depends on it, so it was
+# already in every environment that ran this project, and it is listed here for
+# the same reason google-cloud-storage is: ingestion imports it directly now,
+# and a transitive dependency that a dbt upgrade could drop is not a dependency.
+# This is also what makes the ingest.yml runner, which installs this file and
+# not requirements-dev.txt, able to read the registry at all.
+pyyaml>=6.0
+
 # numpy is already present transitively via pyarrow, and is pinned here
 # because ingestion/geometry.py imports it directly for the vectorised
 # point-in-polygon test. Point by point in pure Python that step took

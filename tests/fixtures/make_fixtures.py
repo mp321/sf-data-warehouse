@@ -46,27 +46,32 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "ingestion"))
 # Imported after the sys.path insert above, which is what makes ingestion/
 # importable from here without turning it into a package.
 from census import FIELDS, VINTAGE, census_pages
+from dataset_registry import point_datasets, polygon_datasets
 
 OUT_DIR = Path("tests/fixtures/socrata")
 SAMPLE_ROWS = 24  # real records kept per dataset, before the coverage record
 SCHEMA_SCAN_ROWS = 400  # rows scanned to find every column the dataset publishes
 
+# Derived from the registry rather than listed, since PLAN-5 step 4 made that
+# possible. This file used to carry its own copy of the names and Socrata ids,
+# which is a worse duplicate than the dbt one that step removed: a fixture
+# built from the wrong id is a green CI run against a dataset the pipeline
+# does not ingest, and nothing downstream can tell.
+#
+# Sampled datasets are the point ones. Boundary sets are the polygon ones and
+# are fetched whole and thinned rather than sampled: a sample of a boundary set
+# is not a smaller boundary set, it is a map with holes in it, and points in
+# the missing neighborhoods would come out unassigned and fail the population
+# reconciliation test on an artefact of the fixture.
+#
+# `socrata_id` is absent on the tigerweb entry, which is why census_block_groups
+# drops out of this comprehension and is fetched by fetch_census() below.
 DATASETS = {
-    "311_cases": "vw6y-z8j6",
-    "building_permits": "i98e-djp9",
-    "business_locations": "g8m3-pdis",
-    "street_trees": "tkzw-k3nq",
-    "city_budget": "xdgd-c79v",
-    "film_locations": "yitu-d5am",
+    name: cfg["socrata_id"] for name, cfg in point_datasets().items() if cfg.get("socrata_id")
 }
 
-# Boundary datasets, kept whole rather than sampled. A sample of a boundary
-# set is not a smaller boundary set, it is a map with holes in it: points in
-# the missing neighborhoods would come out unassigned and the population
-# reconciliation test would fail on an artefact of the fixture.
 BOUNDARY_DATASETS = {
-    "analysis_neighborhoods": "ajp5-b2md",
-    "supervisor_districts": "f2zs-jevy",
+    name: cfg["socrata_id"] for name, cfg in polygon_datasets().items() if cfg.get("socrata_id")
 }
 
 GEOMETRY_COLUMNS = ("the_geom", "polygon")
@@ -91,8 +96,6 @@ IDENTITY_FIELDS = {
     "311_cases": {":id": "row-fixture~coverage", "service_request_id": "999000001"},
     "building_permits": {":id": "row-fixture~coverage", "record_id": "999000000000001"},
     "business_locations": {":id": "row-fixture~coverage", "uniqueid": "9990000-99-999-9990000"},
-    "street_trees": {":id": "row-fixture~coverage", "treeid": "999000001"},
-    "city_budget": {":id": "row-fixture~coverage"},
     "film_locations": {":id": "row-fixture~coverage"},
 }
 
@@ -116,10 +119,13 @@ def dataset_fields(socrata_id: str) -> list[str]:
     The scan cannot be trusted to reveal the column list. Socrata omits null
     fields per record, and the scan is ordered by :updated_at, so a column
     that is only populated on recently-touched rows is invisible in the oldest
-    400. That is not hypothetical: street_trees publishes latitude, longitude,
-    location, xcoord and ycoord, and not one of the 400 oldest rows carries
-    any of them, so the first fixture built from a scan alone produced a
-    street tree dataset with no coordinates and broke `make spatial`.
+    400. That is not hypothetical, and the worked example is worth keeping
+    even though the dataset is not: street_trees published latitude, longitude,
+    location, xcoord and ycoord, and not one of its 400 oldest rows carried any
+    of them, so the first fixture built from a scan alone produced a dataset
+    with no coordinates and broke `make spatial`. The dataset was cut in
+    ADR-10; the failure mode is a property of Socrata and is still live for
+    every dataset here.
 
     :@computed_region_* fields are skipped. They are Socrata's own spatial
     joins against curated region datasets, no model references them, and they
@@ -321,10 +327,6 @@ def add_adversarial_rows(data: dict[str, list[dict]]) -> None:
     data["building_permits"][1]["estimated_cost"] = "unknown"
     data["building_permits"][2].pop("location", None)
 
-    # Budget: an unparseable amount and a legitimate negative one.
-    data["city_budget"][1]["budget"] = ""
-    data["city_budget"][2]["budget"] = "-1340493935"
-
     # Film: a title with no release year, and one with no coordinates. Both
     # exist upstream and both must survive without a not_null test firing.
     data["film_locations"][1].pop("release_year", None)
@@ -345,13 +347,6 @@ def add_adversarial_rows(data: dict[str, list[dict]]) -> None:
         "type": "Point",
         "coordinates": [5999163.5213, 2110903.9816],
     }
-
-    # Trees: the 9999 sentinel in a diameter column, which the staging model
-    # has to null rather than average in.
-    data["street_trees"][1]["dbh"] = "9999"
-    # And a tree with no plant date, which is most of them upstream and which
-    # int_point_activity therefore has to drop rather than bucket.
-    data["street_trees"][2].pop("plantdate", None)
 
 
 def main() -> None:

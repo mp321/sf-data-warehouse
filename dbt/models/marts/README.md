@@ -9,11 +9,14 @@ intermediate is here.
 |---|---|---|
 | `dim_neighborhood` | one row per analysis neighborhood (41) | The denominator table. Area, population, housing units, business count. Read this before trusting any rate. |
 | `dim_supervisor_district` | one row per district (11) | The same, on 2022 boundaries. |
-| `mart_activity_by_h3` | cell, dataset, category, month | The hexagon map, at resolution 9. |
+| `mart_activity_by_h3` | cell, dataset, category, month | The hexagon map, at resolution 8. The largest published artifact here: 140k rows. |
 | `mart_activity_by_neighborhood` | neighborhood, dataset, category, month | "Count 311 cases inside this neighborhood", with four denominators. |
 | `mart_film_locations` | one row per shoot location | The demo mart. |
-| `mart_budget_by_department_year` | year, department, ledger type | The non-spatial one. Does not join to 311; see ADR-7. |
 | `mart_pipeline_freshness` | one row per source | Pipeline health, not city data. The one metadata mart. |
+
+`mart_budget_by_department_year` was here and was cut under PLAN-5. It was the
+only non-spatial mart, and every mart above now answers a question about where
+something is, which is the claim this project makes.
 
 ## Rules of the road
 

@@ -1,16 +1,32 @@
 ---
-status: draft
+status: done
 date: 2026-07-30
 related: [plan-1-duckdb-parquet, plan-5-narrow-and-polish]
 ---
 
 # PLAN-2. Remove the ruff exemptions on the ingestion module
 
-Mostly closed by side effect on 2026-07-31: the exemptions are gone because
-the underlying findings were fixed rather than silenced. One item remains, the
-`datasets.py` module-shadowing hazard that `known-first-party` silenced
-without fixing, and it is PLAN-5 step 7. Closing this plan is part of that
-step.
+**Closed 2026-08-05.** Mostly closed by side effect on 2026-07-31: the
+exemptions went because the underlying findings were fixed rather than
+silenced. The last item was the `datasets.py` module-shadowing hazard that
+`known-first-party` silenced without fixing, and it closed as PLAN-5 step 7:
+the module is `ingestion/dataset_registry.py` now, and the five files that
+imported it import that. Its contents moved as well, in the same change, but
+that was PLAN-5 step 4's business rather than this plan's.
+
+Two things this plan got wrong are worth keeping, since both were about
+scope rather than about the fix:
+
+- The open question below asks "rename or package?" and answers that the
+  rename touches the import in two files. It was five by the time it was done,
+  because `ingestion/spatial.py` had been split. The count was never the
+  argument, but a plan that estimates a change should be read as an estimate.
+- The rename fixes one name. It does not fix the class, because
+  `ingestion/` is still a directory of scripts on `sys.path` and every module
+  in it is still a name a PyPI package could claim. That is deliberate:
+  `ruff.toml` records which names were judged reachable and which were not,
+  and `tests/conftest.py` records why packaging the directory is a bigger
+  decision than a lint config. Neither is a loose end left by this plan.
 
 ## Goal
 
@@ -63,10 +79,16 @@ This is that note.
 
 ## Done when
 
-- [ ] `ruff.toml` contains no `ingestion/` exemptions.
-- [ ] `make lint` passes.
-- [ ] A real ingestion run against BigQuery produces the same row counts as
-      before the change.
+- [x] `ruff.toml` contains no `ingestion/` exemptions. Done 2026-07-31.
+- [x] `make lint` passes. Done 2026-07-31, and again on 2026-08-05 after the
+      rename.
+- [x] A real ingestion run against BigQuery produces the same row counts as
+      before the change. Satisfied on 2026-08-03 by the `ingest.yml` run that
+      closed PLAN-4, before the rename, which is the right way round: this box
+      was written to protect the watermark logic in step 2, and neither the
+      rename nor the registry move touched a line of it. The rename is
+      import-only, and `make ci-build` reloads from fixtures and rebuilds from
+      the zone twice with identical counts.
 
 ## Open questions
 

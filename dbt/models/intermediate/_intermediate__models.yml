@@ -11,14 +11,14 @@ models:
       uses when the case was opened, permits use when the application was
       filed rather than issued (filing is the demand signal; issuing is the
       city's response, and mixing them makes a permitting backlog look like a
-      construction slowdown), businesses use when the location opened, trees
-      use the plant date. film_locations is absent because it has only a
-      release year, and a release year is not when the shoot happened.
+      construction slowdown), businesses use when the location opened.
+      film_locations is absent because it has only a release year, and a
+      release year is not when the shoot happened.
 
       Undated rows are dropped here, which is why this model's row count is
-      lower than the sum of its staging models. Most of the gap is street
-      trees: the city inherited the majority of its tree inventory without
-      planting records.
+      lower than the sum of its staging models. The gap is now small: it was
+      dominated by street trees, most of which the city inherited without a
+      planting record, and ADR-10 cut that dataset.
     columns:
       - name: dataset
         description: Registry name of the source, e.g. 311_cases.
@@ -26,7 +26,7 @@ models:
           - not_null
           - accepted_values:
               arguments:
-                values: ["311_cases", "building_permits", "business_locations", "street_trees"]
+                values: ["311_cases", "building_permits", "business_locations"]
 
       - name: event_id
         description: >
@@ -45,9 +45,9 @@ models:
       - name: category
         description: >
           The dataset's own category dimension: service type for 311, permit
-          type for permits, licence description for businesses, plant type
-          for trees. Coalesced to 'Unknown' rather than left null, so that
-          grouping by it never silently drops rows.
+          type for permits, licence description for businesses. Coalesced to
+          'Unknown' rather than left null, so that grouping by it never
+          silently drops rows.
         tests:
           - not_null
 

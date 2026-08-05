@@ -93,7 +93,7 @@ renamed as (
 final as (
 
     -- Geography arrives from stg_spatial__point_geography rather than being
-    -- parsed here: coordinates, H3 cells at r8/r9/r10, and the neighborhood
+    -- parsed here: coordinates, H3 cells at r8 and r10, and the neighborhood
     -- and district the case is exactly inside. This is ADR-2 landing, three
     -- ADRs later than it was written, and it is why the two upstream
     -- district columns above are now prefixed upstream_. They are kept for

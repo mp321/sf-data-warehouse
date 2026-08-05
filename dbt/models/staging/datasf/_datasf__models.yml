@@ -115,11 +115,6 @@ models:
                 values: ["ok", "missing", "unparseable", "impossible", "out_of_bounds"]
           - not_null
 
-      - name: h3_r9
-        description: >
-          H3 cell at resolution 9, as a BIGINT. Null unless the coordinate
-          parsed. Computed in ingestion/spatial.py, not by the engine (ADR-5).
-
       - name: analysis_neighborhood
         description: >
           The neighborhood this case is exactly inside, from ADR-6's cell
@@ -221,48 +216,6 @@ models:
       - name: analysis_neighborhood
         description: The neighborhood this permit is exactly inside (ADR-6).
         tests: *neighborhood_relationship
-
-  - name: stg_datasf__city_budget
-    description: >
-      One row per published city budget line. There is no natural key: the
-      full dimensional combination of year, department, fund, program and
-      object still repeats, because the city publishes a line per originating
-      appropriation. The grain key is therefore Socrata's row id. Demoted
-      source per ADR-3, so there is no freshness SLA and no mart.
-    columns:
-      - name: budget_line_id
-        description: Socrata row id. The grain of this model, and the only unique column.
-        tests:
-          - unique
-          - not_null
-
-      - name: fiscal_year
-        description: Fiscal year the line belongs to. Ranges from 2010 to 2027.
-        tests:
-          - not_null
-
-      - name: ledger_type
-        description: Whether the line is money coming in or going out.
-        tests:
-          - not_null
-          - accepted_values:
-              arguments:
-                values: ["Revenue", "Spending"]
-              config:
-                severity: warn
-
-      - name: department_code
-        description: >
-          Short department code, e.g. HSA. This is the column a future
-          crosswalk to the 311 agency_responsible field would join on; ADR-3
-          treats building that crosswalk as an open question.
-        tests:
-          - not_null
-
-      - name: budget_amount
-        description: >
-          Amount in dollars. Negative values are legitimate transfers out and
-          appropriation reversals, not errors.
 
   - name: stg_datasf__film_locations
     description: >
@@ -382,71 +335,6 @@ models:
         description: >
           The neighborhood this location is exactly inside (ADR-6). Null for
           the businesses registered here and located elsewhere.
-        tests: *neighborhood_relationship
-
-  - name: stg_datasf__street_trees
-    description: >
-      One row per tree site. A site is a planting location, not necessarily a
-      living tree: legal_status separates a DPW-maintained tree from a
-      significant tree from an empty plot, and plant_type separates trees
-      from landscaping. Filter on both before saying "trees".
-
-      Nearly 200,000 rows spread evenly across the city, which makes this the
-      most useful dataset here for checking the H3 machinery: 311 and permits
-      cluster hard enough that a broken cell assignment could hide in them.
-    columns:
-      - name: tree_id
-        description: treeid upstream. The grain of this model.
-        tests:
-          - unique
-          - not_null
-
-      - name: species
-        description: >
-          "Genus species :: Common Name" in one string, published that way.
-          Splitting it is a mart's job.
-
-      - name: plant_type
-        description: Tree or Landscaping. The category dimension for this dataset.
-
-      - name: legal_status
-        description: >
-          Who is responsible for the tree, e.g. DPW Maintained, Permitted
-          Site, Undocumented. Not a lifecycle: an empty plot and a mature
-          tree can share a status.
-
-      - name: planted_at
-        description: >
-          When it was planted. Null on well over half the rows, because the
-          city inherited most of this inventory without planting records, so
-          the activity marts see only the dated minority.
-
-      - name: diameter_at_breast_height_in
-        description: >
-          Trunk diameter in inches, clamped at both ends in the model. Zero
-          upstream means not measured rather than no trunk. Four rows carry
-          9999, 3030, 1920 and 1530, which are not measurements; the widest
-          tree trunk ever recorded is about 38 feet, so anything above 240
-          inches is nulled. This test guards the cleaned column, and it is
-          the test that found those four rows.
-        tests:
-          - accepted_range:
-              arguments: {min_value: 0, max_value: 240}
-
-      - name: latitude
-        description: Latitude, parsed in ingestion/spatial.py.
-        tests: *latitude_tests
-
-      - name: longitude
-        description: Longitude, parsed in ingestion/spatial.py.
-        tests: *longitude_tests
-
-      - name: coordinate_status
-        description: Why a coordinate is unusable, where it is.
-        tests: *coordinate_status_values
-
-      - name: analysis_neighborhood
-        description: The neighborhood this tree is exactly inside (ADR-6).
         tests: *neighborhood_relationship
 
   - name: stg_datasf__analysis_neighborhoods

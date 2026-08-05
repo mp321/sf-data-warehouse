@@ -51,7 +51,6 @@ STAGING_MODELS = (
     ("stg_datasf__311_cases", "case_id"),
     ("stg_datasf__building_permits", "permit_record_id"),
     ("stg_datasf__business_locations", "business_location_id"),
-    ("stg_datasf__street_trees", "tree_id"),
     ("stg_datasf__film_locations", "film_location_id"),
     ("stg_spatial__point_geography", "row_key"),
 )

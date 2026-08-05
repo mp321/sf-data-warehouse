@@ -88,17 +88,6 @@ businesses as (
 
 ),
 
-trees as (
-
-    select
-        analysis_neighborhood,
-        count(*) as street_tree_count
-    from {{ ref('stg_datasf__street_trees') }}
-    where analysis_neighborhood is not null
-    group by analysis_neighborhood
-
-),
-
 final as (
 
     select
@@ -118,7 +107,6 @@ final as (
             as housing_units,
         coalesce(businesses.business_count, 0) as business_count,
         coalesce(businesses.active_business_count, 0) as active_business_count,
-        coalesce(trees.street_tree_count, 0) as street_tree_count,
 
         -- densities, for reading rather than for dividing by
         {{ x_safe_divide('coalesce(cell_population.population, 0)', 'boundaries.area_sq_km') }}
@@ -138,7 +126,6 @@ final as (
     left join cell_population
         on boundaries.analysis_neighborhood = cell_population.analysis_neighborhood
     left join businesses on boundaries.analysis_neighborhood = businesses.analysis_neighborhood
-    left join trees on boundaries.analysis_neighborhood = trees.analysis_neighborhood
 
 )
 

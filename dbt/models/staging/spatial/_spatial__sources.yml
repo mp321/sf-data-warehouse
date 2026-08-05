@@ -9,7 +9,7 @@ sources:
 
       Deliberately not part of raw_datasf. Nothing here came from an API, so
       the all-STRING raw contract does not apply and would be actively
-      misleading: h3_r9 is a BIGINT because it is a number this project
+      misleading: h3_r8 is a BIGINT because it is a number this project
       computed, not text some API sent. Keeping the two schemas apart is what
       lets "everything in raw_datasf is a STRING from upstream" stay true
       with no exceptions to remember.

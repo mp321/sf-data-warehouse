@@ -70,8 +70,8 @@ export DBT_PROFILES_DIR := $(CURDIR)/$(DBT_DIR)
 export DUCKDB_PATH := $(CURDIR)/$(DATA_DIR)/sf.duckdb
 
 .PHONY: help setup all ingest spatial load load-bigquery build build-bigquery \
-        publish test docs docs-serve lint fmt leak-check compile-duckdb compile-bigquery \
-        ci-build rebuild clean clean-warehouse clean-derived check check-derived
+        publish test test-python docs docs-serve lint fmt leak-check compile-duckdb \
+        compile-bigquery ci-build rebuild clean clean-warehouse clean-derived check check-derived
 
 # `make build` refuses to run against a derived zone that is behind the raw
 # zone. Set DERIVED_CHECK=0 to build anyway, which is worth doing only when you
@@ -177,23 +177,36 @@ compile-duckdb: ## Parse and compile against DuckDB. No credentials needed.
 
 # Three things are load bearing here, and the order matters.
 #
+# All three were measured on 2026-08-03 rather than reasoned about, because a
+# comment asserting a property a dependency bump can revoke is a test that never
+# runs. Neither of the first two is cargo; do not delete one to tidy up.
+#
 # The throwaway key. This target used to rest on "compiling does not open a
 # connection", a property of dbt's internals that broke on two separate dbt
-# upgrades and cannot be observed locally, because a shell that has sourced
-# .env has real credentials and every connection dbt opens quietly succeeds.
-# scripts/fake-bq-key.sh replaces that with a property this repo owns: building
-# a BigQuery client from a service account key is local and offline, so opening
-# a connection costs nothing and reaches nothing.
+# upgrades. It is false: the dbt.log from the green CI run on 2034062 shows
+# 197 opens on one compile, one `master` from before_run and one per node,
+# fired at "Began executing node". scripts/fake-bq-key.sh replaces that
+# property with one this repo owns: building a BigQuery client from a service
+# account key is local and offline, so all 197 cost nothing and reach nothing.
+# The same command without the key is the failure of 2026-08-02, "Your default
+# credentials were not found".
 #
-# --no-populate-cache. Now the only thing still standing between this target
-# and the network: populating the relation cache lists schemas, which is a real
-# query, and a real query with a fake key fails at token fetch. Compiling itself
-# issues none, which is the property that has to hold and the one that fails
-# loudly rather than confusingly if it stops holding.
+# --no-populate-cache. The only thing still standing between this target and
+# the network. Dropping it exits 2 with
+# populate_adapter_cache -> set_relations_cache -> list_relations_without_caching
+# -> RefreshError "invalid_grant: Invalid grant: account not found", which is
+# Google refusing the fake key at token fetch. Compiling itself issues no query
+# at all: that same log has 197 opens and zero statements.
 #
 # The environment is overridden, not inherited. Both variables are set here so
 # that this target runs identically in CI and in a shell that has sourced .env.
-# Inheriting them is what hid the CI failure for two sessions.
+# Inheriting them is what hid the CI failure for two sessions, and the reason is
+# narrower than "the developer sourced .env": dbt itself runs
+# `load_dotenv(find_dotenv(usecwd=True), override=False)` at CLI startup, so any
+# bare `dbt compile --target bigquery` run from inside this repo silently picks
+# up the real GOOGLE_APPLICATION_CREDENTIALS out of .env and passes for the
+# wrong reason. override=False is why exporting them here still wins, and why
+# this target is the only trustworthy local reproduction of the CI job.
 compile-bigquery: ## Parse and compile against BigQuery. No credentials needed.
 	@key="$$(bash scripts/fake-bq-key.sh)"; \
 	export GOOGLE_APPLICATION_CREDENTIALS="$$key"; \
@@ -224,6 +237,17 @@ docs-serve: docs ## Generate docs and serve the browsable site locally
 # ---------------------------------------------------------------------------
 # Quality gates
 # ---------------------------------------------------------------------------
+
+# The only Python unit tests in the project, and the fastest gate in the set:
+# a tenth of a second, no warehouse, no fixtures, no dbt and no network. What
+# they cover is ingestion/geometry.py, the hand-written point-in-polygon and
+# spherical area that every boundary assignment rests on and that every other
+# test in this project can only reach through SQL. `check` runs it first and
+# ci.yml gates the end-to-end dbt job on it, for the same reason: when the
+# geometry is wrong, everything downstream of it is wrong in a way that reads
+# as a modelling failure.
+test-python: ## Run the pytest suite. No warehouse, no fixtures, no network.
+	$(VENV)/bin/pytest tests -q
 
 # The sqlfluff line delegates to the script rather than spelling the command
 # out, so `make lint` and the pre-commit hook cannot disagree about which
@@ -266,7 +290,7 @@ ci-build: ## Full pipeline from fixtures, isolated. No network, no creds.
 		$(PY) ingestion/load.py --all --target duckdb
 	cd $(DBT_DIR) && DUCKDB_PATH=$(CI_DB) $(DBT) build
 
-check: lint leak-check compile-bigquery ci-build ## Everything CI runs on a PR, locally
+check: test-python lint leak-check compile-bigquery ci-build ## Everything CI runs on a PR, locally
 
 # ---------------------------------------------------------------------------
 # Housekeeping
