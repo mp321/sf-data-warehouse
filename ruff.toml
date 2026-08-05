@@ -69,6 +69,14 @@ known-first-party = [
     "raw_zone",
     "remote",
     "spatial",
+    # `load` joined the list on 2026-08-05, when scripts/parity-check.py became
+    # the first thing to import it rather than run it: --columns reads
+    # RAW_SCHEMA, DERIVED_SCHEMA, DERIVED_TABLES and RUNS_TABLE from it instead
+    # of keeping a second copy of four names that have to agree. Without it here
+    # ruff sorted `import load` into the third-party block above the siblings it
+    # sits beside in ingestion/, which reads as a dependency and is the exact
+    # confusion this list exists to prevent.
+    "load",
 ]
 
 [format]

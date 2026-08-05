@@ -65,7 +65,7 @@ Read this before assuming the ADRs describe running code.
 | Staging models | one per source, all seven, plus five spatial | same | ADR-10 |
 | Marts | 3 city marts, 2 dims, 1 metadata mart | same | ADR-10 |
 | Published export | local `published/` on every PR, and uploaded to GCS once by hand on 2026-08-01 | stays manual until the upload is batched | ADR-8 |
-| BigQuery build | last run by hand 2026-08-01 on external tables, `PASS=196 ERROR=0`, compared row for row against DuckDB. That node count predates ADR-10; the project is 19 models and 148 tests now | same, plus the weekly `dbt.yml` cron | PLAN-4 step 3 |
+| BigQuery build | last run by hand 2026-08-05 on external tables, `PASS=171 ERROR=0`, matching DuckDB node for node on the same zone | same, plus the weekly `dbt.yml` cron | PLAN-4 step 3 |
 | Scheduled ingest | `ingest.yml`, daily at 09:17 UTC, reads and writes the bucket. Green on a manual dispatch 2026-08-03; no cron-triggered run yet | same | PLAN-4 step 8 |
 
 The rows that used to be the embarrassing ones are closed. `dbt build
@@ -77,6 +77,22 @@ point staging models row for row on demand. The zones moved to GCS on
 2026-08-01 (ADR-9), the writer followed the same day (PLAN-4 step 6), and
 `make publish` has uploaded to a real bucket once. PLAN-4 closed on 2026-08-03
 when `ingest.yml` went green on a runner.
+
+A fifth cross-engine defect landed on 2026-08-05 and is worth knowing about
+before touching `load.py` or a staging model's column list, because it is the
+class of thing `make check` structurally cannot see. BigQuery external tables
+were built with `autodetect`, which infers one schema for a whole table from a
+sampled file, while DuckDB reads the raw zone with `union_by_name`. Socrata
+omits null fields per record, so the files in one partition genuinely differ,
+and `stg_datasf__building_permits` referenced a column that was in the zone and
+in DuckDB and not in BigQuery. `load.py` now computes the zone's union column
+list and passes an explicit all-STRING schema, and
+`scripts/parity-check.py --columns` is the guard (PLAN-7 step 2). **A green
+`make check` says nothing about the bucket zones or about BigQuery**, by design
+and per ADR-1: it is DuckDB-only and local-zone-only so that a fork pull request
+needs no credentials. Sessions that touch the registry, the zone layout, a
+staging model's column list or `load.py` should carry `make build-bigquery` in
+their checkpoint.
 
 ADR-10 narrowed the project on 2026-08-04: `city_budget` and `street_trees`
 cut, H3 resolution 9 dropped, `mart_activity_by_h3` moved to r8. Nine datasets
@@ -166,6 +182,8 @@ make check-derived    # is data/derived current with data/raw? Nonzero if not.
 make clean-derived    # delete data/derived. Always safe; make spatial rebuilds it.
 make load-bigquery    # (creds) load both zones into BigQuery
 make build-bigquery   # (creds) dbt build --target bigquery
+make parity-columns   # (creds) zone column sets vs BigQuery's. Needs no local build.
+make parity-check     # (creds) staging models row for row across both engines
 ```
 
 Only `load-bigquery` and `build-bigquery` need `GCP_PROJECT_ID` and
@@ -277,7 +295,17 @@ tests/fixtures/     committed JSON so CI can run without network. Includes
 scripts/            leak-check.sh, sqlfluff-lint.sh, check-lint-pins.sh, and
                     parity-check.py, which compares a model row for row across
                     DuckDB and BigQuery and needs credentials, so it is run by
-                    hand rather than in CI. fake-bq-key.sh mints a throwaway
+                    hand rather than in CI. Its `--columns` mode
+                    (`make parity-columns`) is the other question and the
+                    cheaper one: it compares the zone's column sets against the
+                    BigQuery tables, so it catches an external table that has
+                    stopped being a view of the whole zone. That is PLAN-7
+                    step 2 and it exists because the drift happened. Note it
+                    compares against THE ZONE and not against the local DuckDB
+                    file, unlike the row mode, whose two sides must both have
+                    been built from one zone or it reports a configuration
+                    difference as a defect; the script header says why.
+                    fake-bq-key.sh mints a throwaway
                     key so make compile-bigquery needs none; it is the reason
                     that target is credential-free, and the on-run hook guards
                     and the profiles.yml oauth fallback are not. It is exactly

@@ -139,10 +139,14 @@ than a small one that does not.
   answer that question and was the only non-spatial thing here, so it went.
 - **The BigQuery build is run by hand, not by every PR.** It has run: first on
   2026-07-31, which found four cross-engine defects that compiling could not,
-  and again on 2026-08-01 against external tables over GCS. What CI does on
-  every PR is compile every model for BigQuery without credentials, which
-  proves the SQL is valid there rather than that it returns the same rows.
-  `scripts/parity-check.py` proves the second, on demand, row for row.
+  again on 2026-08-01 against external tables over GCS, and on 2026-08-05,
+  which found a fifth. What CI does on every PR is compile every model for
+  BigQuery without credentials, which proves the SQL is valid there rather than
+  that it returns the same rows. `scripts/parity-check.py` proves the second,
+  on demand: `make parity-check` row for row, and `make parity-columns` on the
+  column sets, which is what the fifth defect turned out to need. A green
+  `make check` says nothing about BigQuery or about the bucket zones, on
+  purpose, so that a fork pull request needs no credentials.
 - **`make publish` is manual and stays manual until the upload is batched.**
   It has run against a real bucket, once, on 2026-08-01. One publish is 2,885
   objects against a free tier of 5,000 Class A operations a month, so putting

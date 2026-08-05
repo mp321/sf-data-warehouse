@@ -177,6 +177,27 @@ happened is in the dev note for the date each one carries.
    zone is behind". See the "make build-bigquery is red" section of
    `docs/dev-notes/2026-08-05.md`, and PLAN-7 step 1, which is where that
    checker might belong.
+
+   **Amended again the same day, by the session that went to fix it.** The r9
+   cells were already gone: the bucket's derived zone had been rebuilt at
+   02:20 UTC and the `accepted_values` test passes untouched. That could not
+   be established from the zone. It took GCS object mtimes plus the
+   observation that the bucket's cell counts match the local zone's exactly,
+   3,516 at r8 and 80,780 at r10, which is forensics and not a check. So the
+   stamp answers a second question besides the one above: with it, "this zone
+   is correct now" and "this zone was never wrong" are distinguishable states
+   and a fix is attributable to a run. Without it they are one observation,
+   and so are "someone rebuilt the zone" and "someone widened the test".
+
+   **PLAN-7 step 2 does not cover this, now that it exists.**
+   `parity-check.py --columns` compares column sets, and r9 against r8 and r10
+   is a change in the values of an unchanged `resolution` column, so it passes
+   on exactly the zone that produced the failure. The two are neighbours and
+   neither subsumes the other. On the open question of where the checker
+   belongs, `check_derived.py` now looks like the better answer than PLAN-7
+   step 1: it already reads the zone rather than the warehouse, already parses
+   the manifest the stamp would live in, and already returns two graded
+   verdicts, STALE and DRIFT, that a third would join rather than complicate.
 10. ~~**Write ADR-10**~~, covering the scope cut and the resolution cut
     together. Done on 2026-08-04, out of order: steps 1 to 3 made the
     decisions and started citing the ADR in code comments, and a forward
