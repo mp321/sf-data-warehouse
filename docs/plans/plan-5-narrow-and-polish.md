@@ -163,6 +163,20 @@ happened is in the dev note for the date each one carries.
    `spatial.py` itself changes. Roughly 40 seconds per 700k points today,
    linear, on every scheduled build. The derived zone must stay a pure
    function of the raw zone plus the code, so the stamp is not optional.
+
+   **The stamp is a correctness guard, not only an incrementality trigger.**
+   Amended 2026-08-05 on evidence rather than on reflection. The bucket's
+   derived zone was found carrying H3 r9 cells that ADR-10 removed from the
+   code the day before, and nothing in the project detected it: `make check`
+   is DuckDB-only and local-only, and `check_derived.py` compares row counts,
+   which agreed, because the raw zone had not moved and only the code had.
+   It surfaced as an `accepted_values` failure in `make build-bigquery`,
+   several steps downstream of the cause. So the stamp has to be readable
+   from the zone without running `spatial.py`, so that a checker can say
+   "this zone was built by code that no longer exists" and not only "this
+   zone is behind". See the "make build-bigquery is red" section of
+   `docs/dev-notes/2026-08-05.md`, and PLAN-7 step 1, which is where that
+   checker might belong.
 10. ~~**Write ADR-10**~~, covering the scope cut and the resolution cut
     together. Done on 2026-08-04, out of order: steps 1 to 3 made the
     decisions and started citing the ADR in code comments, and a forward

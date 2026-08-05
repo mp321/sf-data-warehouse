@@ -16,7 +16,28 @@ the ordering inside it is load bearing and the prompt says why.
 
 ---
 
-## Sessions A through D are done. Start at E.
+## Priority order, as of 2026-08-05
+
+Sessions A through E are done. **Start at E-remainder, and do not skip it.**
+
+1. **E-remainder. Fix the BigQuery build.** It is red on two errors, found by
+   the `make build-bigquery` that Session E's checkpoint recommended. One of
+   them is a real cross-engine defect and the other is a stale bucket. Highest
+   priority for one reason only: every later session verifies against a target
+   that is currently failing for reasons unrelated to that session's change,
+   so anything run before this one has a broken control.
+2. **F. Incremental `spatial.py`, and the publish object count.** PLAN-5 steps
+   9 and 12. Read E-remainder's outcome first: the code-version stamp in step 9
+   turns out to be the thing that would have caught half of E-remainder, which
+   changes it from an incrementality nicety to a correctness guard.
+3. **H. Pipeline assurance.** PLAN-7. If E-remainder does step 2, this reduces
+   to step 1 and gets much smaller. Check before starting.
+4. **G. The obsolescence sweep.** PLAN-5 step 13, and it closes PLAN-5. Last of
+   the PLAN-5 work on purpose: it is a reading task and it should read the
+   final state, not an intermediate one.
+5. **I. The context pack.** PLAN-6. Only after PLAN-5 is closed.
+
+## What is already done
 
 - **A (prove BigQuery)** done 2026-07-31. It found four cross-engine defects and
   all four are fixed; both targets build `PASS=196 ERROR=0` and
@@ -51,7 +72,16 @@ the ordering inside it is load bearing and the prompt says why.
   was; that matters for session F and is written up in the fourth section of
   `docs/dev-notes/2026-08-04.md`.
 
-PLAN-4 closed on 2026-08-03 when `ingest.yml` went green on a runner.
+- **E (one registry, one rename, one retention window)** done 2026-08-05.
+  PLAN-5 steps 4, 7 and 8, and PLAN-2 closed. The dataset list exists once, in
+  `dbt/dbt_project.yml`, read by dbt natively and by
+  `ingestion/dataset_registry.py`; `meta_dbt_run_results` keeps 50 runs.
+  `make check` and `make ci-build` green, `make build-bigquery` red on two
+  errors that predate it, which is session E-remainder. See
+  `docs/dev-notes/2026-08-05.md`.
+
+PLAN-4 closed on 2026-08-03 when `ingest.yml` went green on a runner. PLAN-2
+closed on 2026-08-05 under PLAN-5 step 7.
 
 ---
 
@@ -198,18 +228,16 @@ than decided here.
 
 ---
 
-## Session E. One registry, one rename, one retention window
+## Session E. Done 2026-08-05. Kept for the record only
 
-PLAN-5 steps 4, 7 and 8. Bundled because steps 4 and 7 both rewrite the dataset
-registry and its callers, and doing them in separate sessions means touching
-the same five files twice. Step 8 is a small independent rider that fits in the
-remaining budget.
+Do not run this again. PLAN-5 steps 4, 7 and 8 are all done and PLAN-2 is
+closed. The prompt is left here because its acceptance test is what forced the
+design: "the two cannot disagree silently" ruled out the option that would
+otherwise have looked smaller.
 
-**Session D grew this step's surface.** When step 7 was written, three files
-imported the registry. The `spatial.py` split makes it five: `ingest.py`,
-`load.py`, `spatial.py`, `h3_points.py` and `boundaries.py`. Confirm with
-`grep -rn "from datasets import" ingestion/` before starting rather than
-trusting this paragraph, since Session E may move things again.
+Bundled because steps 4 and 7 both rewrite the dataset registry and its
+callers, and doing them in separate sessions means touching the same five files
+twice. Step 8 was a small independent rider.
 
 Paste this:
 
@@ -271,9 +299,124 @@ Finish with `make check` green and `make ci-build` green twice.
 Do not commit or push.
 ```
 
-**Checkpoint:** the dataset list exists once, `ingestion/datasets.py` no longer
-exists under that name, PLAN-2 is closed, and the run-results table has a
-documented retention window.
+**Checkpoint, and what actually held.** The dataset list exists once, as
+`vars.pipeline_sources` in `dbt/dbt_project.yml`, and
+`ingestion/dataset_registry.py` reads it. `ingestion/datasets.py` is gone,
+PLAN-2 is closed, and `meta_dbt_run_results` keeps the last 50 runs.
+
+Three things came out differently from the way the prompt above frames them,
+and they are worth reading before F:
+
+- **The choice of design was forced, not preferred.** Generating the dbt vars
+  at build time fails on sqlfluff, which templates every model through dbt and
+  cannot be passed `--vars`. The prompt presents the two options as a size
+  comparison; one of them does not work at all.
+- **The registry moved to the dbt side, not the Python side.** The prompt says
+  "the Python registry is the natural home if there is to be one registry",
+  and that turns out to be backwards: dbt cannot read an arbitrary YAML file,
+  Python can read anything, so the single copy has to live where the less
+  capable reader already looks.
+- **Two files the prompt names needed no edit.** Neither the Makefile nor
+  `ingest.yml` has ever mentioned `datasets.py`. A third copy of the dataset
+  ids nobody had listed did need one: `tests/fixtures/make_fixtures.py`.
+
+**And it left the BigQuery target red.** The `make build-bigquery` this
+checkpoint implies was run and found two errors, neither caused by Session E.
+That is Session E-remainder, below.
+
+---
+
+## Session E-remainder. Fix the BigQuery build
+
+**Do this before F.** `make build-bigquery` is at `PASS=109 ERROR=2 SKIP=60`.
+Both errors were found on 2026-08-05 and both predate Session E; the
+"make build-bigquery is red" section of `docs/dev-notes/2026-08-05.md` has the
+full diagnosis, including the local reproduction. DuckDB is green
+throughout, which is exactly why this needs a session rather than a glance: the
+two engines disagree, and only one of them is in CI.
+
+Sized as one session because the second error is PLAN-7 step 2 arriving early
+with a reproduction attached, which is a better starting point than the
+plan's own framing.
+
+Paste this:
+
+```
+Read CLAUDE.md, docs/plans/plan-7-pipeline-assurance.md, the
+"make build-bigquery is red" section of docs/dev-notes/2026-08-05.md,
+docs/decisions/adr-9-cloud-raw-zone.md and
+docs/decisions/adr-10-narrowed-scope.md.
+
+`make build-bigquery` fails with two errors. Fix both. DuckDB is green on
+the same commit, so treat every difference between the two as the finding
+rather than as noise.
+
+ERROR 1, and it is the operational one.
+accepted_values_stg_spatial__polygon_h3_resolution fails with one
+disallowed value, expected to be 9. The local derived zone was rebuilt when
+ADR-10 dropped r9; the bucket's derived zone was not, so it still holds
+cells at a resolution the models no longer accept. derived_zone.py replaces
+the zone wholesale on every run, so `make spatial` with DERIVED_ZONE_URI set
+is the whole fix and no cleanup is needed. Confirm the value is 9 before
+you re-run, so that the fix is attributable.
+
+Then ask the question the fix does not answer, because this is the more
+useful half: nothing in the project detects that a zone was built by code
+that no longer exists. check_derived.py compares row counts, which agree
+here, and the disagreement was a schema change rather than a volume one.
+PLAN-5 step 9 already carries a note about this, added on 2026-08-05, which
+promotes its code-version stamp from an incrementality trigger to a
+correctness guard. Read that note; if your fix changes what the guard would
+have to look like, update it rather than leaving session F to discover the
+difference.
+
+ERROR 2, and it is the real defect. stg_datasf__building_permits fails with
+"Unrecognized name: unit_suffix". The column exists in the raw zone and in
+DuckDB. The mechanism is a disagreement between the two readers of the same
+Parquet:
+
+  ingestion/raw_zone.py reads with union_by_name = true, and its comment
+  says why: Socrata omits null fields per record, so a batch's column set
+  depends on which rows it contained and files genuinely differ between
+  runs. Two files in one local partition differ by two columns today.
+
+  ingestion/load.py sets external.autodetect = True on the BigQuery
+  external table and has no equivalent. BigQuery infers one schema for the
+  whole table from a sampled file, so a column absent from that file is
+  absent from the table.
+
+So DuckDB unions the column sets and BigQuery takes one file's. That is
+PLAN-7 step 2, "assert the BigQuery external-table column sets against
+DuckDB's", except that it has now happened rather than being hypothetical.
+
+Fix the cause, not the symptom. Do not edit the staging model to drop the
+column, and do not pin the schema with reference_file_schema_uri unless you
+can argue it survives the next column Socrata adds; say why if you choose
+it. The raw zone is all-STRING by contract, and load.py already opens the
+zone with DuckDB in _upload, so computing the union column list there and
+passing an explicit external.schema makes the external table a function of
+the whole zone rather than of whichever file BigQuery sampled. Read
+_external_table's docstring first: three details in it are load bearing and
+each was found by trying the alternative.
+
+Then implement PLAN-7 step 2 properly as the guard, in
+scripts/parity-check.py, which already connects to both engines and already
+has an --all-staging mode. A check that reports "mismatch" without naming
+the dataset and the column is a check nobody will trust at 2am. This defect
+is its first test case: the check must fail on the zone as it is now and
+pass after the fix.
+
+Verify: `make check` green, then `make build-bigquery` green, then
+`scripts/parity-check.py` green. Note in the dev note that make check
+cannot catch either of these, because it is DuckDB-only and local-only by
+design, and say what does catch them now.
+
+Do not commit or push.
+```
+
+**Checkpoint:** `make build-bigquery` is green, `parity-check.py` fails on a
+column-set disagreement and names it, and PLAN-7 step 2 is done. PLAN-5 step 9
+carries a note that the code-version stamp is a correctness guard.
 
 ---
 
@@ -300,7 +443,19 @@ zone is a pure function of the raw zone plus spatial.py. So the code-version
 stamp is not optional and is not a nicety. If spatial.py changes and the
 stamp does not force a full recompute, the derived zone becomes a cache of
 a function that no longer exists, and nothing in the project will detect
-it. Decide what the stamp covers, hash of the source file or an explicit
+it.
+
+That last sentence stopped being hypothetical on 2026-08-05. The bucket's
+derived zone was carrying H3 r9 cells that ADR-10 removed from the code the
+day before, and nothing detected it until `make build-bigquery` failed an
+accepted_values test. check_derived.py compares row counts, which agreed,
+because the disagreement was a schema change rather than a volume one. So
+design the stamp as the guard that case needed, not only as the trigger for
+a recompute: it has to be readable from the zone without running spatial.py,
+so that a checker can say "this zone was built by code that no longer
+exists" rather than only "this zone is behind".
+
+Decide what the stamp covers, hash of the source file or an explicit
 version constant, and write the tradeoff into the module header: a file
 hash is automatic and fires on a comment change, a constant is precise and
 someone will forget to bump it.
@@ -415,20 +570,33 @@ Do not commit or push.
 
 ## Session H. Pipeline assurance
 
-PLAN-7, both steps. Independent of PLAN-5 and can be run before session G if
-you would rather have the checks than the tidy.
+PLAN-7. Independent of PLAN-5 and can be run before session G if you would
+rather have the checks than the tidy.
+
+**Check what is left before starting.** Session E-remainder was written to do
+PLAN-7 step 2, because a real column-set disagreement surfaced with a
+reproduction attached. If it did, this session is step 1 alone and is roughly
+half the size; delete the step 2 paragraph from the prompt rather than
+re-running it.
 
 ```
 Read CLAUDE.md, docs/plans/plan-7-pipeline-assurance.md, and
 ingestion/check_derived.py.
 
-Execute PLAN-7 steps 1 and 2.
+Execute PLAN-7 steps 1 and 2. If session E-remainder already did step 2,
+do step 1 only and say so.
 
 Step 1's open question is the first thing to settle and it is a design
 question, not a preference: does the manifest reconciliation belong in
 check_derived.py, which already exists to assert one zone is not behind
 another, or in a new script? Look at that file before writing anything.
 Two scripts asserting neighbouring invariants may well be one script.
+
+There is now a third invariant in that neighbourhood, found on 2026-08-05:
+a zone can be current by row count and still have been built by code that
+no longer exists. check_derived.py compares counts and cannot see that.
+Decide whether it belongs to this script, to PLAN-5 step 9's code-version
+stamp, or to both, and write the decision down either way.
 
 Step 2 extends scripts/parity-check.py rather than adding a second script.
 It already connects to both engines and already has an --all-staging mode.
@@ -484,6 +652,25 @@ between sessions, which also gives you a natural review point.
 **When a session runs long.** Stop at the last completed plan step, append the
 dev note, and start a fresh session. The plans are written so a new context
 window can pick up from a step number.
+
+**`make check` cannot see half of this project, and that is by design.** It is
+DuckDB-only and local-zone-only, which is what keeps it credential-free for a
+fork pull request (ADR-1). The consequence, learned on 2026-08-05: a green
+`make check` says nothing about the bucket zones or about BigQuery, and both
+errors that session found were invisible to it. If a session touches the
+registry, the zone layout, a staging model's column list or `load.py`, add
+`make build-bigquery` to its checkpoint. It needs credentials and is the only
+thing that exercises the other engine end to end.
+
+**`origin/main` is 13 commits behind, and scheduled workflows run from it.**
+As of 2026-08-05 it still carries `ingestion/datasets.py` and
+`export_parquet.py`, has no `spatial.py` and no H3, and its `ingest.yml` runs
+`ingest.py --all` daily with no spatial step and no `RAW_ZONE_URI`, so the
+nightly cron writes to the runner's disk and evaporates. Nothing has been
+refreshing the bucket's derived zone on a schedule. Do not read a green cron
+as evidence that the bucket is current, and consider whether merging `branch1`
+to `main` belongs ahead of the sessions below: several of them assume the
+scheduled pipeline does what `ingest.yml` on `branch1` says it does.
 
 **If a step turns out to be wrong.** These plans are intent, not law. If
 something in them does not survive contact with the code, say so, write the
