@@ -159,6 +159,17 @@ def open_write(uri: "str | Path"):
     return filesystem().open(_object_path(uri), "wb")
 
 
+def open_read(uri: "str | Path"):
+    """Binary handle for one object. The mirror of `open_write`.
+
+    `pyarrow.parquet.read_table` takes a file object, so a derived table can be
+    read back out of the bucket without a temporary file. That read-back is what
+    lets an incremental `spatial.py` reuse what the last run computed rather
+    than recomputing it (PLAN-5 step 9).
+    """
+    return filesystem().open(_object_path(uri), "rb")
+
+
 def write_text(uri: "str | Path", text: str) -> str:
     """Write one small text object, for the JSON manifests beside the Parquet."""
     with filesystem().open(_object_path(uri), "w") as handle:

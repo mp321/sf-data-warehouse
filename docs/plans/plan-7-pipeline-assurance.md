@@ -103,6 +103,13 @@ They are small. This is a two-session plan, not a project.
    failure of the same morning was a change in the contents of an unchanged
    column, and this check passes on the zone that caused it. See PLAN-5 step 9.
 
+   That step landed later on 2026-08-05 as ADR-11, and the checker went into
+   `check_derived.py` rather than here, as this plan's open question expected.
+   The two remain neighbours that do not overlap: `--columns` asks whether
+   BigQuery and the zone agree about a table's shape, and `check-derived` asks
+   whether the zone agrees with the code and the raw data. Neither would have
+   caught the other's defect.
+
 ## Out of scope
 
 - The publish object count. That is PLAN-5 step 12, because PLAN-5 step 3 is
@@ -133,7 +140,15 @@ They are small. This is a two-session plan, not a project.
 - Does the manifest check belong in `make check`, or in `check_derived.py`,
   which already exists to assert one zone is not behind another? They are
   adjacent problems and two scripts asserting neighbouring invariants may be
-  one script. Look at `check_derived.py` before writing a new file.
+  one script. Look at `check_derived.py` before writing a new file. **There is
+  now a precedent, and it went the second way.** PLAN-5 step 9's code-stamp
+  check joined `check_derived.py` as a third verdict rather than becoming a
+  script, and the reasoning transfers: that file already reads the zone rather
+  than the warehouse, already parses a manifest, and now grades three verdicts
+  with distinct exit codes. What does not transfer is the reader: the run
+  manifests are `ingest.py`'s and live in the raw zone, so a fourth verdict
+  there would make `check_derived.py` about two zones' manifests rather than
+  one zone's currency. Decide that on its merits rather than on the precedent.
 - Is `raw_ingest_runs` the right thing to reconcile against, or should the
   check read the manifests from the zone directly? Reading the zone is the
   stronger check, since it does not assume `load.py` did its job, but it

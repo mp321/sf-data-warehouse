@@ -22,13 +22,16 @@ free to be wrong and cheap to re-run.
 
 Three consequences worth knowing:
 
-  - There is no watermark and no run history here. The zone is a pure
-    function of the raw zone plus the code, so "resume from where we were" is
-    not a question that arises. `_manifest.json` records what was built and
-    from how many input rows, for the same reason ADR-4 wanted run manifests:
-    so an empty table can be told apart from a step that never ran. The input
-    counts are also what make the zone's staleness checkable without
-    recomputing it; `check_derived.py` compares them against the raw zone.
+  - There is no watermark and no run history here, and there does not need to
+    be: the zone is a pure function of the raw zone plus the code, so what it
+    should contain is always recomputable and never has to be remembered.
+    `_manifest.json` records what was built, from which raw rows and
+    partitions, and by which code, for the same reason ADR-4 wanted run
+    manifests: so an empty table can be told apart from a step that never ran.
+    Those three records are also what make the zone checkable without
+    recomputing it, and what let `spatial.py` skip the parts of a rebuild
+    whose inputs have not moved (PLAN-5 step 9). `check_derived.py` compares
+    all three against the raw zone and the code as they are now.
   - Types are real. `h3_r8` is a BIGINT, not a string of digits. The
     all-STRING contract exists so that the raw zone cannot silently lose
     information the API sent; it buys nothing for a column we computed.
@@ -48,12 +51,24 @@ import remote
 
 MANIFEST_NAME = "_manifest.json"
 
-# Top-level manifest key holding what the raw zone looked like when this zone
-# was built: per raw table, the deduplicated row count and the watermark.
-# Separate from the `tables` list, which is about what came out, because this
-# is about what went in, and it is the only thing that makes staleness
-# detectable. See check_derived.py.
+# Top-level manifest keys holding what this zone was built from. Separate from
+# the `tables` list, which is about what came out, because these are about what
+# went in, and they are what make the zone checkable without recomputing it.
+# See derived_state.py for what fills them and check_derived.py for what reads
+# them.
+#
+#   raw_inputs      per raw table, the deduplicated row count and the
+#                   watermark. Answers "has the raw zone moved".
+#   raw_partitions  per raw table, per ingest_date partition, the row and file
+#                   counts. Answers "which partitions has this zone seen",
+#                   which is the finer question incrementality is keyed on.
+#   code_version    what computed the zone: a stamp over the source of every
+#                   module that decides its contents, plus the resolutions and
+#                   table lists in readable form. Answers "was this zone built
+#                   by code that still exists", which no row count can.
 RAW_INPUTS_KEY = "raw_inputs"
+PARTITIONS_KEY = "raw_partitions"
+CODE_VERSION_KEY = "code_version"
 
 
 def derived_root() -> Path | str:
@@ -89,6 +104,29 @@ def read_sql(table: str, root: Path | str | None = None) -> str:
     return f"read_parquet('{path}')"
 
 
+def read_table(table: str, root: Path | str | None = None) -> list[dict] | None:
+    """One derived table back as the list of dicts that wrote it, or None.
+
+    The read half of incrementality (PLAN-5 step 9). `write_table` takes a list
+    of dicts against a fixed schema, so this returns the same shape and the
+    round trip is exact: every column in the derived zone is a float, an int, a
+    bool or a string, and Parquet holds all four without narrowing.
+
+    None means the table is not there, which a caller has to treat as "recompute
+    it" rather than "it is empty". Both are legitimate states of a derived zone
+    and only one of them is safe to reuse.
+    """
+    path = derived_path(table, root)
+    if remote.is_remote(path):
+        if not remote.glob(str(path)):
+            return None
+        with remote.open_read(path) as handle:
+            return pq.read_table(handle).to_pylist()
+    if not path.exists():
+        return None
+    return pq.read_table(path).to_pylist()
+
+
 def write_table(
     table: str, rows: list[dict], schema: pa.Schema, root: Path | str | None = None
 ) -> Path | str:
@@ -119,22 +157,37 @@ def write_table(
 
 
 def write_manifest(
-    entries: list[dict], root: Path | str | None = None, raw_inputs: dict | None = None
+    entries: list[dict],
+    root: Path | str | None = None,
+    raw_inputs: dict | None = None,
+    partitions: dict | None = None,
+    code_version: dict | None = None,
 ) -> Path | str:
     """Record what this run of spatial.py built, next to what it built.
 
-    `raw_inputs` is what it was built from. Omitted rather than written empty
-    when a caller has nothing to record, so `read_manifest` can tell "built by
-    a spatial.py that did not record its inputs" apart from "built from an
-    empty raw zone". The first cannot be checked for staleness; the second can.
+    The three optional blocks are what it was built from. Each is omitted
+    rather than written empty when a caller has nothing to record, so
+    `read_manifest` can tell "built by a spatial.py that did not record this"
+    apart from "built from nothing". The first cannot be checked; the second
+    can, and a zone written by an older spatial.py is the case that makes the
+    distinction worth keeping.
+
+    `generated_at` is when spatial.py last ran, which is not the same as when
+    any given table was last written: the per-table `built_at` in `entries` is
+    that, and it is what makes a rebuild attributable to a run rather than to
+    an object mtime.
     """
     directory = root if root is not None else derived_root()
     payload: dict = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "tables": entries,
     }
+    if code_version is not None:
+        payload[CODE_VERSION_KEY] = code_version
     if raw_inputs is not None:
         payload[RAW_INPUTS_KEY] = raw_inputs
+    if partitions is not None:
+        payload[PARTITIONS_KEY] = partitions
     text = json.dumps(payload, indent=2) + "\n"
     if remote.is_remote(directory):
         return remote.write_text(remote.child(directory, MANIFEST_NAME), text)

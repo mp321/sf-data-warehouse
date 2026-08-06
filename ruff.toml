@@ -62,6 +62,7 @@ known-first-party = [
     "boundaries",
     "census",
     "dataset_registry",
+    "derived_state",
     "derived_zone",
     "geometry",
     "h3_points",

@@ -1,7 +1,7 @@
 ---
 status: active
 date: 2026-07-31
-related: [plan-2-ingestion-lint, plan-4-cloud-first-storage, plan-7-pipeline-assurance, adr-5-h3-computation, adr-7-dataset-scope-2, adr-10-narrowed-scope]
+related: [plan-2-ingestion-lint, plan-4-cloud-first-storage, plan-7-pipeline-assurance, adr-5-h3-computation, adr-7-dataset-scope-2, adr-8-published-exports, adr-10-narrowed-scope, adr-11-derived-zone-code-stamp, adr-12-published-export-layout]
 ---
 
 # PLAN-5. Narrow the project to seven datasets and cover the Python
@@ -12,11 +12,11 @@ Seven datasets, two H3 resolutions, one dataset registry rather than two, and
 `pytest` coverage on the geometry code. `make check` still passes and the
 rebuild-from-zone proof still holds.
 
-**Status: steps 1 to 8, 10 and 11 are done as of 2026-08-05.** The narrowing
-landed on 2026-08-04 and is recorded in ADR-10; the Python coverage and the
-split landed with it; the registry, the rename and the run-results retention
-landed on 2026-08-05. What remains is 9 (incremental `spatial.py`), 12 (the
-published object count) and 13 (the final sweep).
+**Status: everything except 13 is done as of 2026-08-05.** The narrowing landed
+on 2026-08-04 and is recorded in ADR-10; the Python coverage and the split
+landed with it; the registry, the rename and the run-results retention landed on
+2026-08-05, and steps 9 and 12 later the same day as ADR-11 and ADR-12. What
+remains is 13, the final sweep.
 
 ## Why now
 
@@ -158,7 +158,24 @@ happened is in the dev note for the date each one carries.
    window is written into the header, and the number lives in the macro rather
    than in a var so that the header and the value cannot drift the way the two
    registries did.
-9. **Make `spatial.py` incremental.** Key it on unprocessed `ingest_date`
+9. ~~**Make `spatial.py` incremental.**~~ **Done 2026-08-05, and recorded in
+   ADR-11.** The stamp is a hash of the source of every module that decides the
+   zone, not a constant someone bumps, because the costs are asymmetric: a hash
+   fires on a comment change and costs one 23 second rebuild, a constant fires
+   when someone remembers and fails silently when they do not. `check_derived.py`
+   grades it as a third verdict, `RECODED`, exit 4. Incrementality is keyed on
+   per-partition row and file counts in the manifest. Verified against the
+   plan's own done-when and against the harder half: an incremental run and a
+   full rebuild over the same raw zone agree row for row on all six tables, not
+   only in count. The step's own premise turned out to be stale and the
+   measurement is in ADR-11: the H3 cells it names are 0.95 seconds of a 24
+   second run and the oracle sample is 18.86, so what was made cheap is not
+   quite what this step expected to make cheap.
+
+   The original text of this step follows, because it is what the work was
+   commissioned against.
+
+   Key it on unprocessed `ingest_date`
    partitions, with a code-version stamp that forces a full recompute when
    `spatial.py` itself changes. Roughly 40 seconds per 700k points today,
    linear, on every scheduled build. The derived zone must stay a pure
@@ -211,7 +228,23 @@ happened is in the dev note for the date each one carries.
     steps 1 to 3, because leaving them describing nine datasets while the code
     held seven is the failure this plan is trying to fix. What is left is a
     verification pass, folded into step 13.
-12. **Cut the published object count, or accept it in writing.** PLAN-4
+12. ~~**Cut the published object count, or accept it in writing.**~~ **Done
+    2026-08-05, and recorded in ADR-12.** One file per mart, the third of the
+    three options. One publish is 7 objects and 3.0 MB, from 2,280 and 16 MB.
+    The deciding measurement was not the object count, which every option
+    improves, but the byte count: month partitioning cost 5.8x the bytes of the
+    same data, because the median partition held 40 rows and a 5 KB Parquet file
+    is mostly footer. A layout worse on every axis is not a tradeoff. Flooring
+    the date range was rejected rather than deferred: 65.6% of
+    `mart_activity_by_h3`'s rows predate 2020, so it is a scope cut wearing a
+    partitioning fix's clothes. `MANIFEST_VERSION` is 2 and ADR-8 carries a
+    pointer. Two numbers in the original text below were measured smaller on the
+    current zone, 2,280 objects rather than 2,885 and a range starting in 1849
+    rather than 1967; the argument was unaffected.
+
+    The original text of this step follows.
+
+    PLAN-4
     residue, homed here because step 3 is what changed the number. One publish
     is 2,885 objects against a free tier of 5,000 Class A operations a month.
     The cause is not the H3 resolution and not the data volume: it is 879
@@ -272,13 +305,26 @@ happened is in the dev note for the date each one carries.
       file.
 - [x] `ingestion/datasets.py` no longer exists under that name, and PLAN-2 is
       closed. Done 2026-08-05.
-- [ ] A second `make spatial` on an unchanged zone does substantially less
-      work than the first.
+- [x] A second `make spatial` on an unchanged zone does substantially less
+      work than the first. Done 2026-08-05: 23.2 seconds becomes 0.3, and the
+      six Parquet files are byte-identical afterwards rather than rewritten.
+      The correctness half was checked separately and harder than this box
+      asks: an incremental run over a raw zone with a new daily partition, and
+      a `make clean-derived && make spatial` over the same zone, agree row for
+      row on all six tables. Not only in count, and not only on the point
+      tables. `derived_h3_population` is the one table compared with a
+      tolerance, and the reason is in ADR-11: two full builds of an identical
+      zone differ by 4.55e-13 residents on a few cells, so an exact comparison
+      there would fail on the full path too.
 - [x] ADR-10 written, ADR-7 superseded, ADR-5 amended, CLAUDE.md and the
       READMEs updated. Done 2026-08-04. The original wording of this box said
       ADR-5 was to be superseded; see step 10 for why it was not.
-- [ ] One publish is under 200 objects, or ADR-8 carries a written decision to
-      live with the count.
+- [x] One publish is under 200 objects, or ADR-8 carries a written decision to
+      live with the count. Done 2026-08-05: 7 objects and 3.0 MB, from 2,280
+      and 16 MB. ADR-12 carries the decision and ADR-8 carries a pointer to it.
+      A daily publish is now 210 Class A operations a month against a free tier
+      of 5,000, so the quota reason for publishing by hand is gone; whether it
+      goes on a cron is deliberately left open.
 - [ ] Nothing in the repo describes nine datasets, three resolutions, a budget
       mart or a tree count.
 

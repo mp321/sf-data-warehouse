@@ -1,10 +1,18 @@
 ---
 status: active
 date: 2026-07-31
-related: [adr-1-warehouse-targets, adr-2-spatial-strategy, adr-6-polygon-membership, adr-10-narrowed-scope]
+related: [adr-1-warehouse-targets, adr-2-spatial-strategy, adr-6-polygon-membership, adr-10-narrowed-scope, adr-11-derived-zone-code-stamp]
 ---
 
 # ADR-5. H3 cells are computed in Python, in a derived zone, as BIGINTs
+
+> **Amended twice.** ADR-10 dropped resolution 9, so the "8, 9 and 10" line
+> below reads 8 and 10 today. ADR-11 decided what a re-run recomputes and made
+> the zone record the code that built it: the "nothing enforces that it is
+> current" cost below is now enforced, and the 40 seconds per 700,000 points in
+> the same paragraph was re-measured at under one. The decision itself, H3 in
+> Python as BIGINTs in a separate zone, is unchanged and still a hard
+> constraint.
 
 ## Context
 

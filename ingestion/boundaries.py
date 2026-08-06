@@ -365,7 +365,10 @@ def _assignment(row: dict, boundary_set: str, boundary_id: str, method: str) -> 
 
 
 def build_pip_sample(
-    point_rows: list[dict], boundary_rows: list[dict], sample_size: int
+    point_rows: list[dict],
+    boundary_rows: list[dict],
+    sample_size: int,
+    cached: list[dict] | None = None,
 ) -> list[dict]:
     """derived_pip_sample: exact point-in-polygon answers for sampled points.
 
@@ -379,6 +382,21 @@ def build_pip_sample(
     random()`, so it is the same sample on every run and on both engines. A
     sample that moved would turn a real regression into noise and a flaky test
     into a shrug.
+
+    **This is the expensive half of `make spatial`, and the reason it is worth
+    caching.** Measured on the 506,632-point local zone on 2026-08-05: 18.86
+    seconds of a 24 second run, against 0.95 for the H3 cells that PLAN-5 step 9
+    was written to make incremental. It does not scale with the raw zone at all,
+    because the sample is a fixed 2,000 rows per source; it scales with the
+    number of polygons each sampled point is tested against, one scalar
+    crossing-number test per polygon until one contains it.
+
+    `cached` is the previous run's rows. An entry is reused when the sampled
+    point's coordinates are unchanged, which makes the answer identical rather
+    than merely close: `exact_boundary_id` is a pure function of the coordinate
+    and the boundary geometries. **The caller must pass `cached` only when the
+    boundaries were not rebuilt**, since a moved polygon changes the answer for
+    a point that did not move, and nothing here can see that.
     """
     geometries = [
         (row["boundary_set"], row["boundary_id"], json.loads(row["geojson"]))
@@ -386,6 +404,9 @@ def build_pip_sample(
         if row["geojson"]
     ]
     boundary_sets = sorted({boundary_set for boundary_set, _, _ in geometries})
+    previous = {
+        (row["source_table"], row["row_key"], row["boundary_set"]): row for row in cached or ()
+    }
 
     usable_by_source: dict[str, list[dict]] = {}
     for row in point_rows:
@@ -393,19 +414,29 @@ def build_pip_sample(
             usable_by_source.setdefault(row["source_table"], []).append(row)
 
     sample: list[dict] = []
+    reused = 0
     for source_table, rows in sorted(usable_by_source.items()):
         chosen = sorted(rows, key=lambda row: _stable_hash(row["row_key"]))[:sample_size]
         for row in chosen:
             for boundary_set in boundary_sets:
-                exact = next(
-                    (
-                        boundary_id
-                        for candidate_set, boundary_id, geometry in geometries
-                        if candidate_set == boundary_set
-                        and geo.point_in_geometry(row["longitude"], row["latitude"], geometry)
-                    ),
-                    None,
-                )
+                before = previous.get((source_table, row["row_key"], boundary_set))
+                if (
+                    before is not None
+                    and before["latitude"] == row["latitude"]
+                    and before["longitude"] == row["longitude"]
+                ):
+                    exact = before["exact_boundary_id"]
+                    reused += 1
+                else:
+                    exact = next(
+                        (
+                            boundary_id
+                            for candidate_set, boundary_id, geometry in geometries
+                            if candidate_set == boundary_set
+                            and geo.point_in_geometry(row["longitude"], row["latitude"], geometry)
+                        ),
+                        None,
+                    )
                 sample.append(
                     {
                         "source_table": source_table,
@@ -420,6 +451,8 @@ def build_pip_sample(
                         },
                     }
                 )
+    if cached is not None:
+        print(f"  derived_pip_sample: {reused} of {len(sample)} exact answers reused")
     return sample
 
 

@@ -115,20 +115,38 @@ ingest: ## Pull every dataset from DataSF and TIGERweb into data/raw as Parquet
 # ---------------------------------------------------------------------------
 # Spatial precompute: raw zone -> derived zone (ADR-5, ADR-6).
 #
-# Pure function of data/raw plus ingestion/spatial.py, so it is always safe to
-# delete data/derived and re-run. Takes a few minutes on the full raw zone,
-# most of it in the exact point-in-polygon refinement and the oracle sample.
+# Pure function of data/raw plus the code, so it is always safe to delete
+# data/derived and re-run. About 23 seconds on the full local raw zone,
+# measured 2026-08-05: 19 of them in the oracle sample's exact
+# point-in-polygon, 1 in the H3 cells, and the rest in reading and writing.
+#
+# RE-RUNNING IS CHEAP AND DOES NOT REBUILD WHAT HAS NOT MOVED (PLAN-5 step 9).
+# A run compares the raw zone's ingest_date partitions and a stamp over the
+# source of every module that decides the zone against what the last run
+# recorded in the manifest, and rebuilds only what those say has changed. A
+# second run on an unchanged zone takes 0.3 seconds and writes no Parquet at
+# all. Editing any of those modules, comment or code, invalidates the whole
+# zone on purpose: see ingestion/derived_state.py for why that trade is the
+# right way round. Force a rebuild with `make spatial SPATIAL_ARGS=--full`, or
+# with `make clean-derived`.
 # ---------------------------------------------------------------------------
 
-spatial: ## Compute H3 cells and boundary membership into data/derived
-	$(PY) ingestion/spatial.py --all
+SPATIAL_ARGS ?=
 
-# The other half of "forgetting spatial does not error". spatial.py records the
-# raw row count it read per dataset in data/derived/_manifest.json, and this
-# compares that against the raw zone now. It is a prerequisite of `make build`
-# rather than advice, because the failure it replaces was four not_null
-# failures and fifty-one skips, none of which named the step that was skipped.
-check-derived: ## Check data/derived is current with data/raw. Nonzero if stale.
+spatial: ## Compute H3 cells and boundary membership into data/derived
+	$(PY) ingestion/spatial.py --all $(SPATIAL_ARGS)
+
+# The other half of "forgetting spatial does not error", and now of "editing
+# spatial.py does not error either". spatial.py records in
+# data/derived/_manifest.json the raw row count it read per dataset and the
+# code version it ran, and this compares both against the raw zone and the code
+# as they are now. Three verdicts: STALE (rows with no geography, exit 3),
+# RECODED (built by code that no longer exists, exit 4) and DRIFT (a warning).
+# It is a prerequisite of `make build` rather than advice, because the failures
+# it replaces were four not_null failures naming no step, and an accepted_values
+# failure in BigQuery four models downstream of a derived zone holding r9 cells
+# ADR-10 had deleted.
+check-derived: ## Check data/derived against data/raw and the code. Nonzero if not current.
 	@$(PY) ingestion/check_derived.py --strict
 
 # ---------------------------------------------------------------------------
@@ -329,8 +347,10 @@ all: ingest spatial load build ## ingest, spatial, load, build. Needs network fo
 clean-warehouse: ## Delete the DuckDB file. Leaves data/raw alone.
 	rm -f $(DATA_DIR)/*.duckdb $(DATA_DIR)/*.duckdb.wal
 
-# The derived zone is a pure function of the raw zone, so unlike data/raw it
-# is always safe to delete: `make spatial` reproduces it exactly.
+# The derived zone is a pure function of the raw zone plus the code, so unlike
+# data/raw it is always safe to delete: `make spatial` reproduces it exactly.
+# It is also the blunt way to force a full rebuild;
+# `make spatial SPATIAL_ARGS=--full` is the same thing without the delete.
 clean-derived: ## Delete data/derived. Recreate it with `make spatial`.
 	rm -rf $(DATA_DIR)/derived
 
