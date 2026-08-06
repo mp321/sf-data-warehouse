@@ -1,33 +1,34 @@
 # Setup guide
 
-> **Out of date as of 2026-07-31, and Phase 1 is no longer required.** ADR-4
-> split the pipeline into ingest (Socrata to Parquet), load (Parquet to a
-> warehouse) and build (dbt), and made DuckDB the default target. None of
-> those need Google Cloud. To get a working warehouse now:
+The human onboarding path, longer and more hand-held than `CLAUDE.md`.
+`CLAUDE.md` is authoritative on architecture; where this file disagrees with
+it, this file is the one that is wrong.
+
+> **Google Cloud is optional and Phase 1 can be skipped entirely.** DuckDB is
+> the default target (ADR-1) and both Parquet zones are local by default, so
+> the whole pipeline and the entire CI gate run on a fresh clone with no cloud
+> account:
 >
 > ```
 > make setup
 > make ci-build     # whole pipeline from fixtures. No network, no account.
-> make ingest       # real data from DataSF. Network, still no account.
-> make load
-> make build
+> make all          # ingest, spatial, load, build against real DataSF data
 > ```
 >
-> Phases 1 and 2 below are only needed for the optional BigQuery target
-> (`make load-bigquery`, `make build-bigquery`). Phase 3 onward still
-> describes the shape of things but names commands that have moved.
-> `CLAUDE.md` is authoritative until this file is rewritten; see the
-> follow-ups in `docs/dev-notes/2026-07-31.md`.
+> Phase 1 is needed only for the optional BigQuery target
+> (`make load-bigquery`, `make build-bigquery`) and for keeping the zones in a
+> bucket rather than on this machine (ADR-9).
 
 Follow this top to bottom the first time. Every step has a checkpoint so
 you know it worked before moving on. Total cost of everything here: $0.
 Budget roughly 60 to 90 minutes for the first full pass.
 
-Prerequisites: Python 3.10+, git, a Google account, a GitHub account.
+Prerequisites: Python 3.10+, git, a GitHub account. A Google account only if
+you want Phase 1.
 
 ---
 
-## Phase 1: Google Cloud and BigQuery (optional since ADR-4)
+## Phase 1: Google Cloud and BigQuery (optional)
 
 ### 1.1 Create a project
 
@@ -65,10 +66,12 @@ Actions all use.
 Checkpoint: you have a `.json` key file downloaded. Treat it like a
 password.
 
-### 1.3 Cloud Storage bucket and IAM (PLAN-4)
+### 1.3 Cloud Storage bucket and IAM
 
-This is where the Parquet raw zone lives once PLAN-4 lands. Until then it
-is optional and nothing breaks without it.
+This is where both Parquet zones live when `RAW_ZONE_URI` and
+`DERIVED_ZONE_URI` are set, and what BigQuery's external tables read (ADR-9).
+Still optional: with the variables unset, the zones are `data/raw` and
+`data/derived` and nothing here is needed.
 
 Everything below assumes `set -a; source .env; set +a` has been run, so
 `GCP_PROJECT_ID` is set. Substitute your own bucket name for
@@ -209,19 +212,11 @@ region.
 
 ## Phase 2: Local setup
 
-### 2.1 Get the code onto GitHub and your machine
-
-1. On GitHub, create a new public repo named `sf-data-warehouse`. Do not
-   initialize it with a README.
-2. Unzip the project scaffold, then from inside the folder:
+### 2.1 Get the code
 
 ```bash
-git init
-git add .
-git commit -m "Scaffold: ingestion, dbt project, CI workflows"
-git branch -M main
-git remote add origin git@github.com:YOUR_USERNAME/sf-data-warehouse.git
-git push -u origin main
+git clone git@github.com:YOUR_USERNAME/sf-data-warehouse.git
+cd sf-data-warehouse
 ```
 
 ### 2.2 Python environment
@@ -229,15 +224,25 @@ git push -u origin main
 From the repo root:
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+make setup
 ```
 
-(Windows PowerShell: `.venv\Scripts\Activate.ps1` instead of the source
-line.)
+That creates `.venv`, installs `requirements.txt` and
+`requirements-dev.txt`, runs `dbt deps` and installs the pre-commit hooks.
+Do it this way rather than by hand: the dev requirements are what
+`make test-python` and `make lint` need, and installing only
+`requirements.txt` leaves both failing for a reason that looks like a
+broken repo.
 
-### 2.3 Wire up credentials
+(Windows PowerShell: activate with `.venv\Scripts\Activate.ps1`.)
+
+Checkpoint: `make ci-build` runs the whole pipeline from committed
+fixtures and finishes green, with no network and no cloud account. If that
+works, everything below is optional.
+
+### 2.3 Wire up credentials (Phase 1 only)
+
+Skip this unless you did Phase 1.
 
 ```bash
 mkdir -p keys
@@ -254,16 +259,23 @@ set -a; source .env; set +a
 ```
 
 Rerun that load line in every new terminal session (or add it
-to your shell profile). Ensure `keys/` folder is gitignored.
+to your shell profile). `keys/` and `.env` are already gitignored, and
+`make leak-check` blocks a commit that would carry either.
 
-Checkpoint: `echo $GCP_PROJECT_ID` prints your project id.
+Checkpoint: `echo $GCP_PROJECT_ID` prints your project id, and
+`make ci-build` is still green in that same shell. It has to be: `make
+ci-build` sets the zone DIR variables and DIR beats URI, so sourcing a
+`.env` full of `gs://` URIs must not change what the CI gate tests.
 
 ---
 
 ## Phase 3: First ingestion run
 
-Start with the small fun dataset to prove the plumbing, then the real
-one:
+Ingestion writes Parquet and nothing else. Getting those files into a
+warehouse is a separate step (ADR-4), so nothing in this phase needs a
+Google account even if you did Phase 1.
+
+Start with the small dataset to prove the plumbing, then the large one:
 
 ```bash
 python ingestion/ingest.py film_locations
@@ -273,21 +285,22 @@ python ingestion/ingest.py 311_cases
 The 311 backfill loads everything updated since 2024-01-01 and takes a
 few minutes. Progress prints every 50,000 rows. Run it a second time
 afterwards and it should say "already up to date": that is the
-incremental watermark working.
+incremental watermark working, and the watermark comes from the zone
+itself rather than from any bookkeeping.
 
-Then load the other two:
+Then the rest. There are seven datasets and `--all` is the normal way to
+run it:
 
 ```bash
-python ingestion/ingest.py building_permits film_locations
+python ingestion/ingest.py --all
 ```
 
-Checkpoint: in the BigQuery console you see a `raw_datasf` dataset
-containing four tables. Run this and eyeball the output:
+Checkpoint: `data/raw/` holds one directory per raw table, each with an
+`ingest_date=YYYY-MM-DD/` partition of Parquet inside it and a `_runs/`
+directory of run manifests. Eyeball a table:
 
-```sql
-select service_request_id, requested_datetime, status_description
-from `YOUR_PROJECT_ID.raw_datasf.raw_311_cases`
-limit 10;
+```bash
+python -c "import duckdb; print(duckdb.sql(\"select * from read_parquet('data/raw/raw_311_cases/**/*.parquet', hive_partitioning=true) limit 5\"))"
 ```
 
 Notice every column is a string. That is deliberate: raw stays untyped,
@@ -295,7 +308,31 @@ and staging models do the casting.
 
 ---
 
-## Phase 4: dbt
+## Phase 4: The spatial precompute
+
+**Do not skip this, and it is the step most easily forgotten.** It reads
+the raw zone, computes H3 cells and boundary membership in Python, and
+writes `data/derived/`. H3 is computed here rather than in SQL because
+BigQuery has no H3 support of any kind, so there is nothing to dispatch
+to and both engines instead read the same precomputed BIGINTs (ADR-5).
+
+```bash
+make spatial
+```
+
+Skipping it does not error. The spatial models build empty and the marts
+come out with no rows. Worse is running it once and then ingesting again,
+which leaves the new rows with null geography and surfaces as a `not_null`
+failure several models downstream. `make build` therefore runs
+`make check-derived` first, which compares the derived zone against the
+raw zone and against the code that built it.
+
+Checkpoint: `make check-derived` exits zero, and `data/derived/` holds six
+Parquet files plus `_manifest.json`.
+
+---
+
+## Phase 5: Load and dbt
 
 Two-minute orientation: dbt is just a tool that runs SQL files against your warehouse in the right order. Each `.sql` file in `models/` becomes a view or table named after the file. Three ideas cover 90 percent of it:
 
@@ -306,47 +343,62 @@ Two-minute orientation: dbt is just a tool that runs SQL files against your ware
 3. Tests are assertions in YAML (unique, not_null) that dbt turns into
    SQL checks and runs for you.
 
-The project has two layers: `staging` (one view per raw table: rename,
-cast, deduplicate, nothing else) and `marts` (analysis-ready tables you
-will hand-write).
+The project has three layers: `staging` (one view per raw or derived
+table: rename, cast, deduplicate, nothing else), `intermediate` (models
+that reshape staging models and that nothing queries directly), and
+`marts` (analysis-ready tables, hand-written).
 
-### 4.1 Run it
+### 5.1 Run it
+
+```bash
+make load     # both zones -> the local DuckDB file
+make build    # dbt run + test in dependency order
+```
+
+Those are the two you want day to day, and `make all` runs ingest,
+spatial, load and build in order so you do not have to remember which
+feeds which. To drive dbt directly instead:
 
 ```bash
 cd dbt
 export DBT_PROFILES_DIR="$(pwd)"
-dbt debug
-```
-
-`dbt debug` checks the connection. All green? Then:
-
-```bash
-dbt run          # builds stg_datasf__311_cases as a view
-dbt test         # runs the tests defined in _datasf__models.yml
-dbt build        # run + test in dependency order (use this day to day)
+dbt debug     # checks the connection
+dbt build     # run + test in dependency order
 ```
 
 If `dbt run` fails with a "column not found" style error, DataSF renamed
-a field. Query the raw table with `limit 10`, find the real name, and
-fix it in `stg_datasf__311_cases.sql`. That is normal analytics
-engineering maintenance, not a broken project.
+a field. Query the raw table, find the real name, and fix it in the
+staging model. That is normal analytics engineering maintenance, not a
+broken project.
 
-Checkpoint: `dbt build` finishes with all green, and BigQuery now shows
-a `dbt_dev` dataset containing the `stg_datasf__311_cases` view.
+Checkpoint: `dbt build` reports `PASS=171 ERROR=0` and `data/sf.duckdb`
+holds the `raw_datasf`, `derived_spatial` and `dbt_dev` schemas. That is
+19 models, 148 data tests and 4 project hooks.
 
-### 4.2 Docs
+### 5.2 Prove the Parquet is the source of truth
 
 ```bash
-dbt docs generate
-dbt docs serve
+make rebuild
 ```
 
-Opens a browsable site of every model, column description, test, and a
-lineage graph. This is a great screen-share artifact in interviews.
+This drops the DuckDB file and rebuilds every model from the zones alone,
+without going near the API. If it does not reproduce what you had, the raw
+zone is not the record it claims to be. CI runs the same idea against
+committed fixtures on every pull request, which is `make ci-build`.
+
+### 5.3 Docs
+
+```bash
+make docs        # regenerate and refresh the committed docs/dbt/ artifacts
+make docs-serve  # the browsable site
+```
+
+A browsable site of every model, column description, test, and a lineage
+graph. Good screen-share artifact in interviews.
 
 ---
 
-## Phase 5: Automation on GitHub
+## Phase 6: Automation on GitHub
 
 1. In your GitHub repo: Settings, Secrets and variables, Actions, New
    repository secret. Create four secrets:
@@ -371,6 +423,11 @@ lineage graph. This is a great screen-share artifact in interviews.
 
 From now on ingestion runs daily and dbt builds plus tests weekly, with
 no laptop involved.
+
+Those secrets are for `ingest.yml` and `dbt.yml` only. `ci.yml`, the gate on
+every pull request, needs none of them and must keep needing none: it runs
+the whole pipeline from fixtures against DuckDB and local zones, which is
+what lets a fork pull request run it (ADR-1).
 
 Checkpoint: both workflows have a green manual run.
 
@@ -415,13 +472,25 @@ variable rather than with a bare 403.
 
 ---
 
-## Phase 6: Your turn
+## Phase 7: Where to go next
 
-The scaffold ends here on purpose. Open `dbt/models/marts/README.md` for
-the hand-written SQL roadmap and the review workflow. First task:
-staging is only built for 311, so writing `stg_datasf__film_locations`
-yourself, using `stg_datasf__311_cases.sql` as the pattern, is the ideal
-warm-up.
+The warehouse is complete: seven datasets, 19 models, 148 tests. What is
+worth reading rather than building:
+
+- `dbt/models/marts/README.md` for the mart layer's rules, particularly why
+  every count mart carries a normalised companion measure.
+- `dbt/models/staging/datasf/stg_datasf__311_cases.sql`, the reference
+  staging model that every other one follows.
+- `docs/decisions/` in number order for why any of it is the way it is.
+  ADR-5 and ADR-6 are the two that explain the spatial layer.
+- `CLAUDE.md` for the canonical architecture, and `USER-NOTES.md` for the
+  same thing written to be read outside the repo.
+
+Adding a dataset is the natural first change, and it is four files: an
+entry in `vars.pipeline_sources` in `dbt/dbt_project.yml`, a source table
+in the relevant `_<system>__sources.yml`, a staging model, and a fixture
+under `tests/fixtures/socrata/`. `tests/test_dataset_registry.py` fails in
+a tenth of a second on any of the four being missing.
 
 ---
 
@@ -429,9 +498,16 @@ warm-up.
 
 - "Missing required environment variable": rerun
   `set -a; source .env; set +a` in this terminal.
-- 403 or permission errors from BigQuery: the service account is missing
-  the BigQuery Admin role, or `GOOGLE_APPLICATION_CREDENTIALS` points to
-  the wrong path.
+- 403 or permission errors from BigQuery: `GOOGLE_APPLICATION_CREDENTIALS`
+  points at the wrong path, or the service account is missing
+  `bigquery.user` and `bigquery.dataEditor`. Section 1.3 grants both and
+  removes the broader `bigquery.admin` that section 1.2 starts you with.
+- A model errors with "Unrecognized name" on BigQuery but builds fine on
+  DuckDB: the external table's schema has stopped being a view of the whole
+  zone. `make parity-columns` names the table and the columns.
+- Marts build with zero rows, or `not_null` fails on a geography column:
+  the derived zone is missing or behind. `make check-derived` says which,
+  and `make spatial && make load && make build` is the fix.
 - `Failed to impersonate ... iam.serviceAccounts.getAccessToken denied`:
   your user account lacks `roles/iam.serviceAccountTokenCreator` on the
   service account. See the end of section 1.3; the key-based probe there

@@ -1,5 +1,31 @@
 # Review, 2026-07-31: scope, cloud posture, and what to cut
 
+> **Fully harvested, and nothing below describes the repo as it is now.** Read
+> this only as a record of what an outside reader saw on 2026-07-31 and what it
+> produced. Every recommendation in it has either been executed or explicitly
+> declined in writing:
+>
+> | Recommendation | Where it landed |
+> |---|---|
+> | Prove the BigQuery target row for row | PLAN-4 step 3, done 2026-07-31. Found four cross-engine defects |
+> | External tables over GCS, stop mirroring raw into BigQuery | ADR-9, PLAN-4. BigQuery storage 8.02 GB to 40.96 MB |
+> | GCS becomes the raw zone, delete the Actions cache | ADR-9, PLAN-4 steps 6 and 8 |
+> | Drop H3 r9 | ADR-10 |
+> | Cut `city_budget` and `street_trees` | ADR-10 |
+> | pytest on `geometry.py` | PLAN-5 step 5, 95 cases |
+> | Split `spatial.py` | PLAN-5 step 6 |
+> | One dataset registry, not two | PLAN-5 step 4. Landed the opposite way round to this document's guess: the registry moved to the dbt side, because dbt cannot read an arbitrary YAML file and Python can read anything |
+> | Prune `meta_dbt_run_results` | PLAN-5 step 8, a 50-run window |
+> | Make `spatial.py` incremental | ADR-11, and it grew a second purpose this document did not anticipate: the code stamp is a correctness guard, not only an incrementality trigger |
+> | Keyset paging instead of `$offset` | Not done. Still open and still small |
+> | Commit the tree, fix the `.gitignore` line | Done 2026-07-31 |
+> | Move `PLAN.md` Goal2 into `docs/plans/` | Done, as PLAN-6 |
+>
+> `docs/README.md` says this file can be deleted once PLAN-4, PLAN-5 and PLAN-6
+> are done. Two of the three are, as of 2026-08-05. Its content is now history
+> rather than intent, so deleting it loses nothing that is not recorded
+> elsewhere; it is kept only because PLAN-6 has not started.
+
 Not one of the three canonical document kinds. This is an outside read of the
 repo as it stands, meant to be harvested into `PLAN-4` and `ADR-9` and then
 deleted. Nothing here is a decision until it is written as one.

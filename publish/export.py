@@ -29,7 +29,7 @@ enough rows per partition to want it.
 **The manifest is the point.** `published/manifest.json` records, per dataset:
 path, row count, byte size, a schema hash, and when it was generated. The
 schema hash is what lets a consumer notice that a column changed type without
-diffing data, and it is what the context pack in PLAN-2 will hang off.
+diffing data, and it is what the context pack in PLAN-6 will hang off.
 
 Usage:
     python publish/export.py --all

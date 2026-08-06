@@ -14,9 +14,10 @@ intermediate is here.
 | `mart_film_locations` | one row per shoot location | The demo mart. |
 | `mart_pipeline_freshness` | one row per source | Pipeline health, not city data. The one metadata mart. |
 
-`mart_budget_by_department_year` was here and was cut under PLAN-5. It was the
-only non-spatial mart, and every mart above now answers a question about where
-something is, which is the claim this project makes.
+Every mart above answers a question about where something is. That is the
+claim this project makes rather than an accident of what survived: ADR-10 cut
+the one non-spatial mart, and a mart that sat outside the claim diluted it
+rather than broadening it.
 
 ## Rules of the road
 
@@ -59,11 +60,6 @@ not saying anything.
 
 The plan that commissioned these asked for rates per parcel and per street
 mile. Neither dataset is in scope, and adding one is a scope decision rather
-than a modelling one. ADR-7 records the gap; do not approximate it with
-something that happens to be available.
-
-## Review workflow with Claude
-
-For each model, share: the SQL, what you expected it to do, and the output of
-`dbt build --select <model>`. Ask for a review covering correctness, style and
-performance.
+than a modelling one. ADR-7 records the gap and ADR-10 narrowed scope further
+rather than widening it, so the gap is wider now than when it was written. Do
+not approximate it with something that happens to be available.

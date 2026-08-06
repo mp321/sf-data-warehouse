@@ -192,18 +192,17 @@ SETUP.md            step-by-step reproduction guide
 
 ## Roadmap
 
-Current work is PLAN-5, which narrows the project rather than growing it. See
-`docs/README.md` for the plan index and status.
+PLAN-5 closed on 2026-08-05: the project was narrowed rather than grown, to
+seven datasets, two H3 resolutions, one dataset registry, direct pytest
+coverage on the geometry code, and a derived zone that records the code that
+built it and rebuilds only what has moved. See `docs/README.md` for the plan
+index and status.
 
-- Finish narrowing. Nearly done: there is one dataset registry rather than
-  two, `ingestion/datasets.py` is `dataset_registry.py` and PLAN-2 is closed,
-  the geometry code has direct pytest coverage, `ingestion/spatial.py` is now
-  an entry point over four modules and only rebuilds what has moved, and one
-  publish is 7 objects rather than 2,280. What is left of PLAN-5 is step 13, a
-  sweep for anything the plan made obsolete.
-- Reconcile the run manifests against the data, and assert the BigQuery
-  external-table column sets against DuckDB's rather than comparing them by
-  eye (PLAN-7).
+What is open:
+
+- Reconcile the run manifests against the data they claim to describe
+  (PLAN-7 step 1). Its sibling, asserting the BigQuery external-table column
+  sets, is done and is `make parity-columns`.
 - Per-boundary-set H3 resolution. The measurements in ADR-6 show block groups
   want a finer one and supervisor districts would be fine with a coarser one.
 - A model-agnostic context pack so any capable LLM can query this warehouse

@@ -66,7 +66,7 @@ Read this before assuming the ADRs describe running code.
 | Marts | 3 city marts, 2 dims, 1 metadata mart | same | ADR-10 |
 | Published export | local `published/` on every PR, one file per mart, 7 objects and 3.0 MB. Uploaded to GCS once by hand on 2026-08-01, in the old partitioned layout | manual until someone decides to schedule it; the quota reason is gone | ADR-8, ADR-12 |
 | BigQuery build | last run by hand 2026-08-05 on external tables, `PASS=171 ERROR=0`, matching DuckDB node for node on the same zone | same, plus the weekly `dbt.yml` cron | PLAN-4 step 3 |
-| Scheduled ingest | `ingest.yml`, daily at 09:17 UTC, reads and writes the bucket. Green on a manual dispatch 2026-08-03; no cron-triggered run yet | same | PLAN-4 step 8 |
+| Scheduled ingest | `ingest.yml`, daily at 09:17 UTC, reads and writes the bucket. Green on a manual dispatch 2026-08-03. `main` carries it as of 2026-08-05, so the cron now runs the current pipeline; no cron-triggered run has fired since | same | PLAN-4 step 8 |
 
 The rows that used to be the embarrassing ones are closed. `dbt build
 --target bigquery` ran for the first time on 2026-07-31 and found four
@@ -102,8 +102,9 @@ became seven, and every remaining one is spatial. Steps 5 and 6 followed on
 there is one dataset registry rather than two, `ingestion/datasets.py` is
 `dataset_registry.py` and PLAN-2 is closed, and `meta_dbt_run_results` is
 bounded. Steps 9 and 12 followed later the same day as ADR-11 and ADR-12, and
-are the two paragraphs below. Only PLAN-5 step 13, the obsolescence sweep, is
-still open.
+are the two paragraphs below. Step 13, the obsolescence sweep, closed PLAN-5
+on 2026-08-05: the stale documents were USER-NOTES.md and SETUP.md rather than
+anything in the code, whose headers had been kept current step by step.
 
 **The derived zone now records the code that built it, and `make spatial` no
 longer rebuilds what has not moved (ADR-11).** The stamp is the load-bearing
@@ -207,7 +208,9 @@ make test             # dbt test only
 make test-python      # pytest over ingestion/. Fastest gate in the set.
 make docs             # dbt docs generate, refresh docs/dbt/ artifacts
 make lint             # ruff + sqlfluff
+make fmt              # auto-fix what ruff and sqlfluff can fix
 make leak-check       # scripts/leak-check.sh, exits nonzero on a hit
+make compile-bigquery # render every model as BigQuery SQL. No credentials.
 make check            # everything CI runs on a PR
 make check-derived    # is data/derived current with data/raw AND with the code?
 make clean-derived    # delete data/derived. Always safe; make spatial rebuilds it.
@@ -230,12 +233,28 @@ the source of truth it claims to be. CI runs it on every PR.
 
 1. This file.
 2. `docs/decisions/` in number order. These are the constraints you inherit.
-   ADR-2, ADR-3, ADR-4 and ADR-7 are superseded; read them for the reasoning,
-   then read ADR-6, ADR-9 and ADR-10 for what actually holds. ADR-5 and ADR-8
-   are the two to read carefully: both are `active` and both have had one
-   part amended, ADR-5's resolution list and rebuild cost by ADR-10 and
-   ADR-11, and ADR-8's month partitioning by ADR-12. Each carries a note at
-   the top saying which line moved.
+   Four are superseded and they do not repay equal attention:
+   - **ADR-4 still repays it in full.** ADR-9 supersedes it on two points,
+     where the files are and what BigQuery does with them, and says in its own
+     first paragraph that ADR-4 is otherwise still the description of the
+     zone. The layout, the all-STRING contract, the append-only rule and the
+     watermark all carry forward.
+   - **ADR-7 repays it.** ADR-10 argues against it point by point, so the two
+     read as one conversation and the second is hard to follow alone.
+   - **ADR-2 repays skimming.** ADR-6 supersedes it and re-derives the same
+     scheme against measurements rather than guesses, so read ADR-6 for what
+     holds. ADR-2 is worth the skim only for its option B, computing the
+     district label at ingestion time, which ADR-5 then cites as the reason
+     cells are not written into the raw zone.
+   - **ADR-3 is archive.** It scopes four datasets around a headline question
+     about city spending that no longer exists, two supersessions ago. The one
+     live thing in it, why the budget-to-311 crosswalk was never built, is in
+     README.md under "What it does not do".
+
+   ADR-5 and ADR-8 are the two to read carefully: both are `active` and both
+   have had one part amended, ADR-5's resolution list and rebuild cost by
+   ADR-10 and ADR-11, and ADR-8's month partitioning by ADR-12. Each carries a
+   note at the top saying which line moved.
 3. `docs/plans/` for anything with `status: active` or `status: draft`.
 4. The most recent two files in `docs/dev-notes/`.
 5. `vars.pipeline_sources` in `dbt/dbt_project.yml` for what is in scope. That
@@ -422,8 +441,13 @@ files are `_<source>__sources.yml`.
   `dbt/macros/cross_engine.sql` instead of engine-specific functions such as
   `safe_cast`, `float64`, `try_cast` or `json_extract_string`. Do not compare
   a timestamp against a bare `current_timestamp`; use `x_utc_now()`, and read
-  the comment above it before deciding you know better. Eight logical macros
-  now, against ADR-1's revisit threshold of about ten.
+  the comment above it before deciding you know better. **Nine macros now,
+  against ADR-1's revisit threshold of about ten**, so the tenth is the one
+  that triggers a re-read of ADR-1 rather than just another macro. Counted as
+  the surface models call: `x_type`, `x_cast`, `x_safe_cast`, `x_safe_int`,
+  `x_json_extract_scalar`, `x_utc_now`, `x_month_start`, `x_safe_divide`,
+  `x_hours_between`. Six of them dispatch per adapter; the rest are wrappers
+  over the ones that do.
 - **No geometry at query time (ADR-6).** No `ST_` function, no spatial
   extension, no GEOGRAPHY column in any model. Boundary membership is a
   precomputed column and cell coverage is an integer join. The only geometry

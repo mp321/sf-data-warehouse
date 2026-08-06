@@ -22,9 +22,10 @@ sources:
       - name: derived_point_h3
         description: >
           One row per point-bearing raw row: its parsed coordinates, a status
-          saying whether they are usable, and its H3 cell at resolutions 8, 9
-          and 10 as BIGINTs. Rows with unusable coordinates are present with
-          null cells rather than absent, so the drop rate is measurable.
+          saying whether they are usable, and its H3 cell at resolutions 8 and
+          10 as BIGINTs. ADR-10 dropped resolution 9. Rows with unusable
+          coordinates are present with null cells rather than absent, so the
+          drop rate is measurable.
 
       - name: derived_boundary
         description: >

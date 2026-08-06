@@ -11,7 +11,7 @@ anything else in here.
 | PLAN-2 ingestion-lint | done | Ruff exemptions gone 2026-07-31. Closed 2026-08-05 under PLAN-5 step 7, when `ingestion/datasets.py` became `dataset_registry.py` and stopped shadowing a PyPI package name. |
 | PLAN-3 geography-and-marts | done | H3, boundaries, marts, published exports. Delivered 2026-07-31. |
 | PLAN-4 cloud-first-storage | done | Parquet raw zone in GCS, BigQuery on external tables and proven row for row against DuckDB, the CI cache step gone. Closed 2026-08-03 when `ingest.yml` went green on a runner against the bucket. Its residue is now homed: assurance items in PLAN-7, the publish object count in PLAN-5 step 12, the `dbt_dev` expiry question closed by measurement. |
-| **PLAN-5 narrow-and-polish** | **active** | Cut two datasets and one H3 resolution, one registry, pytest on the geometry code. Steps 1, 2, 3 and 10 done 2026-08-04: the narrowing has landed and is recorded in ADR-10. Steps 5 and 6 followed the same day: `geometry.py` has direct pytest coverage, gating the dbt job in CI, and `spatial.py` is four files. Steps 4, 7 and 8 done 2026-08-05: one dataset registry rather than two, the `datasets.py` rename that closed PLAN-2, and a 50-run retention window on `meta_dbt_run_results`. Steps 9 and 12 done 2026-08-05 as ADR-11 and ADR-12: the derived zone records the code that built it and is rebuilt incrementally, and one publish is 7 objects rather than 2,280. Step 13, the obsolescence sweep, is the whole remainder. |
+| PLAN-5 narrow-and-polish | done | Cut two datasets and one H3 resolution, one registry, pytest on the geometry code. Closed 2026-08-05 by step 13, the obsolescence sweep, which found the stale documents were USER-NOTES.md and SETUP.md rather than anything in the code. Recorded in ADR-10 (scope), ADR-11 (the derived zone's code stamp) and ADR-12 (the published layout). One Done-when box was resolved by judgement rather than met; the plan says which and why. |
 | PLAN-6 context-pack | draft | The versioned context artifact with explicit refusal boundaries. Last, deliberately. |
 | **PLAN-7 pipeline-assurance** | **active** | Reconcile run manifests against the data; assert the BigQuery column sets against DuckDB's. PLAN-4 residue that had been carried forward three times. Small: two steps. Step 2 done 2026-08-05 as `parity-check.py --columns`, and it was overtaken on the way: the column-set disagreement it was written to detect turned `make build-bigquery` red first, so it was built against a live defect. Step 1 is the whole remainder. |
 
@@ -43,7 +43,12 @@ it, and leave the old one active.
 
 `review-2026-07-31-scope-and-cloud.md` is an outside assessment that produced
 PLAN-4, PLAN-5 and PLAN-6. It is not one of the three kinds below and can be
-deleted once those plans are done.
+deleted once those plans are done. PLAN-4 and PLAN-5 are; PLAN-6 is not. It is
+fully harvested either way, and carries a table at the top saying where each of
+its recommendations landed, so deleting it loses nothing recorded nowhere else.
+
+`handoff-prompt.md` is the fourth non-canonical file: the session prompts for
+work that has not run yet. It deletes itself when PLAN-6 and PLAN-7 close.
 
 ## The three kinds of document
 

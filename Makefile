@@ -193,15 +193,27 @@ parity-check: ## (creds) Compare staging models row for row across both engines
 	$(PY) scripts/parity-check.py --all-staging
 
 # ---------------------------------------------------------------------------
-# Publish: warehouse -> partitioned Parquet plus a manifest (ADR-8).
+# Publish: warehouse -> one Parquet file per mart, plus a manifest (ADR-8,
+# ADR-12).
 #
 # Local by default and blocked on nothing. Add a bucket with:
+#   make publish PUBLISH_DEST=gs://my-bucket/sf
 #   make publish PUBLISH_DEST=r2://my-bucket/sf
+#
+# ONE FILE PER MART, NOT HIVE PARTITIONS, AND THAT IS A MEASUREMENT (ADR-12).
+# The two activity marts were partitioned by month over a range starting in
+# 1849, which cost 2,280 objects a publish against a free tier of 5,000 Class A
+# operations a month. The deciding number was the bytes rather than the count:
+# month partitioning cost 5.8x the bytes of the same data, because the median
+# partition held 40 rows and a 5 KB Parquet file is mostly footer. A publish is
+# now 7 objects and 3.0 MB. The partitioning mechanism stays for the day a mart
+# has enough rows per partition to want it; see PUBLISHED_MARTS in
+# publish/export.py.
 # ---------------------------------------------------------------------------
 
 PUBLISH_DEST ?=
 
-publish: ## Export marts to published/ as partitioned Parquet with a manifest
+publish: ## Export marts to published/ as one Parquet file each with a manifest
 	$(PY) publish/export.py --all \
 		$(if $(PUBLISH_DEST),--destination $(PUBLISH_DEST),)
 

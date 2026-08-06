@@ -1,5 +1,5 @@
 ---
-status: active
+status: done
 date: 2026-07-31
 related: [plan-2-ingestion-lint, plan-4-cloud-first-storage, plan-7-pipeline-assurance, adr-5-h3-computation, adr-7-dataset-scope-2, adr-8-published-exports, adr-10-narrowed-scope, adr-11-derived-zone-code-stamp, adr-12-published-export-layout]
 ---
@@ -12,11 +12,19 @@ Seven datasets, two H3 resolutions, one dataset registry rather than two, and
 `pytest` coverage on the geometry code. `make check` still passes and the
 rebuild-from-zone proof still holds.
 
-**Status: everything except 13 is done as of 2026-08-05.** The narrowing landed
-on 2026-08-04 and is recorded in ADR-10; the Python coverage and the split
-landed with it; the registry, the rename and the run-results retention landed on
-2026-08-05, and steps 9 and 12 later the same day as ADR-11 and ADR-12. What
-remains is 13, the final sweep.
+**Closed 2026-08-05.** The narrowing landed on 2026-08-04 and is recorded in
+ADR-10; the Python coverage and the split landed with it; the registry, the
+rename and the run-results retention landed on 2026-08-05, and steps 9 and 12
+later the same day as ADR-11 and ADR-12. Step 13, the final sweep, closed it.
+
+Ten of the eleven Done-when boxes were met. The eleventh, "`spatial.py` is
+three files, each under about 350 lines", was **resolved by judgement rather
+than met**, which step 6 anticipated and delegated to step 13. It is five files
+and two of them are over 350. The box and the decision are at the bottom of
+this file; the short version is that the line count was a proxy for "one
+subject per file, and a direct test on the risky parts", that condition holds,
+and reaching 350 would have meant splitting the pip-sample oracle away from the
+membership computation it exists to measure.
 
 ## Why now
 
@@ -256,7 +264,42 @@ happened is in the dev note for the date each one carries.
     one file per mart and drop hive partitioning. Whichever is chosen, the
     zero-cost claim in the first paragraph of CLAUDE.md is what it has to
     protect, and ADR-8 needs a note or a successor recording the outcome.
-13. **Final sweep for things this plan made obsolete.** Deliberately last, and
+13. ~~**Final sweep for things this plan made obsolete.**~~ **Done 2026-08-05,
+    and it closed this plan.** The finding worth carrying forward is where the
+    staleness was, because it was not where this step expected it: **the code
+    was clean and the documentation about the code was not.**
+
+    Every module docstring, every Makefile target comment and every dbt model
+    header already described the code as it is. That is not luck. Each of steps
+    1 to 12 updated the header next to the code it changed, in the same change,
+    so there was nothing left to sweep. What had drifted was the three
+    documents that describe the project from outside it and that no single step
+    owned: `USER-NOTES.md` still listed nine datasets, a budget mart and two
+    dataset registries; `SETUP.md` described a two-layer dbt project loading
+    four tables into BigQuery, with no spatial step in it at all; and
+    `_spatial__sources.yml` still said three H3 resolutions.
+
+    **The rule that follows from that, and it is the reusable part:** a fact
+    written next to the code it describes gets corrected by whoever changes the
+    code, and a fact written in a document about the code does not. That is the
+    same argument this plan's step 4 made about the dataset registry, arriving
+    a second time in a different shape. Put context at the top of the file or
+    function it concerns; a document that restates it will be the copy that
+    rots.
+
+    Deletions: the six archived session prompts in `docs/handoff-prompt.md`,
+    748 lines down to about 200, since what each session did is in the dev note
+    for its date and what it decided is in the plan step or ADR it produced; and
+    the "Review workflow with Claude" section of `dbt/models/marts/README.md`,
+    which was generic advice carrying nothing about this repo.
+    `docs/review-2026-07-31-scope-and-cloud.md` is kept, because
+    `docs/README.md` conditions its deletion on PLAN-6 and PLAN-6 has not
+    started, but it now carries a table at the top saying where each of its
+    recommendations landed, so a reader cannot mistake it for current.
+
+    The original text of this step follows.
+
+    Deliberately last, and
     deliberately broad. Read every README, header comment, docstring and ADR
     pointer in the repo and check it against the code as it then is. Delete
     what is dead, correct what is wrong, shorten what is merely long. Two
@@ -293,16 +336,39 @@ happened is in the dev note for the date each one carries.
       because a one or two vertex ring already cancels its own crossings. It is
       a fast path and not a correctness guard, which is worth knowing before
       someone "fixes" a test to cover it.
-- [ ] `spatial.py` is three files, each under about 350 lines. **Half done and
-      deliberately left half done.** It is four files, for the reason in step 6,
-      and three of the four are 88, 192 and 284 lines. `boundaries.py` is 470,
-      because it holds four of the six derived tables: the bridge, exact
-      membership, the pip-sample oracle and the boundary rows themselves. That
-      grouping came from the session prompt and is defensible on cohesion; the
-      line count is not what this box was protecting, so it is recorded rather
-      than fixed by moving code somewhere it fits less well. Step 13 is the
-      right place to decide whether the oracle and the sample want their own
-      file.
+- [x] ~~`spatial.py` is three files, each under about 350 lines.~~
+      **Resolved by judgement in step 13 rather than met by line count, and
+      the decision is not to split further.** Read this before "fixing" the
+      numbers.
+
+      Step 6 left the box open and step 13 was named as the place to settle
+      it. The state today is five files rather than three: `spatial.py` 521,
+      `boundaries.py` 503, `derived_state.py` 364, `h3_points.py` 235,
+      `population.py` 88. Two of the five are over 350 and both grew after
+      step 6, `spatial.py` and `derived_state.py` under step 9.
+
+      The decision, with the argument, because the next reader will otherwise
+      re-open it:
+
+      **`boundaries.py` stays whole.** Splitting the pip-sample oracle out is
+      what would fix the number, and it is the one split that should not
+      happen: the oracle exists to measure the error in the membership
+      computed a few functions above it, and putting a check in a different
+      file from the thing it checks is how a check stops being read alongside
+      it. Its four tables are one scheme, ADR-6's covering cells plus exact
+      refinement plus the measurement of what that costs.
+
+      **The line count was a proxy and the thing it proxied for is fixed.**
+      This box was written when `spatial.py` was 942 lines, held every derived
+      table, and had no direct test anywhere. Today every file has one subject
+      named in its header, `geometry.py` has 95 direct pytest cases and
+      `derived_state.py` has its own, and the largest file is 521. Moving code
+      into a file where it fits less well to reach 350 would buy the number and
+      sell the reason for it.
+
+      What the box should have asked for, for anyone reusing this plan's shape:
+      one subject per file and a direct test on the risky parts, not a line
+      count.
 - [x] `ingestion/datasets.py` no longer exists under that name, and PLAN-2 is
       closed. Done 2026-08-05.
 - [x] A second `make spatial` on an unchanged zone does substantially less
@@ -325,8 +391,39 @@ happened is in the dev note for the date each one carries.
       A daily publish is now 210 Class A operations a month against a free tier
       of 5,000, so the quota reason for publishing by hand is gone; whether it
       goes on a cron is deliberately left open.
-- [ ] Nothing in the repo describes nine datasets, three resolutions, a budget
-      mart or a tree count.
+- [x] Nothing in the repo describes nine datasets, three resolutions, a budget
+      mart or a tree count. Done 2026-08-05 under step 13. Three live
+      statements were still wrong and all three were in documentation rather
+      than in code: USER-NOTES.md carried the nine-dataset table, a budget
+      mart and the dual registry; SETUP.md described a two-layer dbt project
+      loading four tables into BigQuery and no spatial step at all; and
+      `_spatial__sources.yml` still described `derived_point_h3` as carrying
+      cells "at resolutions 8, 9 and 10".
+
+      The ADRs, the dev notes, the plans and the 2026-07-31 review still say
+      nine datasets and three resolutions, and are supposed to. They are the
+      record of what was believed and when, which `docs/README.md` protects
+      deliberately, and an ADR cannot be edited to agree with the present
+      anyway. The box is about what describes the repo as it is.
+
+### Re-verified on 2026-08-05 at close, rather than trusted
+
+Every box above was checked against the repo again before this plan was closed,
+because a box ticked on the day the work landed is a claim about that day. The
+numbers that moved since are recorded here rather than edited into the boxes.
+
+| Claim | Then | At close |
+|---|---|---|
+| Datasets in the registry | 7 | 7 |
+| `make ci-build`, both passes | `PASS=170 ERROR=0` | `PASS=171 ERROR=0`, 19 models, 148 data tests, 4 hooks |
+| `RESOLUTIONS` | `(8, 10)` | `(8, 10)`, and `make check-derived` reports the zone current with the raw zone and the code |
+| `make test-python` | 95 cases | 127 passed in 0.12s |
+| Second `make spatial`, unchanged zone | 23.2s to 0.3s | 0.27s, nothing rebuilt |
+| One publish | 7 objects, 3.0 MB | 7 objects, 3.0 MB |
+
+The test count moved because steps 5 and 9 both added files, not because
+anything was re-counted: 95 geometry cases plus the registry and
+`derived_state` suites.
 
 ## Open questions
 
