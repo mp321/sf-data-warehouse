@@ -151,6 +151,15 @@ jobs:
       - name: Build the Parquet raw zone from fixtures
         run: python ingestion/ingest.py --all --fixtures tests/fixtures/socrata
 
+      # Does every run manifest describe the Parquet beside it (PLAN-7 step 1)?
+      # Here rather than only on a real zone because the fixture run writes the
+      # manifests through the same `_flush` and `_finish` the scheduled run
+      # uses, so a change that makes ingestion misreport itself fails on a fork
+      # pull request with no credentials and no bucket. Exits 3 on a manifest
+      # that disagrees and 4 on rows no manifest describes.
+      - name: Reconcile the run manifests against the zone
+        run: python ingestion/check_runs.py --strict
+
       # The H3 precompute (ADR-5, ADR-6). Runs on the committed boundary
       # fixtures, which are real polygons with thinned vertices, so this
       # genuinely exercises the covering-cell classifier, the exact

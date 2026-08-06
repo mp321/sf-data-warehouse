@@ -12,8 +12,8 @@ anything else in here.
 | PLAN-3 geography-and-marts | done | H3, boundaries, marts, published exports. Delivered 2026-07-31. |
 | PLAN-4 cloud-first-storage | done | Parquet raw zone in GCS, BigQuery on external tables and proven row for row against DuckDB, the CI cache step gone. Closed 2026-08-03 when `ingest.yml` went green on a runner against the bucket. Its residue is now homed: assurance items in PLAN-7, the publish object count in PLAN-5 step 12, the `dbt_dev` expiry question closed by measurement. |
 | PLAN-5 narrow-and-polish | done | Cut two datasets and one H3 resolution, one registry, pytest on the geometry code. Closed 2026-08-05 by step 13, the obsolescence sweep, which found the stale documents were USER-NOTES.md and SETUP.md rather than anything in the code. Recorded in ADR-10 (scope), ADR-11 (the derived zone's code stamp) and ADR-12 (the published layout). One Done-when box was resolved by judgement rather than met; the plan says which and why. |
-| PLAN-6 context-pack | draft | The versioned context artifact with explicit refusal boundaries. Last, deliberately. |
-| **PLAN-7 pipeline-assurance** | **active** | Reconcile run manifests against the data; assert the BigQuery column sets against DuckDB's. PLAN-4 residue that had been carried forward three times. Small: two steps. Step 2 done 2026-08-05 as `parity-check.py --columns`, and it was overtaken on the way: the column-set disagreement it was written to detect turned `make build-bigquery` red first, so it was built against a live defect. Step 1 is the whole remainder. |
+| **PLAN-6 context-pack** | **active** | The versioned context artifact with explicit refusal boundaries. Last, deliberately. Step 1 done 2026-08-05: `docs/specs/context-pack.md`, written before the generator, which answers the plan's open question as one pack per target. Steps 2 to 4 are the generator, the build gate and CI. |
+| PLAN-7 pipeline-assurance | done | Reconcile run manifests against the data; assert the BigQuery column sets against DuckDB's. PLAN-4 residue that had been carried forward three times. Closed 2026-08-05, both steps the same day. Step 2 was overtaken on the way: the column-set disagreement it was written to detect turned `make build-bigquery` red first, so `parity-check.py --columns` was built against a live defect. Step 1 is `ingestion/check_runs.py` and `make check-runs`, and it answered its own open question against the precedent: a separate file from `check_derived.py`, because the reader and the moment it runs are both different. |
 
 | ADR | Status |
 |---|---|
@@ -42,23 +42,33 @@ another, say so in the new ADR, add a note at the top of the old one pointing at
 it, and leave the old one active.
 
 `review-2026-07-31-scope-and-cloud.md` is an outside assessment that produced
-PLAN-4, PLAN-5 and PLAN-6. It is not one of the three kinds below and can be
+PLAN-4, PLAN-5 and PLAN-6. It is not one of the four kinds below and can be
 deleted once those plans are done. PLAN-4 and PLAN-5 are; PLAN-6 is not. It is
 fully harvested either way, and carries a table at the top saying where each of
 its recommendations landed, so deleting it loses nothing recorded nowhere else.
 
 `handoff-prompt.md` is the fourth non-canonical file: the session prompts for
-work that has not run yet. It deletes itself when PLAN-6 and PLAN-7 close.
+work that has not run yet. PLAN-7 closed on 2026-08-05, so it is down to one
+session and deletes itself when PLAN-6 closes.
 
-## The three kinds of document
+## The four kinds of document
 
-Three kinds of document live here, deliberately separate.
+Four kinds of document live here, deliberately separate.
 
 | Folder | Filename | What it is | Mutable? |
 |---|---|---|---|
 | `plans/` | `plan-<n>-<slug>.md` | Forward-looking. What we intend to do and in what order. | Yes, until `status: done` |
 | `decisions/` | `adr-<n>-<slug>.md` | An ADR. One architectural decision, its tradeoffs and consequences. | No, once accepted |
 | `dev-notes/` | `YYYY-MM-DD.md` | Append-only session log. What actually happened. | Append only |
+| `specs/` | `<slug>.md` | The contract a generated artifact is built against. What it must contain and what the generator is verified by. | Yes |
+
+A spec is not an ADR and the difference is worth stating, since both are
+normative. An ADR records one decision, its alternatives and its consequences,
+and it is immutable because the record of what we believed is the point. A spec
+describes a thing that is still being built and is amended when the thing has to
+change; the decision behind it, and what it left out, is what the ADR is for.
+`specs/context-pack.md` is the first one, written under PLAN-6 step 1 and
+deliberately ahead of its generator.
 
 ## Why plans and dev notes are separate
 

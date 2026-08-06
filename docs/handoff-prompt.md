@@ -1,6 +1,7 @@
 # Claude Code handoff prompts
 
-Transient. Delete this file once PLAN-6 and PLAN-7 are closed. The durable
+Transient. PLAN-7 closed on 2026-08-05, so delete this file once PLAN-6 is
+closed too and one session is all that is left in it. The durable
 instructions are the plans themselves; these prompts only point at them, which
 is what makes them survive a context window running out mid-session.
 
@@ -14,16 +15,28 @@ mechanical changes plus theirs.
 
 ---
 
-## Where things stand, 2026-08-05
+## Where things stand, 2026-08-05, third revision
 
-**PLAN-5 is closed.** Sessions A through G are done. What is left is two
-sessions, and they are independent of each other:
+**PLAN-5 and PLAN-7 are both closed.** Sessions A through H are done. One
+session is left:
 
-1. **H. Pipeline assurance.** PLAN-7, and it is **step 1 only**: step 2 was
-   done on 2026-08-05 against a live defect and is
-   `scripts/parity-check.py --columns` / `make parity-columns`.
-2. **I. The context pack.** PLAN-6, which is `draft` and unstarted. The
-   largest remaining piece of work in the project and the most distinctive.
+**I. The context pack.** PLAN-6, `active`. **Step 1 is done**, on 2026-08-05:
+`docs/specs/context-pack.md`, and it answered the plan's open question as one
+pack per target rather than one pack with a `distributions` block. What is left
+is steps 2 to 4, the generator, the build gate and CI. Session I below is the
+generator and not the spec.
+
+Session H closed PLAN-7 later the same day: `ingestion/check_runs.py` and
+`make check-runs` reconcile the raw zone's run manifests against the Parquet
+they describe, in CI on the fixture zone and credential-free. Its open question
+went against the PLAN-5 step 9 precedent, a separate file rather than a fourth
+verdict in `check_derived.py`, and the dev note says why.
+
+**The working tree is four sessions deep and nothing is committed.** PLAN-5
+step 13, PLAN-6 step 1 and PLAN-7 step 1 are all in it, on top of `ca60c91`.
+That is the working agreement doing its job rather than a problem, but the
+spec Session I builds against is not in git yet. Committing before starting
+the generator is worth it, so that session's diff is its own.
 
 The prompts for the sessions that have already run are deleted rather than
 archived. What each one did is in `docs/dev-notes/` under the date it ran, and
@@ -36,77 +49,54 @@ file.
 
 ---
 
-## Session H. Pipeline assurance, step 1 only
+## Session H. Pipeline assurance. Done 2026-08-05.
 
-PLAN-7 **step 1 alone**. Step 2 is done; do not re-do it. This is roughly half
-the session it was, and it is the last unchecked claim in that plan.
-
-```
-Read CLAUDE.md, docs/plans/plan-7-pipeline-assurance.md,
-ingestion/check_derived.py, and the "PLAN-7 step 2" part of the second
-section of docs/dev-notes/2026-08-05.md, which is the sibling check and set
-the pattern this one should follow.
-
-Execute PLAN-7 step 1 only. Step 2 is done; the plan says so and says where.
-
-Step 1's open question is the first thing to settle and it is a design
-question, not a preference: does the manifest reconciliation belong in
-check_derived.py, which already exists to assert one zone is not behind
-another, or in a new script? Look at that file before writing anything.
-Two scripts asserting neighbouring invariants may well be one script.
-
-Note that check_derived.py has moved since PLAN-7 was written. It now grades
-three verdicts rather than two, STALE, DRIFT and RECODED, and reads three
-records out of the derived manifest through ingestion/derived_state.py. The
-third invariant PLAN-7 step 1 describes as unchecked, a zone built by code
-that no longer exists, was closed on 2026-08-05 by ADR-11. Read the plan
-against the code before taking its framing.
-
-Unlike step 2, this check must run in CI on the fixture zone, so it needs no
-credentials and must not reach for a bucket. That is the constraint that
-separates the two halves of this plan.
-
-The check must fail loudly and name what disagreed. A check that reports
-"mismatch" without saying which dataset and which number is a check nobody
-will trust at 2am. Step 2's output is the standard to match: it names the
-dataset, the table and every column on either side.
-
-Do not commit or push.
-```
+Deleted rather than archived, per the rule at the top of this file. PLAN-7 step
+1 is `ingestion/check_runs.py`, `make check-runs` and a step in `ci-build` and
+`ci.yml`; the plan step records what was built and where it departed from what
+the step asked for, and the dev note records how it was demonstrated.
 
 ---
 
-## Session I. The context pack
+## Session I. The context pack generator
 
-PLAN-6. Independent of session H, and the more interesting of the two.
+PLAN-6 **steps 2 onward**. Step 1 is done: `docs/specs/context-pack.md`, on
+2026-08-05. The only session left, and the largest remaining piece of work in
+the project.
 
 ```
-Read CLAUDE.md and docs/plans/plan-6-context-pack.md.
+Read CLAUDE.md, docs/plans/plan-6-context-pack.md, and all of
+docs/specs/context-pack.md, which is the contract this session builds
+against and was deliberately written before any generator.
 
-Execute PLAN-6 step 1 only: write docs/specs/context-pack.md. No code this
-session.
+Execute PLAN-6 step 2: the generator, at tools/context_pack/.
 
-The refusal boundaries section is the reason this artifact is interesting
-and it is the part most likely to be written as filler. Spend most of the
-session on it. Concrete examples to work from: 311 volume does not measure
-where problems are, it measures where people report them, so "which
-neighborhood has the most problems" is not answerable. A raw count per
-boundary is close to a map of where people live. Boundary membership at
-the chosen H3 resolution has a measured error, in ADR-6, that a consumer
-must be told rather than left to discover.
+Read the spec in this order. Section 3 is the artifact shape. Section 7 is
+the one hand-maintained YAML that holds the prose behind all three packs.
+Sections 8 and 9 are the two rules that are easy to implement as warnings
+by mistake, and both must fail the build:
 
-Note that the project is now seven datasets and every one is spatial
-(ADR-10), which makes the scope of what the pack must describe smaller and
-the refusal boundaries sharper than they would have been three sessions
-ago. There is no budget data to refuse questions about any more.
+- Every refusal and disclosure cites something that resolves against the
+  target's model set, and generation fails when a citation names a model,
+  column or measurement that target does not have.
+- Refusals are never trimmed to fit the token budget. The generator drops
+  examples, then column descriptions, then profile statistics, in that
+  order, and fails rather than emitting a pack with a refusal missing.
 
-The plan's own open question is the one to answer first, because it is most
-of the format decision: does the pack describe the DuckDB warehouse, the
-BigQuery one, or the published Parquet? They have the same models and
-different freshness, and a consumer reading the bucket is reading none of
-the three.
+The open question is settled and does not need reopening: one pack per
+target, three self-contained artifacts, one YAML behind them. Section 2 of
+the spec has the argument. The premise that killed the single-pack version
+is that the three surfaces do not hold the same models, not freshness.
 
-Show me the spec before writing a single line of the generator.
+The DuckDB pack is the one to build first and the only one this session
+needs to produce: it needs no credentials, so it is the one CI can gate on.
+
+One known defect to expect rather than diagnose: mart_activity_by_h3 has a
+category column in the SQL and in its unique_combination test and no entry
+in _marts__models.yml, so the generator will surface a column with no
+description. Fix the yml, do not special-case it in the generator.
+
+Do not commit or push.
 ```
 
 ---
@@ -179,6 +169,16 @@ external tables hold no bytes, but `make parity-columns` warns about them by
 name every run. Dropping them is two `bq rm` calls. Deleting the Parquet
 underneath them is a separate decision about the bucket, and both belong to a
 human rather than to an agent.
+
+**The bucket's derived zone still carries no code stamp.** ADR-11 landed after
+the last `make spatial` against the bucket, so the stamp exists in the code and
+not in that zone. Checked in `derived_state.describe_code_change`: a manifest
+with no recorded version is graded RECODED and exits 4, saying the zone was
+built before the stamp existed, so pointing `make check-derived` or `make
+build` at the bucket fails until the zone is rebuilt once. One credentialed
+`make spatial` against
+the bucket fixes it permanently, and it is still the first credentialed thing
+to do.
 
 **`main` now carries the current pipeline, and no cron has run from it yet.**
 As of 2026-08-05 `origin/main` is level with the work: `dataset_registry.py`,

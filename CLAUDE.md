@@ -186,6 +186,18 @@ all three against the raw zone and the code as they are now:
 
 Override with `make build DERIVED_CHECK=0` if you mean it.
 
+The raw zone has its own consistency check, `make check-runs`, and it is not a
+prerequisite of anything. `ingest.py` writes a manifest per run under
+`<table>/_runs/`, and those manifests are the only record of a run that fetched
+nothing, so nothing else in the pipeline can be recomputed to replace them.
+`check_runs.py` compares each one against the rows carrying its run id: exit 3
+when they disagree (MISCOUNTED), exit 4 when rows carry a run id no manifest
+describes (UNRECORDED), a warning when a watermark and the data disagree. It
+runs in `ci-build` on the fixture zone, credential-free, which is what makes it
+a PR gate rather than a credentialed by-hand check like `make parity-columns`.
+A run killed mid-fetch does not fire it: `_flush` counts as it writes, so a
+partial run claims exactly what it durably wrote. See PLAN-7 step 1.
+
 The derived zone is a pure function of the raw zone plus the code, so unlike
 `data/raw` it is always safe to delete: `make clean-derived` then
 `make spatial`, or `make spatial SPATIAL_ARGS=--full` for the same thing without
@@ -213,6 +225,7 @@ make leak-check       # scripts/leak-check.sh, exits nonzero on a hit
 make compile-bigquery # render every model as BigQuery SQL. No credentials.
 make check            # everything CI runs on a PR
 make check-derived    # is data/derived current with data/raw AND with the code?
+make check-runs       # do data/raw's run manifests describe the Parquet beside them?
 make clean-derived    # delete data/derived. Always safe; make spatial rebuilds it.
 make load-bigquery    # (creds) load both zones into BigQuery
 make build-bigquery   # (creds) dbt build --target bigquery
@@ -293,8 +306,16 @@ ingestion/          dataset_registry.py loads the dataset registry, which is
                     ingest.py writes the raw zone, census.py is its TIGERweb
                     transport, spatial.py computes the derived zone,
                     check_derived.py asserts the derived zone is neither behind
-                    the raw one nor built by code that no longer exists, and
-                    load.py loads both into a warehouse. geometry.py is
+                    the raw one nor built by code that no longer exists,
+                    check_runs.py asserts the raw zone's run manifests describe
+                    the Parquet beside them (PLAN-7 step 1), and
+                    load.py loads both into a warehouse. The two checks are
+                    neighbours and not one file on purpose: check_derived is
+                    about one zone being current with another and gates
+                    `make build`, check_runs is about one zone agreeing with
+                    itself and gates nothing, because what it catches makes
+                    mart_pipeline_freshness wrong and every model correct.
+                    geometry.py is
                     pure-Python point-in-polygon and area, used only by the
                     spatial step and never at query time.
                     spatial.py is the entry point of four files, split in
@@ -352,6 +373,10 @@ tests/              the pytest suite, run by `make test-python` and by the
                     decides to rebuild. Every branch there is a decision not to
                     recompute something, and a wrong one leaves a derived zone
                     that disagrees with the raw zone and looks fine.
+                    test_check_runs.py is its counterpart for the raw zone: the
+                    two branches that stay silent are decisions not to report
+                    something, and a wrong one makes the check either a liar or
+                    a nuisance that gets switched off.
                     conftest.py is what
                     puts ingestion/ on sys.path, since it is scripts and not a
                     package. Everything else here is tested through dbt.

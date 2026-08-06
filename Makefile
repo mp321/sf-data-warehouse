@@ -72,7 +72,7 @@ export DUCKDB_PATH := $(CURDIR)/$(DATA_DIR)/sf.duckdb
 .PHONY: help setup all ingest spatial load load-bigquery build build-bigquery \
         publish test test-python docs docs-serve lint fmt leak-check compile-duckdb \
         compile-bigquery ci-build rebuild clean clean-warehouse clean-derived check check-derived \
-        parity-check parity-columns
+        check-runs parity-check parity-columns
 
 # `make build` refuses to run against a derived zone that is behind the raw
 # zone. Set DERIVED_CHECK=0 to build anyway, which is worth doing only when you
@@ -148,6 +148,17 @@ spatial: ## Compute H3 cells and boundary membership into data/derived
 # ADR-10 had deleted.
 check-derived: ## Check data/derived against data/raw and the code. Nonzero if not current.
 	@$(PY) ingestion/check_derived.py --strict
+
+# The raw zone's own consistency: does each run manifest describe the Parquet
+# beside it? Two verdicts, MISCOUNTED (exit 3) and UNRECORDED (exit 4). Unlike
+# check-derived this is NOT a prerequisite of anything, and the difference is
+# what the two failures do to a build. A stale derived zone makes a build wrong;
+# a manifest that misdescribes the zone makes mart_pipeline_freshness wrong and
+# every model correct, so wedging a build on it would cost more than it saves.
+# It runs in ci-build instead, on the fixture zone, where it needs no
+# credentials and no bucket. PLAN-7 step 1.
+check-runs: ## Check the raw zone's run manifests against the Parquet they describe.
+	@$(PY) ingestion/check_runs.py --strict
 
 # ---------------------------------------------------------------------------
 # Load: both zones -> warehouse. Idempotent, so re-running is always safe.
@@ -320,13 +331,15 @@ leak-check: ## Scan the working tree for credentials. Exits nonzero on a hit.
 	@bash scripts/leak-check.sh
 
 # What CI runs on a pull request, end to end and credential-free: build a raw
-# zone from fixtures, load it, run and test every model, then drop the
-# warehouse and do the load and build again to prove the Parquet is genuinely
-# the source of truth. Isolated in data/ci/, so it never touches data/raw.
+# zone from fixtures, reconcile its run manifests against it, load it, run and
+# test every model, then drop the warehouse and do the load and build again to
+# prove the Parquet is genuinely the source of truth. Isolated in data/ci/, so
+# it never touches data/raw.
 ci-build: ## Full pipeline from fixtures, isolated. No network, no creds.
 	rm -rf $(CI_DIR)
 	mkdir -p $(CI_RAW)
 	RAW_ZONE_DIR=$(CI_RAW) $(PY) ingestion/ingest.py --all --fixtures tests/fixtures/socrata
+	RAW_ZONE_DIR=$(CI_RAW) $(PY) ingestion/check_runs.py --strict
 	RAW_ZONE_DIR=$(CI_RAW) DERIVED_ZONE_DIR=$(CI_DERIVED) $(PY) ingestion/spatial.py --all
 	RAW_ZONE_DIR=$(CI_RAW) DERIVED_ZONE_DIR=$(CI_DERIVED) DUCKDB_PATH=$(CI_DB) \
 		$(PY) ingestion/load.py --all --target duckdb

@@ -1,7 +1,7 @@
 ---
-status: active
+status: done
 date: 2026-08-04
-related: [plan-1-duckdb-parquet, plan-4-cloud-first-storage, plan-5-narrow-and-polish, adr-1-warehouse-targets, adr-4-raw-zone-layout, adr-9-cloud-raw-zone]
+related: [plan-1-duckdb-parquet, plan-4-cloud-first-storage, plan-5-narrow-and-polish, adr-1-warehouse-targets, adr-4-raw-zone-layout, adr-9-cloud-raw-zone, adr-11-derived-zone-code-stamp]
 ---
 
 # PLAN-7. Check the two claims nothing currently checks
@@ -12,11 +12,12 @@ Two assertions that run on demand and fail loudly: the run manifests agree
 with the data they claim to describe, and the BigQuery external tables have
 the same column sets as the DuckDB tables built from the same Parquet.
 
-**Status: step 2 is done as of 2026-08-05, step 1 is open.** The plan went from
-`draft` to `active` by being overtaken: the column-set risk stopped being
-hypothetical and turned `make build-bigquery` red, so step 2 was implemented
-against a live defect rather than a synthetic one. Step 1, the manifest
-reconciliation, is untouched and is now the whole remaining plan.
+**Status: closed 2026-08-05. Both steps are done.** The plan went from `draft`
+to `active` by being overtaken: the column-set risk stopped being hypothetical
+and turned `make build-bigquery` red, so step 2 was implemented against a live
+defect rather than a synthetic one. Step 1 followed later the same day as
+`ingestion/check_runs.py` and `make check-runs`, and it runs in CI on the
+fixture zone, which was the constraint separating the two halves.
 
 ## Why this plan exists at all
 
@@ -45,7 +46,9 @@ They are small. This is a two-session plan, not a project.
 
 ## Steps
 
-1. **Reconcile the run manifests against the data.** `ingest.py` writes a run
+1. ~~**Reconcile the run manifests against the data.**~~ **Done 2026-08-05**,
+   as `ingestion/check_runs.py` and `make check-runs`, and it runs in CI on the
+   fixture zone. `ingest.py` writes a run
    manifest per dataset under `<table>/_runs/`, and `load.py` materialises
    them as `raw_ingest_runs`, which `mart_pipeline_freshness` reads. Nothing
    asserts that what a run says it wrote is what the zone holds. Write the
@@ -64,6 +67,50 @@ They are small. This is a two-session plan, not a project.
    means a mismatch is a real defect rather than drift, which argues for
    error, but a partial run interrupted by a network failure is a legitimate
    state that should not wedge the pipeline.
+
+   **What was built, and the three places it departs from the above.**
+   `ingestion/check_runs.py`, `make check-runs`, and a line in `ci-build` and
+   in `ci.yml` immediately after the fixture ingest. Two verdicts with distinct
+   exit codes, matching `check_derived.py`'s arrangement: MISCOUNTED (3) when a
+   manifest and the rows carrying its run id disagree, UNRECORDED (4) when rows
+   carry a run id no manifest describes. Every line names the table, the run
+   and both numbers. `tests/test_check_runs.py` is 15 tests over the two pure
+   functions.
+
+   - **It is in `ingestion/`, not `scripts/`.** Every property that matters
+     here is `check_derived.py`'s rather than `parity-check.py`'s: it reads
+     zones and not a warehouse, it needs no credentials, it imports its
+     siblings directly, and it runs inside `make ci-build`. `scripts/` is the
+     credentialed run-by-hand half. The step said `scripts/` because it was
+     written before `check_derived.py` grew a third verdict and a sibling
+     module.
+   - **The grain is the run id, not the `ingest_date` partition.** `ingest.py`
+     stamps `_ingest_run_id` on every row, so a manifest has a direct
+     counterpart in the data. Two runs of one dataset on one day share a
+     partition and their errors cancel there; per run they are two defects.
+     The partition is still checked, as the weaker comparison for free: a
+     run's rows have to be under the `ingest_date` its manifest names.
+   - **A mismatch is an error, and the argument above for a warning turned out
+     not to apply.** `_flush` increments `rows_written` and `files_written` as
+     it writes each file and `_finish` writes the manifest on the failure path
+     too, so a run killed mid-fetch claims exactly what it durably wrote and
+     reconciles. The partial run this step worried about does not fire the
+     check. What is left when it is excluded is a zone that has been edited,
+     which ADR-4 says cannot happen. Two states are deliberately silent: a
+     manifest claiming zero rows with no Parquet, which is the "ran, found
+     nothing new" case the manifests exist to record, and a `status: failed`
+     manifest whose numbers agree.
+
+   Watermark disagreement warns rather than fails, in either direction. A
+   manifest ahead of the data is a run killed between advancing `watermark_out`
+   and flushing, and it costs nothing because `resolve_watermark` resumes from
+   the data and never from a manifest. Data ahead of every manifest is the
+   same finding as UNRECORDED seen from the other side.
+
+   A dataset directory in the zone that the registry does not name warns and is
+   reconciled anyway. That is `raw_city_budget` and `raw_street_trees` on the
+   local zone, the same ADR-10 residue `make parity-columns` warns about, and
+   it is the same call step 2 made about an extra table on the BigQuery side.
 
 2. ~~**Assert the BigQuery external-table column sets against DuckDB's.**~~
    **Done 2026-08-05**, and the risk stopped being a risk on the way: it fired
@@ -123,8 +170,12 @@ They are small. This is a two-session plan, not a project.
 
 ## Done when
 
-- [ ] A manifest mismatch on the fixture zone fails `make check`, and the
-      failure names the dataset and the discrepancy.
+- [x] A manifest mismatch on the fixture zone fails `make check`, and the
+      failure names the dataset and the discrepancy. Done 2026-08-05.
+      Demonstrated on a zone built by the same fixture ingest `ci-build` runs,
+      broken three ways: a manifest edited to claim 999 rows (exit 3), a
+      manifest deleted (exit 4), and a Parquet file deleted (exit 3). Each
+      names the table, the run id and both numbers.
 - [x] `parity-check.py --columns` reports a column present in one engine and
       not the other, demonstrated by making one differ on purpose. Done
       2026-08-05, and it did not have to be made to differ: it was already
@@ -133,7 +184,9 @@ They are small. This is a two-session plan, not a project.
       `autodetect` and watching the check go red and then green.
 - [x] Both are documented where someone would look: the script headers, the
       Makefile target comments, and CLAUDE.md's `scripts/` entry. Done for
-      step 2. Step 1 owns its own half of this box.
+      step 2. Step 1's half done 2026-08-05, in its module header, the
+      `check-runs` and `ci-build` comments, the `ci.yml` step comment, and
+      CLAUDE.md's `ingestion/` and `tests/` entries and target list.
 
 ## Open questions
 
@@ -149,7 +202,26 @@ They are small. This is a two-session plan, not a project.
   manifests are `ingest.py`'s and live in the raw zone, so a fourth verdict
   there would make `check_derived.py` about two zones' manifests rather than
   one zone's currency. Decide that on its merits rather than on the precedent.
+  **Answered 2026-08-05: a separate file, and the reader is what decided it.**
+  The precedent did not transfer for exactly the reason above. The code stamp
+  was a third record in the same manifest, in the same zone, read by the same
+  reader, answering the same question. These manifests are `ingest.py`'s, in
+  the other zone, and the question is whether one zone agrees with itself. The
+  second argument is when each runs: `check-derived` is a prerequisite of `make
+  build` because what it catches makes a build wrong, and `check-runs` gates
+  nothing, because a manifest that misdescribes the zone makes
+  `mart_pipeline_freshness` wrong and every model correct. Folding them
+  together would have meant one exit code covering both, and a stale derived
+  zone would have started wedging builds for a reason that does not.
 - Is `raw_ingest_runs` the right thing to reconcile against, or should the
   check read the manifests from the zone directly? Reading the zone is the
   stronger check, since it does not assume `load.py` did its job, but it
   duplicates the manifest parsing that `load.py` already owns.
+  **Answered 2026-08-05: the zone, and the duplication the question worried
+  about does not exist.** `raw_zone.runs_read_sql` is the one reader of the
+  manifests and `load.py` builds `raw_ingest_runs` from that same call, so
+  `check_runs.py` calls it too and there is one parser rather than two. That
+  leaves only the argument for the zone: this plan's own constraint says these
+  checks read the zone and not a copy of it, the warehouse copy assumes
+  `load.py` did its job when that is part of what is being checked, and reading
+  the zone means the check runs before `make load` rather than after it.

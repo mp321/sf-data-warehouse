@@ -1,12 +1,13 @@
 ---
-status: draft
+status: active
 date: 2026-07-31
 related: [adr-8-published-exports, plan-4-cloud-first-storage, plan-5-narrow-and-polish]
 ---
 
 # PLAN-6. Emit a versioned context pack that tells a model what it must refuse
 
-Migrated from `PLAN.md` Goal2, which is deleted. Unstarted.
+Migrated from `PLAN.md` Goal2, which is deleted. Step 1 done 2026-08-05; the
+spec is `docs/specs/context-pack.md` and steps 2 to 4 are the remainder.
 
 ## Goal
 
@@ -88,14 +89,23 @@ budget, and a test that a deliberately stale pack is rejected.
 
 ## Done when
 
-- [ ] `docs/specs/context-pack.md` exists and was written before the code.
+- [x] `docs/specs/context-pack.md` exists and was written before the code.
+      Done 2026-08-05, step 1. It fixes the three targets, the artifact shape,
+      the refusal classes and the rules the generator is verified against.
 - [ ] `make context-pack` produces both artifacts.
 - [ ] CI fails on a stale pack or an unverified example.
 - [ ] An ADR records the pack format and, specifically, what was left out.
 
 ## Open questions
 
-- Does the pack describe the DuckDB warehouse, the BigQuery one, or the
-  published Parquet? They have the same models and different freshness, and a
-  consumer reading the bucket is not reading either warehouse. Answering this
-  is most of the format decision.
+- ~~Does the pack describe the DuckDB warehouse, the BigQuery one, or the
+  published Parquet?~~ **Answered 2026-08-05 in `docs/specs/context-pack.md`
+  section 2: one pack per target, three self-contained artifacts, one
+  hand-maintained source.** A pack that hedges across surfaces is wrong about
+  whichever one the reader is holding, and the surfaces differ by more than
+  freshness: the published export is six marts and no staging models, so
+  questions that are answerable in the warehouse are refusals there. Two of the
+  three generate in CI with no credentials, because DuckDB reads the published
+  Parquet directly. The BigQuery pack is hand-generated and carries a staleness
+  guard instead of a schema hash, since `publish/export.py`'s hash renders
+  DuckDB type names.
