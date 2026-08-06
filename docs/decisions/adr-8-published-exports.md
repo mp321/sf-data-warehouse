@@ -1,10 +1,17 @@
 ---
 status: active
 date: 2026-07-31
-related: [adr-1-warehouse-targets, adr-4-raw-zone-layout]
+related: [adr-1-warehouse-targets, adr-4-raw-zone-layout, adr-12-published-export-layout]
 ---
 
 # ADR-8. Published exports: local-first Parquet with a manifest
+
+> **Amended by ADR-12 on 2026-08-05.** One bullet below is reversed: marts are
+> no longer partitioned by month, and every published mart is a single file.
+> Measured cause, one publish was 2,280 objects against a free tier of 5,000
+> Class A operations a month, and the monthly layout cost 5.8x the bytes as
+> well. Everything else here still holds. This ADR is left `active` rather than
+> superseded for the reason `docs/README.md` gives about ADR-5.
 
 ## Context
 

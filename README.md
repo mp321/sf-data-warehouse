@@ -31,7 +31,7 @@ flowchart LR
     C -->|dbt staging: rename, cast, dedupe| D[(staging views)]
     C2 --> D
     D -->|dbt marts: hand-written SQL| E[(mart tables)]
-    E -->|export.py, partitioned + manifest| H[(published/)]
+    E -->|export.py, one file per mart + manifest| H[(published/)]
     F{{GitHub Actions}} -. daily .-> A
     F -. every PR, DuckDB, end to end .-> D
     F -. weekly build + test, BigQuery .-> D
@@ -139,17 +139,29 @@ than a small one that does not.
   answer that question and was the only non-spatial thing here, so it went.
 - **The BigQuery build is run by hand, not by every PR.** It has run: first on
   2026-07-31, which found four cross-engine defects that compiling could not,
-  and again on 2026-08-01 against external tables over GCS. What CI does on
-  every PR is compile every model for BigQuery without credentials, which
-  proves the SQL is valid there rather than that it returns the same rows.
-  `scripts/parity-check.py` proves the second, on demand, row for row.
-- **`make publish` is manual and stays manual until the upload is batched.**
-  It has run against a real bucket, once, on 2026-08-01. One publish is 2,885
-  objects against a free tier of 5,000 Class A operations a month, so putting
-  it on a daily cron would leave the free tier on day two and break the
-  zero-cost claim above. The object count comes from partitioning by month
-  over a date range that starts in 1967, not from the data volume: 17 MB took
-  6 minutes 39 because the cost is per object.
+  again on 2026-08-01 against external tables over GCS, and on 2026-08-05,
+  which found a fifth. What CI does on every PR is compile every model for
+  BigQuery without credentials, which proves the SQL is valid there rather than
+  that it returns the same rows. `scripts/parity-check.py` proves the second,
+  on demand: `make parity-check` row for row, and `make parity-columns` on the
+  column sets, which is what the fifth defect turned out to need. A green
+  `make check` says nothing about BigQuery or about the bucket zones, on
+  purpose, so that a fork pull request needs no credentials.
+- **`make publish` is still manual, but no longer because it has to be.** It
+  has run against a real bucket once, on 2026-08-01, when one publish was 2,280
+  objects against a free tier of 5,000 Class A operations a month and 17 MB took
+  6 minutes 39, because the cost is per object. The cause was two marts
+  partitioned by month over a range starting in 1849, not the data volume.
+  ADR-12 made every published mart a single file: 7 objects and 3.0 MB, so a
+  daily publish would use 210 operations a month. It is manual now because
+  nobody has decided to schedule it. Note the published paths changed, which
+  breaks a consumer of that one upload; `MANIFEST_VERSION` is 2.
+- **The derived zone knows what built it.** `_manifest.json` carries a hash over
+  the source of every module that computes the zone, so `make check-derived`
+  can say "this zone was built by code that no longer exists" rather than only
+  "this zone is behind" (ADR-11). The practical consequence is that editing any
+  of those modules, comment included, means the next `make spatial` rebuilds
+  everything. That is deliberate; the alternative fails silently.
 - **Population is the 2020 Decennial count**, not a current estimate, because
   the ACS API now requires a key and ADR-1 keeps credentials off the ingestion
   path. Every per-capita rate divides by an April 2020 denominator.
@@ -163,8 +175,10 @@ ingestion/          registry loader, raw zone, TIGERweb transport, H3
                     vars.pipeline_sources in dbt/dbt_project.yml, one list
                     that both dbt and dataset_registry.py read.
                     the precompute is spatial.py (entry point, schemas) over
-                    h3_points.py, boundaries.py and population.py
-publish/            export.py: marts to partitioned Parquet with a manifest
+                    h3_points.py, boundaries.py and population.py, with
+                    derived_state.py holding the code stamp and deciding what a
+                    re-run has to recompute
+publish/            export.py: marts to Parquet with a manifest
 dbt/                models/staging, models/intermediate, models/marts, macros, tests
 docs/decisions/     ADRs. Start here for why anything is the way it is.
 docs/plans/         forward-looking intent
@@ -181,13 +195,12 @@ SETUP.md            step-by-step reproduction guide
 Current work is PLAN-5, which narrows the project rather than growing it. See
 `docs/README.md` for the plan index and status.
 
-- Finish narrowing. Mostly done: there is one dataset registry rather than
+- Finish narrowing. Nearly done: there is one dataset registry rather than
   two, `ingestion/datasets.py` is `dataset_registry.py` and PLAN-2 is closed,
-  the geometry code has direct pytest coverage, and `ingestion/spatial.py` is
-  now an entry point over three modules. What is left of PLAN-5 is below.
-- Make `make spatial` incremental. It recomputes every point on every run,
-  about 40 seconds per 700k points, and the derived zone has to stay a pure
-  function of the raw zone plus the code (PLAN-5 step 9).
+  the geometry code has direct pytest coverage, `ingestion/spatial.py` is now
+  an entry point over four modules and only rebuilds what has moved, and one
+  publish is 7 objects rather than 2,280. What is left of PLAN-5 is step 13, a
+  sweep for anything the plan made obsolete.
 - Reconcile the run manifests against the data, and assert the BigQuery
   external-table column sets against DuckDB's rather than comparing them by
   eye (PLAN-7).

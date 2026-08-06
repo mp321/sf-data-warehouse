@@ -96,8 +96,13 @@ def _sql_literal(value: object) -> str:
     return str(value).replace("'", "''")
 
 
-def read_sql(table: str, root: Path | str | None = None) -> str:
-    """SQL fragment that reads one dataset's entire Parquet tree.
+def read_sql(
+    table: str,
+    root: Path | str | None = None,
+    partitions: list[str] | None = None,
+    filename: bool = False,
+) -> str:
+    """SQL fragment that reads one dataset's Parquet tree, or part of it.
 
     Three options are load bearing:
 
@@ -112,14 +117,62 @@ def read_sql(table: str, root: Path | str | None = None) -> str:
                               contained and files genuinely differ between
                               runs. Positional union would silently misalign
                               columns across files.
+
+    `partitions` narrows the read to a list of `ingest_date` values, as one
+    glob each rather than one glob over the tree. That is what makes
+    `spatial.py` incremental (PLAN-5 step 9): a scheduled run reads the
+    partitions that arrived since it last ran instead of the whole zone.
+    Hive partitioning still applies, so `ingest_date` comes back either way and
+    a narrowed read is a subset of the full one rather than a different shape.
+    An empty list is rejected rather than read as "everything", because that
+    mistake would silently turn an incremental read into a full one.
+
+    `filename` adds DuckDB's synthetic filename column, which `partition_state`
+    counts distinct values of. Off by default: it is metadata rather than data,
+    and no reader that is after rows wants it.
     """
-    pattern = remote.child(dataset_dir(table, root), "**", "*.parquet")
+    directory = dataset_dir(table, root)
+    if partitions is None:
+        patterns = [remote.child(directory, "**", "*.parquet")]
+    elif not partitions:
+        raise ValueError(f"read_sql({table!r}) got an empty partition list; pass None for all")
+    else:
+        patterns = [
+            remote.child(directory, f"{PARTITION_KEY}={value}", "*.parquet")
+            for value in sorted(partitions)
+        ]
+    globs = ", ".join(f"'{_sql_literal(pattern)}'" for pattern in patterns)
     return (
-        f"read_parquet('{_sql_literal(pattern)}'"
+        f"read_parquet([{globs}]"
         ", hive_partitioning = true"
         ", hive_types_autocast = 0"
-        ", union_by_name = true)"
+        ", union_by_name = true"
+        f", filename = {'true' if filename else 'false'})"
     )
+
+
+def partition_state(con, table: str, root: Path | str | None = None) -> dict[str, dict]:
+    """Rows and files in each `ingest_date` partition of one raw table.
+
+    The key incrementality is decided on (PLAN-5 step 9). The zone is
+    append-only (ADR-4), so a partition whose row and file counts are both
+    unchanged holds the same files it held last time, and anything derived from
+    it is still correct. Counting both rather than one of them is what keeps
+    that true through a local `--full-refresh`, which is the one operation that
+    can replace a partition's contents rather than add to them: it would have to
+    land on the same row count *and* the same file count in every partition to
+    pass unnoticed.
+
+    Cheap enough to run unconditionally. `count(*)` and the distinct filename
+    count come out of the Parquet footers rather than the row groups, measured
+    at about 3 ms per table on the local zone, so this is not a scan added to
+    every run.
+    """
+    rows = con.execute(
+        f"select {PARTITION_KEY}, count(*), count(distinct filename) "
+        f"from {read_sql(table, root, filename=True)} group by 1"
+    ).fetchall()
+    return {str(partition): {"rows": rows_in, "files": files} for partition, rows_in, files in rows}
 
 
 def runs_read_sql(root: Path | str | None = None) -> str:

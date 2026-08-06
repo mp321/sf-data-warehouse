@@ -1,4 +1,4 @@
-"""Export marts to partitioned Parquet under a published/ prefix, with a manifest.
+"""Export marts to Parquet under a published/ prefix, with a manifest.
 
 The last step of the pipeline, and the only one that produces something meant
 to leave the machine.
@@ -17,12 +17,14 @@ complete local export rather than half a bucket. Nothing in this project is
 ever blocked on a bucket existing, which is the same property ADR-1 bought for
 the build and ADR-4 for the raw zone.
 
-**Partitioning.** Marts with a month column are partitioned by it, hive-style,
-so a consumer reading one month scans one directory. Marts without one are
-written as a single file. The partition key lives in the directory name and
-not in the files, exactly as in the raw zone (ADR-4), which means a reader has
-to ask for hive partitioning; the manifest records that it is partitioned so
-nobody has to guess.
+**Partitioning, and why there is none right now.** A mart is hive-partitioned
+when `PUBLISHED_MARTS` says so and written as a single file when it does not,
+and today none of the six does. The two that were partitioned by month cost
+2,275 objects and 5.8x the bytes of the same data in one file per mart, because
+the median monthly partition held 40 rows and a 5 KB Parquet file is mostly
+footer. ADR-12 has the measurement and the reversal; the comment above
+`PUBLISHED_MARTS` has the numbers. The mechanism stays for the day a mart has
+enough rows per partition to want it.
 
 **The manifest is the point.** `published/manifest.json` records, per dataset:
 path, row count, byte size, a schema hash, and when it was generated. The
@@ -60,17 +62,43 @@ import duckdb
 # What gets published, and how. Marts only: staging models are views over raw
 # and republishing them would ship the same rows twice under two names.
 #
-# `partition_by` names a DATE column to hive-partition on, or None for a
-# single file. It is deliberately not inferred from the schema: a mart could
-# gain a date column that is not the one anyone filters by, and silently
-# repartitioning a published dataset breaks every consumer's paths.
+# `partition_by` names a DATE column to hive-partition on, or None for a single
+# file. It is deliberately not inferred from the schema: a mart could gain a
+# date column that is not the one anyone filters by, and silently repartitioning
+# a published dataset breaks every consumer's paths.
+#
+# **NOTHING IS PARTITIONED TODAY, AND THAT IS A MEASUREMENT (ADR-12, PLAN-5
+# step 12).** `mart_activity_by_h3` and `mart_activity_by_neighborhood` were
+# partitioned by `event_month`, and `business_locations` carries
+# `location_started_at` values from 1849 to 2028, so the two marts spread 180k
+# rows over 874 and 868 monthly partitions. One publish was 2,280 objects
+# against a free tier of 5,000 Class A operations a month, which put a daily
+# publish over the tier on day three and is why `make publish` was run by hand.
+#
+# Measured on the real warehouse on 2026-08-05, those two marts alone:
+#
+#     by month   2,275 objects   11.0 MB    the median partition held 40 rows
+#     by year      248 objects    4.2 MB
+#     one file       2 objects    1.9 MB
+#
+# The size column is the part worth keeping. Month partitioning was not a trade
+# of bytes for query pruning; it cost 5.8x the bytes as well, because a 5 KB
+# Parquet file is mostly footer and dictionary pages and compression has
+# nothing to work across. A layout that is worse on every axis is not a
+# tradeoff, and ADR-8 chose it against a guessed access pattern rather than a
+# real one. Its own revisit clause asked for a consumer with a real one before
+# arguing about the key; none has appeared.
+#
+# The field and the code path stay. Partitioning is right when a partition is
+# large, and the day a mart has millions of rows a month this is a one-line
+# decision rather than a mechanism to rebuild.
 PUBLISHED_MARTS = {
     "mart_activity_by_h3": {
-        "partition_by": "event_month",
+        "partition_by": None,
         "description": "Counts and normalised rates per H3 cell, dataset, category and month.",
     },
     "mart_activity_by_neighborhood": {
-        "partition_by": "event_month",
+        "partition_by": None,
         "description": "Counts and normalised rates per neighborhood, dataset, category, month.",
     },
     "mart_film_locations": {
@@ -96,7 +124,15 @@ MANIFEST_NAME = "manifest.json"
 # Bumped when the layout or the manifest shape changes in a way a consumer
 # would notice. A consumer that pins this can refuse to read a newer export
 # rather than misreading it.
-MANIFEST_VERSION = 1
+#
+# 2 on 2026-08-05: the two activity marts stopped being hive-partitioned by
+# `event_month` and became one file each (ADR-12). Paths changed from
+# `mart_activity_by_h3/event_month=YYYY-MM-01 00:00:00/data_0.parquet` to
+# `mart_activity_by_h3/mart_activity_by_h3.parquet`, which breaks any consumer
+# that globbed the old shape. `partitioned_by` in each manifest entry is null
+# for every dataset now, so a consumer that reads the manifest before the files
+# sees it rather than getting an empty listing.
+MANIFEST_VERSION = 2
 
 
 def warehouse_path() -> Path:

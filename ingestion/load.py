@@ -20,6 +20,14 @@ big enough for the rewrite time itself to hurt. ADR-4 records the threshold.
 Both targets read through DuckDB, using the single reader in raw_zone.py, so
 the two warehouses cannot disagree about what the raw zone contains.
 
+External tables are the one place that claim had to be defended rather than
+just stated, because BigQuery reads the Parquet itself at query time and does
+not go through raw_zone.py to do it. What it does go through is the column
+list: the external schema is computed by `_union_columns` off the same reader,
+so the two engines agree on which columns exist even though only one of them
+decides how a file is read. `_external_table`'s docstring carries the failure
+that made this necessary.
+
 Usage:
     python ingestion/load.py --all --target duckdb
     python ingestion/load.py 311_cases --target duckdb
@@ -82,6 +90,24 @@ def require_env(name: str) -> str:
 
 def _select_all(table: str, root: Path | str | None) -> str:
     return f"select * from {raw_zone.read_sql(table, root)}"
+
+
+def _union_columns(
+    reader: duckdb.DuckDBPyConnection, table: str, root: Path | str | None
+) -> list[str]:
+    """Every column one raw table holds, as the zone's single reader sees it.
+
+    This is `union_by_name`'s answer by construction rather than by agreement:
+    it goes through `raw_zone.read_sql`, so it cannot drift from what the
+    DuckDB load of the same zone produces. `describe` reads Parquet footers
+    and not row groups, so the cost is a listing rather than a scan.
+
+    Used only for the external-table path. `_upload` needs nothing equivalent,
+    because it consolidates through the same reader and hands BigQuery one
+    file whose schema is already the union.
+    """
+    rows = reader.execute(f"describe {_select_all(table, root)}").fetchall()
+    return [row[0] for row in rows]
 
 
 # ---------------------------------------------------------------------------
@@ -240,6 +266,7 @@ def load_bigquery(
                     f"{project}.{raw_dataset}.{table}",
                     uris=[f"{remote.child(raw_location, table)}/*.parquet"],
                     hive_prefix=str(remote.child(raw_location, table)),
+                    columns=_union_columns(reader, table, root),
                     label=name,
                 )
                 continue
@@ -288,7 +315,15 @@ def load_bigquery(
             )
 
 
-def _external_table(client, table_ref: str, *, uris: list[str], hive_prefix, label: str) -> None:
+def _external_table(
+    client,
+    table_ref: str,
+    *,
+    uris: list[str],
+    hive_prefix,
+    label: str,
+    columns: list[str] | None = None,
+) -> None:
     """Point BigQuery at the Parquet in GCS instead of copying it in (ADR-9).
 
     Zero BigQuery storage, and no replace-on-load rewrite: the zone is the record
@@ -297,7 +332,7 @@ def _external_table(client, table_ref: str, *, uris: list[str], hive_prefix, lab
     against a 10 GiB free tier, since BigQuery's logical bytes for STRING columns
     are roughly ten times the Parquet on disk.
 
-    Three details are load bearing, and each one was found by trying the
+    Four details are load bearing, and each one was found by trying the
     alternative:
 
       *.parquet, not *   The run manifests live at `<table>/_runs/*.json`, inside
@@ -314,12 +349,44 @@ def _external_table(client, table_ref: str, *, uris: list[str], hive_prefix, lab
       delete then create BigQuery cannot convert a materialized table into an
                          external one in place, and this step exists partly to
                          remove those copies.
+      columns, not       `autodetect` infers one schema for the whole table from
+      autodetect         a sampled file, so a column that some files lack is
+                         absent from the table entirely, while DuckDB's
+                         `union_by_name` has it. That is not hypothetical: it
+                         cost `stg_datasf__building_permits` five columns and a
+                         red `make build-bigquery` on 2026-08-05, with
+                         `Unrecognized name: unit_suffix` several steps
+                         downstream of the cause. `columns` is the zone's union
+                         column list from `_union_columns`, declared STRING
+                         because the raw zone's contract is that every column is
+                         one (ADR-4), which is what makes an explicit schema
+                         cheap enough to be the default here. The derived zone
+                         passes None and keeps autodetect: it is one file per
+                         table written against a fixed pyarrow schema, so there
+                         is no union to take and the types are real.
+
+    `reference_file_schema_uri` was the other candidate and was rejected rather
+    than skipped. It pins inference to one named file, which fixes today's
+    symptom and fails the next column Socrata adds: new columns arrive in new
+    files, the reference URI keeps pointing at an old one, and the zone is
+    append-only so that file can never grow the column either. It would need a
+    human to repoint it at exactly the moment nobody knows a column appeared.
+    The union list is recomputed from the whole zone on every load, so the
+    external table is a function of the zone rather than of one file, whichever
+    file that is.
     """
     from google.cloud import bigquery  # noqa: PLC0415  (see load_bigquery)
 
     external = bigquery.ExternalConfig("PARQUET")
     external.source_uris = uris
-    external.autodetect = True
+    external.autodetect = columns is None
+    if columns is not None:
+        # Includes `ingest_date`, since it comes back from DuckDB's describe.
+        # BigQuery reconciles it with the hive partition key rather than looking
+        # for it in the files: checked both ways on 2026-08-05, and declaring it
+        # or omitting it produce the same 59 column table with the same four
+        # distinct partition values.
+        external.schema = [bigquery.SchemaField(name, "STRING") for name in columns]
     if hive_prefix:
         options = bigquery.HivePartitioningOptions()
         options.mode = "STRINGS"
@@ -334,7 +401,8 @@ def _external_table(client, table_ref: str, *, uris: list[str], hive_prefix, lab
     # metadata. It is also the only cheap proof that the URIs actually resolve:
     # create_table succeeds against a prefix that matches nothing at all.
     rows = next(iter(client.query(f"select count(*) as n from `{table_ref}`").result())).n
-    print(f"[{label}] {rows} rows in {table_ref} (external, reading {uris[0]})")
+    width = f"{len(columns)} columns, " if columns is not None else ""
+    print(f"[{label}] {rows} rows in {table_ref} (external, {width}reading {uris[0]})")
 
 
 def _upload(client, reader, table_ref: str, query: str, staged: Path, *, label: str) -> None:

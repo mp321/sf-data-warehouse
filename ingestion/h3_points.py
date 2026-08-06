@@ -19,7 +19,7 @@ from pathlib import Path
 import h3
 
 import raw_zone
-from dataset_registry import SF_BOUNDING_BOX, point_datasets
+from dataset_registry import SF_BOUNDING_BOX
 
 # The resolutions carried on every point row. 8 is roughly a 460 m hexagon,
 # 10 roughly 65 m across. Two rather than one because they answer different
@@ -85,17 +85,43 @@ def _point_expressions(cfg: dict) -> tuple[str, str]:
     return (spec["latitude"], spec["longitude"])
 
 
-def read_points(con, name: str, cfg: dict, root: Path | str | None) -> list[tuple]:
-    """(row_key, latitude_text, longitude_text) for one point dataset."""
+def read_points(
+    con, cfg: dict, root: Path | str | None, partitions: list[str] | None = None
+) -> list[tuple]:
+    """(row_key, latitude_text, longitude_text) for one point dataset.
+
+    `partitions` narrows the answer to rows whose key appears in those
+    `ingest_date` partitions. **It does not narrow the deduplication**, and the
+    difference is the whole correctness argument for the incremental path
+    (PLAN-5 step 9). The dedup below still runs over the entire table, so each
+    returned row is the same version a full run would have chosen; the
+    partition list only decides which keys are asked about.
+
+    Deduplicating inside the new partitions instead would be the obvious
+    shortcut and would be wrong in a way nothing downstream could see. Ingestion
+    is incremental on `:updated_at`, so a re-ingested row normally arrives with
+    a newer one and the two agree, but a row whose `:updated_at` moved backwards
+    upstream would win in the new partitions and lose over the whole zone, and
+    the derived zone would then hold a version the staging models do not.
+
+    Narrowing the keys is safe for the opposite reason: the zone is append-only
+    (ADR-4), so a key absent from every changed partition has the same set of
+    versions it had last run and therefore the same winner.
+    """
     latitude, longitude = _point_expressions(cfg)
     key = cfg["grain_key"]
     inner = (
         f"select {key} as row_key, {latitude} as lat_text, {longitude} as lon_text, "
         f"_socrata_updated_at, _ingested_at from {raw_zone.read_sql(cfg['table'], root)}"
     )
-    return con.execute(
-        f"select row_key, lat_text, lon_text from ({dedup_sql(inner, 'row_key')})"
-    ).fetchall()
+    latest = f"select row_key, lat_text, lon_text from ({dedup_sql(inner, 'row_key')})"
+    if partitions is None:
+        return con.execute(latest).fetchall()
+    touched = (
+        f"select distinct {key} as row_key "
+        f"from {raw_zone.read_sql(cfg['table'], root, partitions=partitions)}"
+    )
+    return con.execute(f"select * from ({latest}) where row_key in ({touched})").fetchall()
 
 
 # ---------------------------------------------------------------------------
@@ -140,53 +166,70 @@ def classify_coordinate(lat_text, lon_text) -> tuple[str, float | None, float | 
     return ("ok", latitude, longitude)
 
 
-def build_point_h3(con, root: Path | str | None) -> tuple[list[dict], dict]:
-    """derived_point_h3, plus a per-source coordinate quality summary."""
-    rows: list[dict] = []
-    stats: dict = {}
+def point_row(table: str, row_key, lat_text, lon_text) -> dict:
+    """One `derived_point_h3` row. The whole of what the H3 precompute costs.
 
-    for name, cfg in point_datasets().items():
-        if not raw_zone.has_data(cfg["table"], root):
-            print(f"[{name}] no Parquet in the raw zone; skipped")
-            continue
+    Pure in its arguments, which is what lets an incremental run compute it for
+    the rows that changed and leave the rest alone: two points with the same
+    coordinate text get the same row whichever run produced it.
+    """
+    status, latitude, longitude = classify_coordinate(lat_text, lon_text)
+    cells = (
+        {
+            f"h3_r{resolution}": h3.str_to_int(h3.latlng_to_cell(latitude, longitude, resolution))
+            for resolution in RESOLUTIONS
+        }
+        # Cells are computed for out_of_bounds points too: the coordinate is
+        # real, so the cell is real, and it is only the San Francisco boundary
+        # sets that will not match it. Not computing them would make "outside
+        # the city" and "no location at all" look identical downstream.
+        if status in ("ok", "out_of_bounds")
+        else dict.fromkeys((f"h3_r{r}" for r in RESOLUTIONS), None)
+    )
+    return {
+        "source_table": table,
+        "row_key": str(row_key),
+        "latitude": latitude,
+        "longitude": longitude,
+        "coordinate_status": status,
+        "is_usable_coordinate": status == "ok",
+        **cells,
+    }
 
-        counts = dict.fromkeys(COORDINATE_STATUSES, 0)
-        for row_key, lat_text, lon_text in read_points(con, name, cfg, root):
-            status, latitude, longitude = classify_coordinate(lat_text, lon_text)
-            counts[status] += 1
-            cells = (
-                {
-                    f"h3_r{resolution}": h3.str_to_int(
-                        h3.latlng_to_cell(latitude, longitude, resolution)
-                    )
-                    for resolution in RESOLUTIONS
-                }
-                # Cells are computed for out_of_bounds points too: the
-                # coordinate is real, so the cell is real, and it is only the
-                # San Francisco boundary sets that will not match it. Not
-                # computing them would make "outside the city" and "no
-                # location at all" look identical downstream.
-                if status in ("ok", "out_of_bounds")
-                else dict.fromkeys((f"h3_r{r}" for r in RESOLUTIONS), None)
-            )
-            rows.append(
-                {
-                    "source_table": cfg["table"],
-                    "row_key": str(row_key),
-                    "latitude": latitude,
-                    "longitude": longitude,
-                    "coordinate_status": status,
-                    "is_usable_coordinate": status == "ok",
-                    **cells,
-                }
-            )
 
-        total = sum(counts.values())
-        stats[cfg["table"]] = {"total": total, **counts}
-        usable = counts["ok"]
-        rate = 0.0 if total == 0 else 100.0 * (total - usable) / total
-        print(
-            f"[{name}] {total} rows, {usable} usable ({rate:.2f}% dropped): "
-            + ", ".join(f"{status}={counts[status]}" for status in COORDINATE_STATUSES[1:])
-        )
-    return rows, stats
+def build_points(
+    con, cfg: dict, root: Path | str | None, partitions: list[str] | None = None
+) -> list[dict]:
+    """`derived_point_h3` rows for one point dataset, whole or partial.
+
+    With `partitions`, only the rows those partitions touched come back, and
+    the caller merges them over what the last run wrote. See `read_points` for
+    why that is the same answer a full rebuild gives.
+    """
+    return [
+        point_row(cfg["table"], row_key, lat_text, lon_text)
+        for row_key, lat_text, lon_text in read_points(con, cfg, root, partitions)
+    ]
+
+
+def coordinate_stats(rows: list[dict]) -> dict:
+    """The per-source coordinate quality summary, counted from the rows.
+
+    Counted from the finished rows rather than tallied while building them, so
+    that a table assembled from a cache plus a day of new points reports the
+    quality of the whole table and not of the day.
+    """
+    counts = dict.fromkeys(COORDINATE_STATUSES, 0)
+    for row in rows:
+        counts[row["coordinate_status"]] += 1
+    return {"total": len(rows), **counts}
+
+
+def report_coordinates(name: str, stats: dict) -> None:
+    """The one line per dataset that says how much of it is mappable."""
+    total, usable = stats["total"], stats["ok"]
+    rate = 0.0 if total == 0 else 100.0 * (total - usable) / total
+    print(
+        f"[{name}] {total} rows, {usable} usable ({rate:.2f}% dropped): "
+        + ", ".join(f"{status}={stats[status]}" for status in COORDINATE_STATUSES[1:])
+    )

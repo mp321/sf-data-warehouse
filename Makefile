@@ -71,7 +71,8 @@ export DUCKDB_PATH := $(CURDIR)/$(DATA_DIR)/sf.duckdb
 
 .PHONY: help setup all ingest spatial load load-bigquery build build-bigquery \
         publish test test-python docs docs-serve lint fmt leak-check compile-duckdb \
-        compile-bigquery ci-build rebuild clean clean-warehouse clean-derived check check-derived
+        compile-bigquery ci-build rebuild clean clean-warehouse clean-derived check check-derived \
+        parity-check parity-columns
 
 # `make build` refuses to run against a derived zone that is behind the raw
 # zone. Set DERIVED_CHECK=0 to build anyway, which is worth doing only when you
@@ -114,20 +115,38 @@ ingest: ## Pull every dataset from DataSF and TIGERweb into data/raw as Parquet
 # ---------------------------------------------------------------------------
 # Spatial precompute: raw zone -> derived zone (ADR-5, ADR-6).
 #
-# Pure function of data/raw plus ingestion/spatial.py, so it is always safe to
-# delete data/derived and re-run. Takes a few minutes on the full raw zone,
-# most of it in the exact point-in-polygon refinement and the oracle sample.
+# Pure function of data/raw plus the code, so it is always safe to delete
+# data/derived and re-run. About 23 seconds on the full local raw zone,
+# measured 2026-08-05: 19 of them in the oracle sample's exact
+# point-in-polygon, 1 in the H3 cells, and the rest in reading and writing.
+#
+# RE-RUNNING IS CHEAP AND DOES NOT REBUILD WHAT HAS NOT MOVED (PLAN-5 step 9).
+# A run compares the raw zone's ingest_date partitions and a stamp over the
+# source of every module that decides the zone against what the last run
+# recorded in the manifest, and rebuilds only what those say has changed. A
+# second run on an unchanged zone takes 0.3 seconds and writes no Parquet at
+# all. Editing any of those modules, comment or code, invalidates the whole
+# zone on purpose: see ingestion/derived_state.py for why that trade is the
+# right way round. Force a rebuild with `make spatial SPATIAL_ARGS=--full`, or
+# with `make clean-derived`.
 # ---------------------------------------------------------------------------
 
-spatial: ## Compute H3 cells and boundary membership into data/derived
-	$(PY) ingestion/spatial.py --all
+SPATIAL_ARGS ?=
 
-# The other half of "forgetting spatial does not error". spatial.py records the
-# raw row count it read per dataset in data/derived/_manifest.json, and this
-# compares that against the raw zone now. It is a prerequisite of `make build`
-# rather than advice, because the failure it replaces was four not_null
-# failures and fifty-one skips, none of which named the step that was skipped.
-check-derived: ## Check data/derived is current with data/raw. Nonzero if stale.
+spatial: ## Compute H3 cells and boundary membership into data/derived
+	$(PY) ingestion/spatial.py --all $(SPATIAL_ARGS)
+
+# The other half of "forgetting spatial does not error", and now of "editing
+# spatial.py does not error either". spatial.py records in
+# data/derived/_manifest.json the raw row count it read per dataset and the
+# code version it ran, and this compares both against the raw zone and the code
+# as they are now. Three verdicts: STALE (rows with no geography, exit 3),
+# RECODED (built by code that no longer exists, exit 4) and DRIFT (a warning).
+# It is a prerequisite of `make build` rather than advice, because the failures
+# it replaces were four not_null failures naming no step, and an accepted_values
+# failure in BigQuery four models downstream of a derived zone holding r9 cells
+# ADR-10 had deleted.
+check-derived: ## Check data/derived against data/raw and the code. Nonzero if not current.
 	@$(PY) ingestion/check_derived.py --strict
 
 # ---------------------------------------------------------------------------
@@ -152,6 +171,26 @@ build-bigquery: $(BUILD_PREREQS) ## (creds) dbt build against BigQuery
 
 test: ## dbt test only, against DuckDB
 	cd $(DBT_DIR) && $(DBT) test
+
+# ---------------------------------------------------------------------------
+# Cross-engine agreement. Neither of these is in CI and neither should be:
+# both need credentials, and ADR-1 requires the PR gate to run without any.
+#
+# The two ask different questions, and parity-columns is the cheap one to reach
+# for first. It compares the zone's column sets against the BigQuery tables and
+# needs no local build at all, so it can run straight after load-bigquery.
+# parity-check compares rows, so both engines must have been built from THE SAME
+# ZONE first, and that is easy to get wrong: a DuckDB file loaded from data/raw
+# against BigQuery reading the bucket reports a zone difference as a defect. Run
+# `make load build` in the same shell as `make load-bigquery`, or point it at a
+# throwaway file with DUCKDB_PATH=... to leave your local warehouse alone.
+# ---------------------------------------------------------------------------
+
+parity-columns: ## (creds) Compare the zone's column sets against BigQuery. PLAN-7 step 2.
+	$(PY) scripts/parity-check.py --columns
+
+parity-check: ## (creds) Compare staging models row for row across both engines
+	$(PY) scripts/parity-check.py --all-staging
 
 # ---------------------------------------------------------------------------
 # Publish: warehouse -> partitioned Parquet plus a manifest (ADR-8).
@@ -308,8 +347,10 @@ all: ingest spatial load build ## ingest, spatial, load, build. Needs network fo
 clean-warehouse: ## Delete the DuckDB file. Leaves data/raw alone.
 	rm -f $(DATA_DIR)/*.duckdb $(DATA_DIR)/*.duckdb.wal
 
-# The derived zone is a pure function of the raw zone, so unlike data/raw it
-# is always safe to delete: `make spatial` reproduces it exactly.
+# The derived zone is a pure function of the raw zone plus the code, so unlike
+# data/raw it is always safe to delete: `make spatial` reproduces it exactly.
+# It is also the blunt way to force a full rebuild;
+# `make spatial SPATIAL_ARGS=--full` is the same thing without the delete.
 clean-derived: ## Delete data/derived. Recreate it with `make spatial`.
 	rm -rf $(DATA_DIR)/derived
 

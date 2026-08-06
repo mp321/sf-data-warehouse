@@ -16,26 +16,26 @@ the ordering inside it is load bearing and the prompt says why.
 
 ---
 
-## Priority order, as of 2026-08-05
+## Priority order, as of 2026-08-05, second pass
 
-Sessions A through E are done. **Start at E-remainder, and do not skip it.**
+Sessions A through E-remainder are done. **Start at F.** Both targets build
+green on the same zone, so every session below now has a working control, which
+was the whole reason E-remainder came first.
 
-1. **E-remainder. Fix the BigQuery build.** It is red on two errors, found by
-   the `make build-bigquery` that Session E's checkpoint recommended. One of
-   them is a real cross-engine defect and the other is a stale bucket. Highest
-   priority for one reason only: every later session verifies against a target
-   that is currently failing for reasons unrelated to that session's change,
-   so anything run before this one has a broken control.
-2. **F. Incremental `spatial.py`, and the publish object count.** PLAN-5 steps
-   9 and 12. Read E-remainder's outcome first: the code-version stamp in step 9
-   turns out to be the thing that would have caught half of E-remainder, which
-   changes it from an incrementality nicety to a correctness guard.
-3. **H. Pipeline assurance.** PLAN-7. If E-remainder does step 2, this reduces
-   to step 1 and gets much smaller. Check before starting.
-4. **G. The obsolescence sweep.** PLAN-5 step 13, and it closes PLAN-5. Last of
+1. **F. Incremental `spatial.py`, and the publish object count.** PLAN-5 steps
+   9 and 12. Read E-remainder's outcome first, and read PLAN-5 step 9 rather
+   than only this file: the step now carries two amendments, not one, and the
+   second changes what the stamp is for. The stamp is the only failure in the
+   project with no check at all behind it.
+2. **G. The obsolescence sweep.** PLAN-5 step 13, and it closes PLAN-5. Last of
    the PLAN-5 work on purpose: it is a reading task and it should read the
    final state, not an intermediate one.
-5. **I. The context pack.** PLAN-6. Only after PLAN-5 is closed.
+3. **H. Pipeline assurance.** PLAN-7, and it is **step 1 only now**: step 2 was
+   done in E-remainder against a live defect. Roughly half the size it was.
+4. **I. The context pack.** PLAN-6. Only after PLAN-5 is closed.
+
+H moved below G because it shrank. If you would rather have the remaining check
+than the tidy, the order is still yours to pick: they touch different files.
 
 ## What is already done
 
@@ -80,8 +80,21 @@ Sessions A through E are done. **Start at E-remainder, and do not skip it.**
   errors that predate it, which is session E-remainder. See
   `docs/dev-notes/2026-08-05.md`.
 
+- **E-remainder (fix the BigQuery build)** done 2026-08-05.
+  `make build-bigquery` is `PASS=171 ERROR=0`, matching DuckDB node for node on
+  the same zone. Only one of the two errors needed code. Error 1 was already
+  fixed when the session reached it, by an unrecorded rebuild of the bucket's
+  derived zone, and establishing that took GCS object mtimes rather than
+  anything in the zone, which is a second and sharper argument for PLAN-5 step
+  9. Error 2 was real: `load.py` now passes BigQuery an explicit union column
+  schema instead of `autodetect`, so an external table is a function of the
+  whole zone rather than of whichever file BigQuery sampled. PLAN-7 step 2 is
+  done as `make parity-columns`. See the second section of
+  `docs/dev-notes/2026-08-05.md`.
+
 PLAN-4 closed on 2026-08-03 when `ingest.yml` went green on a runner. PLAN-2
-closed on 2026-08-05 under PLAN-5 step 7.
+closed on 2026-08-05 under PLAN-5 step 7. PLAN-7 went from `draft` to `active`
+on 2026-08-05 with step 2 done and step 1 open.
 
 ---
 
@@ -326,20 +339,26 @@ That is Session E-remainder, below.
 
 ---
 
-## Session E-remainder. Fix the BigQuery build
+## Session E-remainder. Done 2026-08-05. Kept for the record only
 
-**Do this before F.** `make build-bigquery` is at `PASS=109 ERROR=2 SKIP=60`.
-Both errors were found on 2026-08-05 and both predate Session E; the
-"make build-bigquery is red" section of `docs/dev-notes/2026-08-05.md` has the
-full diagnosis, including the local reproduction. DuckDB is green
-throughout, which is exactly why this needs a session rather than a glance: the
-two engines disagree, and only one of them is in CI.
+Do not run this again. `make build-bigquery` is `PASS=171 ERROR=0`. The prompt
+is left here because two things about how it went are worth carrying forward.
 
-Sized as one session because the second error is PLAN-7 step 2 arriving early
-with a reproduction attached, which is a better starting point than the
-plan's own framing.
+**Half of it was already fixed, and the prompt could not have known.** Error 1's
+r9 cells were gone before the session started: the bucket's derived zone had been
+rebuilt at 02:20 UTC by whoever diagnosed it, and the note recording the
+diagnosis was never amended. The prompt said "confirm the value is 9 before you
+re-run, so that the fix is attributable", and that instruction is what stopped a
+pointless rewrite of a correct zone. **Keep writing prompts that way.** A
+confirmation step costs one query and is the difference between fixing a defect
+and performing a fix on a defect that is not there.
 
-Paste this:
+**The instruction to read `_external_table`'s docstring first paid for itself.**
+Three details in it were load bearing and the fix had to preserve all three while
+adding a fourth. Pointing a session at the specific docstring that constrains the
+change is cheaper than letting it rediscover the constraints by breaking them.
+
+Original prompt:
 
 ```
 Read CLAUDE.md, docs/plans/plan-7-pipeline-assurance.md, the
@@ -414,9 +433,21 @@ design, and say what does catch them now.
 Do not commit or push.
 ```
 
-**Checkpoint:** `make build-bigquery` is green, `parity-check.py` fails on a
-column-set disagreement and names it, and PLAN-7 step 2 is done. PLAN-5 step 9
-carries a note that the code-version stamp is a correctness guard.
+**Checkpoint, met:** `make build-bigquery` is green at `PASS=171 ERROR=0`,
+`parity-check.py --columns` fails on a column-set disagreement and names the
+dataset, the table and every column, and PLAN-7 step 2 is done. PLAN-5 step 9
+carries two notes now: the code-version stamp is a correctness guard, and it is
+also the only way a fix to the derived zone becomes attributable.
+
+**One thing this session found and did not fix, on purpose.**
+`raw_datasf.raw_city_budget` and `raw_datasf.raw_street_trees` are still live
+BigQuery external tables over bucket prefixes, created 2026-08-04 11:40 UTC,
+from before ADR-10 cut both datasets. Nothing references them and they cost no
+storage, since external tables hold no bytes. `make parity-columns` warns about
+them by name every run. Dropping them is two `bq rm` calls or two lines in a
+Python shell, and deleting the Parquet under them is a separate decision about
+the bucket that belongs to a human rather than to an agent. Session G is the
+natural home if you want it done as part of the sweep.
 
 ---
 
@@ -454,6 +485,16 @@ design the stamp as the guard that case needed, not only as the trigger for
 a recompute: it has to be readable from the zone without running spatial.py,
 so that a checker can say "this zone was built by code that no longer
 exists" rather than only "this zone is behind".
+
+There is a second reason, found later the same day by the session that went
+to fix that r9 zone and found it already correct. Nothing in the zone could
+say whether it had been rebuilt or had never been wrong; that took GCS
+object mtimes and a cell-count comparison against the local zone. So the
+stamp is what makes a fix attributable to a run, not only what makes staleness
+detectable. Both arguments are in PLAN-5 step 9 now. Read the step, not just
+this paragraph: it also answers where the checker belongs, in favour of
+check_derived.py over PLAN-7 step 1, and says why PLAN-7 step 2 does not
+cover this even though it is now built.
 
 Decide what the stamp covers, hash of the source file or an explicit
 version constant, and write the tradeoff into the module header: a file
@@ -568,23 +609,24 @@ Do not commit or push.
 
 ---
 
-## Session H. Pipeline assurance
+## Session H. Pipeline assurance, step 1 only
 
-PLAN-7. Independent of PLAN-5 and can be run before session G if you would
-rather have the checks than the tidy.
+PLAN-7 **step 1 alone**. Step 2 was done in session E-remainder on 2026-08-05,
+against a live defect rather than a synthetic one, and is
+`scripts/parity-check.py --columns` / `make parity-columns`. Do not re-do it.
+This is now roughly half the session it was, and it is the last unchecked claim
+in the plan.
 
-**Check what is left before starting.** Session E-remainder was written to do
-PLAN-7 step 2, because a real column-set disagreement surfaced with a
-reproduction attached. If it did, this session is step 1 alone and is roughly
-half the size; delete the step 2 paragraph from the prompt rather than
-re-running it.
+Independent of PLAN-5, so it can run before session G if you would rather have
+the check than the tidy.
 
 ```
-Read CLAUDE.md, docs/plans/plan-7-pipeline-assurance.md, and
-ingestion/check_derived.py.
+Read CLAUDE.md, docs/plans/plan-7-pipeline-assurance.md,
+ingestion/check_derived.py, and the "PLAN-7 step 2" part of the second
+section of docs/dev-notes/2026-08-05.md, which is the sibling check and set
+the pattern this one should follow.
 
-Execute PLAN-7 steps 1 and 2. If session E-remainder already did step 2,
-do step 1 only and say so.
+Execute PLAN-7 step 1 only. Step 2 is done; the plan says so and says where.
 
 Step 1's open question is the first thing to settle and it is a design
 question, not a preference: does the manifest reconciliation belong in
@@ -592,18 +634,24 @@ check_derived.py, which already exists to assert one zone is not behind
 another, or in a new script? Look at that file before writing anything.
 Two scripts asserting neighbouring invariants may well be one script.
 
-There is now a third invariant in that neighbourhood, found on 2026-08-05:
-a zone can be current by row count and still have been built by code that
-no longer exists. check_derived.py compares counts and cannot see that.
-Decide whether it belongs to this script, to PLAN-5 step 9's code-version
-stamp, or to both, and write the decision down either way.
+There is a third invariant in that neighbourhood, and as of 2026-08-05 it is
+the only failure in the project with no check at all behind it: a zone can be
+current by row count and still have been built by code that no longer exists.
+check_derived.py compares counts and cannot see that, and PLAN-7 step 2 as
+built compares column sets, which cannot see it either, because the case that
+happened was a change in the values of an unchanged column. PLAN-5 step 9's
+second amendment argues that check_derived.py is the right home, since it
+already reads the zone rather than the warehouse and already grades two
+verdicts. Read that argument and either take it or say why not.
 
-Step 2 extends scripts/parity-check.py rather than adding a second script.
-It already connects to both engines and already has an --all-staging mode.
+Unlike step 2, this check must run in CI on the fixture zone, so it needs no
+credentials and must not reach for a bucket. That is the constraint that
+separates the two halves of this plan.
 
-Both checks must fail loudly and name what disagreed. A check that reports
+The check must fail loudly and name what disagreed. A check that reports
 "mismatch" without saying which dataset and which number is a check nobody
-will trust at 2am.
+will trust at 2am. Step 2's output is the standard to match: it names the
+dataset, the table and every column on either side.
 
 Do not commit or push.
 ```
@@ -661,6 +709,28 @@ errors that session found were invisible to it. If a session touches the
 registry, the zone layout, a staging model's column list or `load.py`, add
 `make build-bigquery` to its checkpoint. It needs credentials and is the only
 thing that exercises the other engine end to end.
+
+Since 2026-08-05 there are two cheaper credentialed checks to reach for before
+that one, and it is worth knowing which answers which question:
+
+- `make parity-columns` compares the zone's column sets against the BigQuery
+  tables. Needs no local build at all, so it runs straight after
+  `make load-bigquery`, and it is the fast way to know an external table is
+  still a view of the whole zone.
+- `make parity-check` compares staging models row for row. **Both engines have
+  to have been built from the same zone or it reports a configuration
+  difference as a defect.** There is one zone at a time (CLAUDE.md), and a
+  DuckDB file loaded from `data/raw` against BigQuery reading the bucket will
+  differ on every count. Use `DUCKDB_PATH=/tmp/whatever make load build` in the
+  shell that has sourced `.env`, which puts both sides on the bucket zone and
+  leaves your local warehouse alone.
+
+**Do not re-run a fix before confirming the defect is still there.** Session
+E-remainder's prompt told it to confirm a specific bad value before rebuilding a
+zone, and the value was gone: the zone had already been fixed and the note
+recording the diagnosis had not been amended. One query saved a pointless
+multi-minute rewrite of a correct zone, and it is worth writing that
+confirmation step into any prompt whose fix is destructive or slow.
 
 **`origin/main` is 13 commits behind, and scheduled workflows run from it.**
 As of 2026-08-05 it still carries `ingestion/datasets.py` and
