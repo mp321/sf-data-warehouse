@@ -12,7 +12,8 @@ anything else in here.
 | PLAN-3 geography-and-marts | done | H3, boundaries, marts, published exports. Delivered 2026-07-31. |
 | PLAN-4 cloud-first-storage | done | Parquet raw zone in GCS, BigQuery on external tables and proven row for row against DuckDB, the CI cache step gone. Closed 2026-08-03 when `ingest.yml` went green on a runner against the bucket. Its residue is now homed: assurance items in PLAN-7, the publish object count in PLAN-5 step 12, the `dbt_dev` expiry question closed by measurement. |
 | PLAN-5 narrow-and-polish | done | Cut two datasets and one H3 resolution, one registry, pytest on the geometry code. Closed 2026-08-05 by step 13, the obsolescence sweep, which found the stale documents were USER-NOTES.md and SETUP.md rather than anything in the code. Recorded in ADR-10 (scope), ADR-11 (the derived zone's code stamp) and ADR-12 (the published layout). One Done-when box was resolved by judgement rather than met; the plan says which and why. |
-| **PLAN-6 context-pack** | **active** | The versioned context artifact with explicit refusal boundaries. Last, deliberately. Step 1 done 2026-08-05: `docs/specs/context-pack.md`, written before the generator, which answers the plan's open question as one pack per target. Steps 2 and 3 done 2026-08-06: `tools/context_pack/` generates the DuckDB pack, `make context-pack` writes it, `make context-pack-check` is the drift gate, and the four rules the spec says must fail the build fail it. Step 4 is CI, and the closing ADR is unwritten. Two new open questions on the plan: which warehouse CI checks against, and whether the traps block belongs in the compact markdown. |
+| PLAN-6 context-pack | done | The versioned context artifact with explicit refusal boundaries. Last, deliberately. Step 1 done 2026-08-05: `docs/specs/context-pack.md`, written before the generator, which answers the plan's open question as one pack per target. Steps 2 and 3 done 2026-08-06: `tools/context_pack/` generates the DuckDB pack and the four rules the spec says must fail the build fail it. Closed 2026-08-07 by step 4 and ADR-13: CI checks the committed pack against the fixture warehouse and generates nothing, because the only warehouse a credential-free runner can build has seven-row tables. Both open questions are settled in the ADR, and the second one amended the spec: the traps block is in the compact markdown, because a trap is a disclosure with no condition. Closed with one target of three; the other two are PLAN-8. |
+| **PLAN-8 remaining-context-packs** | **active** | The `published` and `bigquery` packs. PLAN-6's residue, homed rather than carried. The published one is the point: the export is six marts and no staging models, so it is the first test of whether one prose file with `applies_to` beats three hand-kept documents. Starts with the audit already done, on the plan. |
 | PLAN-7 pipeline-assurance | done | Reconcile run manifests against the data; assert the BigQuery column sets against DuckDB's. PLAN-4 residue that had been carried forward three times. Closed 2026-08-05, both steps the same day. Step 2 was overtaken on the way: the column-set disagreement it was written to detect turned `make build-bigquery` red first, so `parity-check.py --columns` was built against a live defect. Step 1 is `ingestion/check_runs.py` and `make check-runs`, and it answered its own open question against the precedent: a separate file from `check_derived.py`, because the reader and the moment it runs are both different. |
 
 | ADR | Status |
@@ -29,6 +30,7 @@ anything else in here.
 | ADR-10 narrowed scope | active |
 | ADR-11 derived zone code stamp | active |
 | ADR-12 published export layout | active |
+| ADR-13 context pack format | active |
 
 **Amended rather than superseded, and the distinction is load bearing.** ADR-10
 changed one line of ADR-5, the H3 resolution list, and ADR-11 changed what a
@@ -43,13 +45,16 @@ it, and leave the old one active.
 
 `review-2026-07-31-scope-and-cloud.md` is an outside assessment that produced
 PLAN-4, PLAN-5 and PLAN-6. It is not one of the four kinds below and can be
-deleted once those plans are done. PLAN-4 and PLAN-5 are; PLAN-6 is not. It is
-fully harvested either way, and carries a table at the top saying where each of
-its recommendations landed, so deleting it loses nothing recorded nowhere else.
+deleted once those plans are done. **All three are, as of 2026-08-07, so it is
+now deletable.** It is fully harvested, and carries a table at the top saying
+where each of its recommendations landed, so deleting it loses nothing recorded
+nowhere else. Left in place for one reader to confirm that; the deletion is a
+one-line commit whenever someone agrees.
 
-`handoff-prompt.md` is the fourth non-canonical file: the session prompts for
-work that has not run yet. It is down to one session, PLAN-6 step 4 and the
-closing ADR, and deletes itself when PLAN-6 closes.
+`handoff-prompt.md` was the fourth non-canonical file: the session prompts for
+work that had not run yet. It said it would delete itself when PLAN-6 closed,
+and it did, on 2026-08-07. There is no standing handoff document; a session that
+needs one writes it and the session that consumes it deletes it.
 
 ## The four kinds of document
 

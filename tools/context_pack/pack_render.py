@@ -2,23 +2,26 @@
 
 Spec section 9. The order is a design decision and not a formatting one:
 
-    1. identity and target        6. join map
-    2. how to read this pack      7. examples
-    3. refusals                   8. freshness
-    4. disclosures                9. integrity
-    5. models and columns
+    1. identity and target        6. models and columns
+    2. how to read this pack      7. join map
+    3. refusals                   8. examples
+    4. disclosures                9. freshness
+    5. traps                     10. integrity
 
 **Refusals come before the schema** because a model that has read the schema has
 already begun composing SQL, and a constraint that arrives after a draft exists
 has to overturn something rather than shape it.
 
-**The traps block is in the JSON and not here**, which is section 9's list read
-literally: the markdown carries strictly less than the JSON, and the four blocks
-the spec puts in it are refusals, disclosures, models and the rest of the
-schedule above. Traps are the prose that does not make a question unanswerable,
-so they are the block a prompt-sized rendering can do without. Recorded here
-because it is the one place the two artifacts deliberately differ in content
-rather than in detail.
+**The traps block is here as of 2026-08-07, and was not before.** The first
+reading of section 9 took its nine-item list literally, left traps in the JSON
+alone, and argued that prose which does not make a question unanswerable is what
+a prompt-sized rendering can do without. ADR-13 amended the spec against that.
+A trap is an unconditional disclosure, so rendering the conditional warning and
+withholding the unconditional one was the wrong way round; and what a trap
+changes is the query that gets written, which it cannot do from a file nobody
+puts in a prompt. Three of the four prevent a query that returns a plausible
+number: pooled `category` vocabularies, an H3 cell compared as a string, and an
+inner join that discards the null neighborhoods.
 
 **Under budget pressure the generator drops in a fixed order** and reports what
 it dropped:
@@ -28,9 +31,12 @@ it dropped:
     3. profile statistics
     4. low-signal columns
 
-**Refusals, disclosures and grain sentences are never dropped.** If the pack does
-not fit with all three present, generation fails rather than emitting a truncated
-pack, because a pack missing a refusal is worse than no pack: it reads complete.
+**Refusals, disclosures, traps and grain sentences are never dropped.** If the
+pack does not fit with all four present, generation fails rather than emitting a
+truncated pack, because a pack missing a refusal is worse than no pack: it reads
+complete. Traps are in that list and not in the ladder because the ladder sheds
+detail from the models block: 585 estimated tokens of traps against about 16,000
+of models, and worth more than the profile statistics stage 3 drops.
 
 Stage 2 needs one sentence of interpretation, since the spec's phrase is "column
 descriptions for columns with no yml description". A column with no description
@@ -87,6 +93,7 @@ def _render_at(pack: dict, stage: int) -> str:
     _how_to_read(lines, pack)
     _refusals(lines, pack)
     _disclosures(lines, pack)
+    _traps(lines, pack)
     _models(lines, pack, stage)
     _joins(lines, pack)
     _examples(lines, pack, stage)
@@ -127,7 +134,7 @@ def _how_to_read(lines: list[str], pack: dict) -> None:
 
 
 # ---------------------------------------------------------------------------
-# 3 and 4. Refusals, then disclosures
+# 3, 4 and 5. Refusals, then disclosures, then traps
 # ---------------------------------------------------------------------------
 
 
@@ -177,8 +184,28 @@ def _disclosures(lines: list[str], pack: dict) -> None:
         lines.append("")
 
 
+def _traps(lines: list[str], pack: dict) -> None:
+    """Section 4.6, rendered because a trap is a disclosure with no condition."""
+    if not pack.get("traps"):
+        return
+    lines.append("## Traps")
+    lines.append("")
+    lines.append(
+        "True of the data and not refusals: the question is answerable and the obvious "
+        "query answers a different one. These always apply, so they carry no condition."
+    )
+    lines.append("")
+    for entry in pack["traps"]:
+        lines.append(f"### {entry['id']}")
+        lines.append("")
+        lines.append(f"**State.** {_flat(entry['state'])}")
+        lines.append(f"Why: {_flat(entry['why'])}")
+        lines.append(f"Evidence: {_evidence(entry)}")
+        lines.append("")
+
+
 # ---------------------------------------------------------------------------
-# 5. Models and columns
+# 6. Models and columns
 # ---------------------------------------------------------------------------
 
 
@@ -256,7 +283,7 @@ def _profile_summary(profile: dict) -> str:
 
 
 # ---------------------------------------------------------------------------
-# 6 to 9. Joins, examples, freshness, integrity
+# 7 to 10. Joins, examples, freshness, integrity
 # ---------------------------------------------------------------------------
 
 

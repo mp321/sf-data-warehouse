@@ -1,0 +1,123 @@
+---
+status: active
+date: 2026-08-07
+related: [plan-6-context-pack, adr-13-context-pack-format, adr-8-published-exports, adr-12-published-export-layout, adr-1-warehouse-targets]
+---
+
+# PLAN-8. The other two context packs
+
+PLAN-6's residue, homed rather than carried. The spec fixes three targets and
+one of them is built; this plan is the other two. The contract is
+`docs/specs/context-pack.md` section 2 and it is not reopened here.
+
+## Goal
+
+`context-pack/context_pack.published.json` and `.md`, generated and committed,
+and the same for `bigquery` when someone runs it with credentials. The published
+one is the point of the plan; the BigQuery one is a smaller job that follows for
+free once the generator has been proven target-agnostic by a second target.
+
+## Why now
+
+**Because one pack does not test the argument the spec makes.** Spec section 2
+commits to three self-contained artifacts with one hand-maintained prose file,
+on the reasoning that a pack hedging across surfaces is wrong about whichever
+one the reader is holding. Everything in the generator that serves that
+argument, the per-target model set, `applies_to`, and the rule that an entry
+whose citations do not resolve is not rendered, has been exercised against one
+target only. A second pack is the first real test of it, and it is the cheapest
+one available: the published target needs no credentials.
+
+It is also where the spec's sharpest claim gets checked. The published export is
+six marts and no staging models, so questions that are answerable in the
+warehouse are refusals there. Nothing in the repo has ever produced that
+artifact, so nobody has read one.
+
+## What is already done
+
+Measured 2026-08-07, so this plan starts with the audit rather than with a
+survey.
+
+- `pack_target.py` declares the published target's model set
+  (`PUBLISHED_MARTS`, six marts), freshness source (`published/manifest.json`)
+  and schema-hash policy (present, since the export is written from a DuckDB
+  build by `publish/export.py` and the hash renders DuckDB type names).
+- The prose is already target-aware. Of 20 refusals, 19 carry `published` in
+  `applies_to`; 5 of 6 disclosures and 3 of 4 traps do; 2 of 6 joins do. Those
+  were written and validated when the duckdb pack was built, so they are
+  claims, not guesses: an entry claiming a target it cannot resolve against
+  already fails generation.
+- `published/` exists locally with all six marts and a `manifest_version` 2
+  manifest.
+
+## Steps
+
+1. **A connection factory for the published target** in `pack_target.py`. An
+   in-memory DuckDB with one view per mart over `published/<mart>/*.parquet`,
+   read from `PUBLISH_DIR`. It is the only new machinery: `schema_hash`,
+   `columns` and `row_count` all work through the same `Target` once views
+   exist.
+2. **The two blocks that read the warehouse rather than the target.**
+   `build_freshness_block` queries `mart_pipeline_freshness` directly and must
+   branch: for `published`, freshness is the publish time from
+   `published/manifest.json` and the pack says which, because the gap between
+   publish time and build time has been days (spec 4.5). `build_integrity_block`
+   already has its published branch and needs checking against a real run.
+3. **The published-only refusals.** The class the spec commissions and that does
+   not exist yet: "this is in the warehouse and not in this export", for the
+   staging models, `int_point_activity`, the H3 bridge and per-point detail.
+   These are the entries that make the published pack a different document
+   rather than a shorter one.
+4. **Examples, and this is the expensive step.** An example is verified against
+   the target whose pack it appears in and nowhere else (spec 4.7 rule 1), so
+   the six duckdb examples cannot be inherited. Four class 3 refusals apply to
+   published and each needs one, or generation fails, which is the rule working.
+   Each means writing the SQL over the Parquet views, executing it, reading the
+   result, agreeing it answers the question, and only then stamping its
+   `sql_sha256`. Do not batch this: the attestation is the whole value.
+5. **Tests**, in `tests/test_context_pack.py`, over an in-memory Parquet
+   directory rather than the real export. The one worth writing first is that a
+   refusal citing a staging model is not rendered into the published pack, since
+   that is the assertion the whole three-pack argument rests on.
+6. **The bigquery pack**, by hand, beside `make build-bigquery`. Needs
+   credentials, has no schema hash by design, and carries a staleness guard
+   instead (spec section 2 and 8). Last, and it may reasonably never be run
+   often.
+
+## Constraints
+
+- Nothing derivable goes into `prose.yml`. Same rule as PLAN-6 and the same
+  reason.
+- An unverified example is worse than no example.
+- No new hard failures softened into warnings to make a pack generate.
+- The published pack is generated by hand after `make publish`, and CI checks it
+  the way ADR-13 has CI check the duckdb one. Do not generate a pack in CI.
+
+## Out of scope
+
+- Any consumer of any pack. Unchanged from PLAN-6.
+- A cross-target diff tool. `prose_revision` makes disagreement detectable and
+  ADR-13 records that nothing reconciles it.
+
+## Done when
+
+- [ ] `make context-pack TARGET=published` writes both artifacts and they are
+      committed.
+- [ ] The published pack refuses a question the duckdb pack answers, and the
+      refusal names the export rather than the data.
+- [ ] Every example in it was executed against the Parquet and read by a human.
+- [ ] `make context-pack-check TARGET=published` is in CI beside the duckdb one.
+- [ ] A dev note says whether the three-pack argument survived a second pack, in
+      those words. That is the question this plan exists to answer.
+
+## Open questions
+
+- **Does the Makefile grow a target per pack, or one target with a variable?**
+  Two packs is the point at which `make context-pack` and
+  `make context-pack-check` stop being one command each. A `TARGET=` variable
+  keeps one code path; a target per pack is more discoverable in `make help`.
+  Decide when the second pack exists rather than now.
+- **Is the bigquery pack worth generating at all?** It needs credentials, has no
+  schema hash, and ADR-13 already records that it will be stale more often than
+  not. The honest alternative is to build the published pack, then decide
+  whether a pack nobody can gate is a pack worth committing.

@@ -177,6 +177,29 @@ jobs:
         working-directory: dbt
         run: dbt build
 
+      # Does the committed context pack still describe the warehouse (PLAN-6
+      # step 4, ADR-13)? Exits 3 when it does not.
+      #
+      # AGAINST THE FIXTURE WAREHOUSE, AND IT NEVER GENERATES ONE. Nothing here
+      # writes context-pack/: a pack built on a runner would carry the fixture
+      # zone's row counts, profiles and example results, and committing that
+      # would make the artifact describe a warehouse no consumer will read.
+      # What --check compares is the target name, the prose revision, the spec
+      # version and the per-model schema hash, and none of those four depend on
+      # how many rows a fixture holds. Measured 2026-08-07: all 19 hashes here
+      # are identical to the real warehouse's.
+      #
+      # So a column added, removed, renamed, retyped or reordered fails this
+      # step, as does an edit to prose.yml or to the spec with no regeneration.
+      # A row count moving does not, deliberately: it moves on every ingest and
+      # a gate that fires daily is a gate someone switches off.
+      #
+      # The fix when it fires is `make build && make context-pack` on a machine
+      # with the real zone, then commit both artifacts. Regenerating from
+      # fixtures to make this green is the one wrong answer.
+      - name: Check the committed context pack against the warehouse
+        run: python tools/context_pack/generate.py --target duckdb --check
+
       # The published export is part of the gate, not an afterthought. It is
       # the only step that reads every mart at once, so a mart that builds but
       # cannot be serialised fails here rather than in whatever consumes the

@@ -1,7 +1,7 @@
 # sf-data-warehouse context pack, target duckdb
 
 An analytics warehouse over seven public San Francisco datasets, modelled with dbt into staging views, one intermediate model and six marts, in which every geography is precomputed rather than computed at query time.
-Target `duckdb`, 19 models, generated 2026-08-07T06:48:03+00:00, prose revision `518a947af4686986`, spec 2026-08-05, pack 1.0.0.
+Target `duckdb`, 19 models, generated 2026-08-07T22:37:55+00:00, prose revision `518a947af4686986`, spec 2026-08-07, pack 1.0.0.
 Publisher DataSF and the US Census Bureau, modelled here, jurisdiction San Francisco, California. Public domain. Source data from DataSF (data.sfgov.org) and the US Census Bureau.
 
 ## How to read this pack
@@ -314,6 +314,34 @@ When: Any answer about test results or pipeline health read from mart_pipeline_f
 **State.** The test columns describe the previous completed dbt run, not the run that built the table, so any answer about test results from this mart is one run stale.
 Why: dbt writes run results after models finish, so a run cannot report its own outcome. On a first ever build the test columns are all zero. This cannot be fixed by reordering.
 Evidence: column mart_pipeline_freshness.tests_total; column mart_pipeline_freshness.last_test_run_at; doc dbt/macros/audit_run_results.sql
+
+## Traps
+
+True of the data and not refusals: the question is answerable and the obvious query answers a different one. These always apply, so they carry no condition.
+
+### trap.category-means-something-different-per-dataset
+
+**State.** Group by dataset whenever you group by category, or filter to one dataset first. Never sum a category across datasets.
+Why: category is each dataset's own category dimension: service type for 311, permit type for permits, licence description for businesses. The column has one name and three vocabularies, so a group by category alone silently pools three unrelated taxonomies.
+Evidence: column int_point_activity.category; column mart_activity_by_neighborhood.category
+
+### trap.h3-cells-are-bigints
+
+**State.** H3 cells are BIGINTs here, not the 15-character hexadecimal strings the H3 documentation uses. Compare and join them as integers, and do not expect an h3 function to exist in the warehouse.
+Why: Neither engine computes H3; both read precomputed BIGINTs from the derived zone (ADR-5). BigQuery has no H3 function at all, so there is nothing to dispatch to, and a cell id rendered as a string will match nothing.
+Evidence: ADR-5; column mart_activity_by_h3.h3_cell; column stg_spatial__polygon_h3.h3_cell
+
+### trap.null-neighborhood-is-an-answer
+
+**State.** A null analysis_neighborhood means the row is outside every neighborhood, which is a correct answer and not a missing value. It is water, just past the city line, or a row with no usable coordinate; coordinate_status on the staging models is what tells those apart.
+Why: Treating it as missing invites an inner join that drops the rows silently, and the drop is not uniform: it falls on the bay, the edges of the city and the registered businesses located elsewhere.
+Evidence: column int_point_activity.analysis_neighborhood; column stg_spatial__point_geography.coordinate_status
+
+### trap.staging-models-are-views-over-parquet
+
+**State.** Staging and intermediate models are views, and marts are tables. A query against a staging model re-reads the raw zone every time, so prefer a mart when one answers the question.
+Why: The layer materialisations are set in dbt_project.yml: views are cheap and always fresh, which is right for a renaming layer and wrong for anything a dashboard hits repeatedly.
+Evidence: model stg_datasf__311_cases; model int_point_activity; doc dbt/dbt_project.yml
 
 ## Models
 
@@ -710,10 +738,10 @@ Grain: One row per registered source.
 | last_run_finished_at | TIMESTAMP | When ingestion last ran at all, successful or not. Later than last_load_at whenever recent runs found nothing new. 2026-07-31T21:48:53.391891 to 2026-07-31T21:51:10.081736; newest complete month 2026-06-01: 0 rows |
 | last_run_status | VARCHAR | success or failed, from the ingestion run manifest. values: success 100.0% |
 | last_run_mode | VARCHAR | (no description in the yml) values: incremental 100.0% |
-| hours_since_load | DOUBLE | Hours since last_load_at, fractional, in UTC on both engines. See x_utc_now in macros/cross_engine.sql for why that needed saying. min 152.9, median 165.3, max 167.8 |
-| hours_since_run_attempt | DOUBLE | Hours since ingestion last ran, fractional. values: 152.9 42.9%, 152.9 14.3%, 152.9 14.3%, 153 14.3%, 153 14.3% |
+| hours_since_load | DOUBLE | Hours since last_load_at, fractional, in UTC on both engines. See x_utc_now in macros/cross_engine.sql for why that needed saying. min 168.4, median 180.7, max 183.3 |
+| hours_since_run_attempt | DOUBLE | Hours since ingestion last ran, fractional. values: 168.4 42.9%, 168.4 14.3%, 168.4 14.3%, 168.4 14.3%, 168.4 14.3% |
 | stale_after_hours | INTEGER | Freshness SLA in hours. Null means the source has no SLA. 57.1% null; values: 168 28.6%, 48 14.3% |
-| is_stale | BOOLEAN | Whether hours_since_load has passed stale_after_hours. Always false for sources with no SLA, so this never fires on a demoted source. 14.3% true; 2 distinct |
+| is_stale | BOOLEAN | Whether hours_since_load has passed stale_after_hours. Always false for sources with no SLA, so this never fires on a demoted source. 42.9% true; 2 distinct |
 | point_count | BIGINT | Rows this source contributed to the spatial precompute. Null for a source with no point geometry, which is how a non-spatial source is told apart from a spatial one whose coordinates all failed. 42.9% null; min 2,214, median 6.984e+04, max 364,731 |
 | usable_point_count | HUGEINT | Of those, how many produced a coordinate inside San Francisco. 42.9% null; min 2,127, median 6.92e+04, max 298,076 |
 | missing_coordinate_count | HUGEINT | Rows with no coordinate at all. Expected to be nonzero forever and deliberately not counted against health. 42.9% null; min 46, median 665, max 10,913 |
@@ -725,8 +753,8 @@ Grain: One row per registered source.
 | tests_failed | HUGEINT | Of those, how many failed. values: 0 100.0% |
 | tests_warned | HUGEINT | Of those, how many warned. Warnings are signals, not failures. values: 0 100.0% |
 | tests_errored | HUGEINT | Of those, how many errored, meaning the test itself could not run. values: 0 100.0% |
-| last_test_run_at | TIMESTAMP | When that dbt run started. Null before the second ever run. 2026-08-07T04:19:44 to 2026-08-07T04:19:44; newest complete month 2026-07-01: 0 rows |
-| is_healthy | BOOLEAN | False if the last ingestion run failed, if any test failed or errored, if any coordinate was malformed, or if the source is past its SLA. True otherwise. The single column to read when checking in. 85.7% true; 2 distinct |
+| last_test_run_at | TIMESTAMP | When that dbt run started. Null before the second ever run. 2026-08-07T06:47:38 to 2026-08-07T06:47:38; newest complete month 2026-07-01: 0 rows |
+| is_healthy | BOOLEAN | False if the last ingestion run failed, if any test failed or errored, if any coordinate was malformed, or if the source is past its SLA. True otherwise. The single column to read when checking in. 57.1% true; 2 distinct |
 
 ### stg_census__block_groups (staging, view, 681 rows)
 
@@ -818,7 +846,7 @@ group by m.analysis_neighborhood, d.population
 order by reports_per_1000_residents desc
 ```
 
-Demonstrates: refuse.rank-by-raw-count, refuse.311-measures-reporting-not-incidence. Verified against duckdb at 2026-08-07T06:48:12+00:00, 41 rows.
+Demonstrates: refuse.rank-by-raw-count, refuse.311-measures-reporting-not-incidence. Verified against duckdb at 2026-08-07T22:38:05+00:00, 41 rows.
 
 ### ex.h3-cells-ranked-by-rate
 
@@ -843,7 +871,7 @@ order by events_per_1000_residents desc
 limit 20
 ```
 
-Demonstrates: refuse.events-per-sq-km-on-the-h3-mart. Verified against duckdb at 2026-08-07T06:48:12+00:00, 20 rows.
+Demonstrates: refuse.events-per-sq-km-on-the-h3-mart. Verified against duckdb at 2026-08-07T22:38:05+00:00, 20 rows.
 
 ### ex.rate-with-denominator-vintage
 
@@ -869,7 +897,7 @@ order by events_per_1000_residents desc
 limit 15
 ```
 
-Demonstrates: refuse.per-capita-divides-by-april-2020. Verified against duckdb at 2026-08-07T06:48:12+00:00, 15 rows.
+Demonstrates: refuse.per-capita-divides-by-april-2020. Verified against duckdb at 2026-08-07T22:38:05+00:00, 15 rows.
 
 ### ex.lowest-rate-with-exclusions-counted
 
@@ -903,7 +931,7 @@ order by events_per_1000_residents asc, h3_cell
 limit 10
 ```
 
-Demonstrates: refuse.null-rate-is-not-a-low-rate. Verified against duckdb at 2026-08-07T06:48:12+00:00, 10 rows.
+Demonstrates: refuse.null-rate-is-not-a-low-rate. Verified against duckdb at 2026-08-07T22:38:05+00:00, 10 rows.
 
 ### ex.permit-filings-per-month-by-type
 
@@ -927,7 +955,7 @@ order by filed_month desc, records_filed desc
 limit 40
 ```
 
-Demonstrates: refuse.permits-are-filings-not-construction. Verified against duckdb at 2026-08-07T06:48:12+00:00, 40 rows.
+Demonstrates: refuse.permits-are-filings-not-construction. Verified against duckdb at 2026-08-07T22:38:05+00:00, 40 rows.
 
 ### ex.distinct-businesses-by-neighborhood
 
@@ -949,7 +977,7 @@ order by certificates_active desc
 limit 15
 ```
 
-Demonstrates: refuse.business-registry-is-not-a-business-count. Verified against duckdb at 2026-08-07T06:48:12+00:00, 15 rows.
+Demonstrates: refuse.business-registry-is-not-a-business-count. Verified against duckdb at 2026-08-07T22:38:05+00:00, 15 rows.
 
 ## Freshness
 
@@ -959,8 +987,8 @@ mart_pipeline_freshness, projected. last_load_at is when rows last landed in the
 |---|---|---|---|---|---|---|
 | 311_cases | core | 134,457 | 2026-07-31T21:48:52.532492 | 2026-07-31T21:48:53.391891 | 48 | true |
 | analysis_neighborhoods | reference | 41 | 2026-07-31T09:30:36.846363 | 2026-07-31T21:51:08.327049 | none | false |
-| building_permits | core | 36,611 | 2026-07-31T21:48:54.086437 | 2026-07-31T21:48:54.125785 | 168 | false |
-| business_locations | core | 729,403 | 2026-07-31T21:51:06.884731 | 2026-07-31T21:51:07.189818 | 168 | false |
+| building_permits | core | 36,611 | 2026-07-31T21:48:54.086437 | 2026-07-31T21:48:54.125785 | 168 | true |
+| business_locations | core | 729,403 | 2026-07-31T21:51:06.884731 | 2026-07-31T21:51:07.189818 | 168 | true |
 | census_block_groups | reference | 681 | 2026-07-31T09:30:40.288231 | 2026-07-31T21:51:08.935482 | none | false |
 | film_locations | demoted | 2,214 | 2026-07-31T06:56:41.226332 | 2026-07-31T21:51:10.081736 | none | false |
 | supervisor_districts | reference | 11 | 2026-07-31T09:30:38.067363 | 2026-07-31T21:51:08.925510 | none | false |
@@ -969,7 +997,7 @@ mart_pipeline_freshness, projected. last_load_at is when rows last landed in the
 
 Before trusting this pack, compare its integrity block against the target itself: the schema hash of every model you intend to query, and the dbt invocation it was built from. If they disagree, this pack describes something the target does not contain, and the correct response is to refuse every question rather than to answer from a stale description.
 
-Built from dbt invocation `d32a25de-15bb-4382-b52b-2f68b622d530` (1.12.0, adapter duckdb), manifest generated 2026-08-07T06:47:38.586098Z.
+Built from dbt invocation `e0d6c75f-88c9-488e-8872-a69ebef25caa` (1.12.0, adapter duckdb), manifest generated 2026-08-07T22:13:18.082190Z.
 
 | model | schema hash | rows |
 |---|---|---|

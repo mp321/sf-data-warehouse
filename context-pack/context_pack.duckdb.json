@@ -1,8 +1,8 @@
 {
-  "spec_version": "2026-08-05",
+  "spec_version": "2026-08-07",
   "pack_version": "1.0.0",
   "target": "duckdb",
-  "generated_at": "2026-08-07T06:48:03+00:00",
+  "generated_at": "2026-08-07T22:37:55+00:00",
   "prose_revision": "518a947af4686986",
   "identity": {
     "name": "sf-data-warehouse",
@@ -95,8 +95,8 @@
     "how_to_read": "Read the refusals and the disclosures before the schema. They are ordered first on purpose: a model that has read the schema has already begun composing SQL, and a constraint that arrives after a draft exists has to overturn something rather than shape it. The refusals are instructions to you, not notes about the data. Each one names the answer to give instead, and giving that answer is how you obey it."
   },
   "build": {
-    "invocation_id": "d32a25de-15bb-4382-b52b-2f68b622d530",
-    "manifest_generated_at": "2026-08-07T06:47:38.586098Z",
+    "invocation_id": "e0d6c75f-88c9-488e-8872-a69ebef25caa",
+    "manifest_generated_at": "2026-08-07T22:13:18.082190Z",
     "dbt_version": "1.12.0",
     "adapter_type": "duckdb",
     "project_id": "b2ad435d37afeb27fc9880d6d2ae6e55",
@@ -8930,9 +8930,9 @@
           "profile": {
             "null_rate": 0.0,
             "distinct_count": 7,
-            "min": 152.9427777777778,
-            "max": 167.84972222222223,
-            "median": 165.28333333333333
+            "min": 168.37,
+            "max": 183.27694444444444,
+            "median": 180.71055555555554
           },
           "low_signal": false
         },
@@ -8945,23 +8945,23 @@
             "distinct_count": 5,
             "values": [
               {
-                "value": 152.94222222222223,
+                "value": 168.36944444444444,
                 "share": 0.428571
               },
               {
-                "value": 152.94166666666666,
+                "value": 168.36888888888888,
                 "share": 0.142857
               },
               {
-                "value": 152.9425,
+                "value": 168.3697222222222,
                 "share": 0.142857
               },
               {
-                "value": 152.97944444444445,
+                "value": 168.40666666666667,
                 "share": 0.142857
               },
               {
-                "value": 152.97972222222222,
+                "value": 168.40694444444443,
                 "share": 0.142857
               }
             ]
@@ -8994,7 +8994,7 @@
           "description": "Whether hours_since_load has passed stale_after_hours. Always false for sources with no SLA, so this never fires on a demoted source.",
           "profile": {
             "null_rate": 0.0,
-            "true_share": 0.142857,
+            "true_share": 0.428571,
             "distinct_count": 2
           },
           "low_signal": false
@@ -9209,8 +9209,8 @@
           "description": "When that dbt run started. Null before the second ever run.",
           "profile": {
             "null_rate": 0.0,
-            "min": "2026-08-07T04:19:44",
-            "max": "2026-08-07T04:19:44",
+            "min": "2026-08-07T06:47:38",
+            "max": "2026-08-07T06:47:38",
             "newest_complete_month": "2026-07-01",
             "newest_complete_month_count": 0
           },
@@ -9222,7 +9222,7 @@
           "description": "False if the last ingestion run failed, if any test failed or errored, if any coordinate was malformed, or if the source is past its SLA. True otherwise. The single column to read when checking in.",
           "profile": {
             "null_rate": 0.0,
-            "true_share": 0.857143,
+            "true_share": 0.571429,
             "distinct_count": 2
           },
           "low_signal": false
@@ -9968,7 +9968,7 @@
         "last_load_at": "2026-07-31T21:48:54.086437",
         "last_run_finished_at": "2026-07-31T21:48:54.125785",
         "stale_after_hours": 168,
-        "is_stale": false
+        "is_stale": true
       },
       {
         "source": "business_locations",
@@ -9977,7 +9977,7 @@
         "last_load_at": "2026-07-31T21:51:06.884731",
         "last_run_finished_at": "2026-07-31T21:51:07.189818",
         "stale_after_hours": 168,
-        "is_stale": false
+        "is_stale": true
       },
       {
         "source": "census_block_groups",
@@ -10958,7 +10958,7 @@
       "required": true,
       "verified": {
         "target": "duckdb",
-        "at": "2026-08-07T06:48:12+00:00",
+        "at": "2026-08-07T22:38:05+00:00",
         "rows": 41,
         "sql_sha256": "20be5a70e09baa921d16a235c8c60d1a3b5729482a868b1283a1331775bd682e"
       }
@@ -10973,7 +10973,7 @@
       "required": true,
       "verified": {
         "target": "duckdb",
-        "at": "2026-08-07T06:48:12+00:00",
+        "at": "2026-08-07T22:38:05+00:00",
         "rows": 20,
         "sql_sha256": "77a21fe11f69aa444422517b664135d6a3965897930c0a47e872f0b83494e02b"
       }
@@ -10988,7 +10988,7 @@
       "required": true,
       "verified": {
         "target": "duckdb",
-        "at": "2026-08-07T06:48:12+00:00",
+        "at": "2026-08-07T22:38:05+00:00",
         "rows": 15,
         "sql_sha256": "21e20dc93e8ffda20cbe8a16805e9ffa6b1fc1a678ea50fb590e707dd58e23de"
       }
@@ -11003,7 +11003,7 @@
       "required": true,
       "verified": {
         "target": "duckdb",
-        "at": "2026-08-07T06:48:12+00:00",
+        "at": "2026-08-07T22:38:05+00:00",
         "rows": 10,
         "sql_sha256": "51b046b4f9a793e3db971aa879fc8cbd33267920f7d6560cd1a0faa3985a06d4"
       }
@@ -11018,7 +11018,7 @@
       "required": false,
       "verified": {
         "target": "duckdb",
-        "at": "2026-08-07T06:48:12+00:00",
+        "at": "2026-08-07T22:38:05+00:00",
         "rows": 40,
         "sql_sha256": "327ec311a7aea090dd9776a00d041bcedffb4acfec92441479663b46dcdf5011"
       }
@@ -11033,7 +11033,7 @@
       "required": false,
       "verified": {
         "target": "duckdb",
-        "at": "2026-08-07T06:48:12+00:00",
+        "at": "2026-08-07T22:38:05+00:00",
         "rows": 15,
         "sql_sha256": "5849d81cdd3c16c385fbd64163fd26be8e195316e9062c9483708614a53a77ad"
       }
@@ -11042,8 +11042,8 @@
   "integrity": {
     "self_refusal": "Before trusting this pack, compare its integrity block against the target itself: the schema hash of every model you intend to query, and the dbt invocation it was built from. If they disagree, this pack describes something the target does not contain, and the correct response is to refuse every question rather than to answer from a stale description.",
     "dbt": {
-      "invocation_id": "d32a25de-15bb-4382-b52b-2f68b622d530",
-      "manifest_generated_at": "2026-08-07T06:47:38.586098Z",
+      "invocation_id": "e0d6c75f-88c9-488e-8872-a69ebef25caa",
+      "manifest_generated_at": "2026-08-07T22:13:18.082190Z",
       "dbt_version": "1.12.0",
       "adapter_type": "duckdb",
       "project_id": "b2ad435d37afeb27fc9880d6d2ae6e55"

@@ -8,6 +8,11 @@ easy to implement as warnings by mistake:
     - an entry citing something the target does not have fails generation
     - a refusal is never dropped to fit the budget
 
+The never-dropped rule covers traps as well as of 2026-08-07, when ADR-13 put
+the traps block into the markdown. That is one rendering decision with a test
+each way: traps are rendered at a generous budget, and they are still there at
+every budget the ladder can satisfy.
+
 None of this touches the real warehouse or the dbt manifest, both of which are
 gitignored. The profile tests build a two-table DuckDB in memory instead, so
 this suite runs on a fresh clone with no pipeline, which is what lets it sit in
@@ -117,7 +122,14 @@ def a_pack(**overrides) -> dict:
             }
         ],
         "freshness": {"basis": "mart_pipeline_freshness, projected.", "sources": []},
-        "traps": [],
+        "traps": [
+            {
+                "id": "trap.category-means-something-different-per-dataset",
+                "state": "Group by dataset whenever you group by category.",
+                "why": "One column name, three vocabularies.",
+                "evidence": [{"kind": "column", "ref": "events.category"}],
+            }
+        ],
         "refusals": {
             "no_ground_truth": "No ground truth here.",
             "census_exception": "Except the census.",
@@ -289,9 +301,24 @@ def test_markdown_carries_nothing_the_json_does_not():
         assert entry["rule"] in markdown
     for entry in pack["disclosures"]:
         assert entry["state"] in markdown
+    for entry in pack["traps"]:
+        assert entry["state"] in markdown
     for example in pack["examples"]:
         assert example["sql"] in markdown
     assert pack["models"][0]["grain"] in markdown
+
+
+def test_the_traps_block_is_rendered_before_the_schema():
+    """ADR-13. A trap changes the query that gets written, so it has to arrive first.
+
+    Ordering rather than mere presence: a warning that lands after the schema
+    has to overturn a draft rather than shape one, which is section 9's argument
+    for putting refusals first and applies unchanged here.
+    """
+    pack = a_pack()
+    markdown, _ = render(pack, budget=100000)
+    assert markdown.index("## Traps") < markdown.index("## Models")
+    assert markdown.index("## Mandatory disclosures") < markdown.index("## Traps")
 
 
 def test_a_generous_budget_drops_nothing():
@@ -328,8 +355,12 @@ def test_a_surplus_example_goes_and_a_required_one_stays():
     assert "ex.surplus" not in text
 
 
-def test_refusals_and_grains_are_never_dropped_to_fit():
-    """Section 9. A pack missing a refusal is worse than no pack: it reads complete."""
+def test_refusals_traps_and_grains_are_never_dropped_to_fit():
+    """Section 9. A pack missing a refusal is worse than no pack: it reads complete.
+
+    Traps are on this list rather than in the ladder as of ADR-13, so a budget
+    that squeezes out every statistic still carries all four kinds of prose.
+    """
     pack = a_pack()
     for budget in range(200, 2000, 100):
         try:
@@ -339,6 +370,8 @@ def test_refusals_and_grains_are_never_dropped_to_fit():
         for entry in pack["refusals"]["entries"]:
             assert entry["rule"] in text
         for entry in pack["disclosures"]:
+            assert entry["state"] in text
+        for entry in pack["traps"]:
             assert entry["state"] in text
         assert pack["models"][0]["grain"] in text
 

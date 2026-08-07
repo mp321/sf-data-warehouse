@@ -1,7 +1,7 @@
 ---
-status: active
+status: done
 date: 2026-07-31
-related: [adr-8-published-exports, plan-4-cloud-first-storage, plan-5-narrow-and-polish]
+related: [adr-8-published-exports, adr-13-context-pack-format, plan-4-cloud-first-storage, plan-5-narrow-and-polish, plan-8-remaining-context-packs]
 ---
 
 # PLAN-6. Emit a versioned context pack that tells a model what it must refuse
@@ -9,7 +9,15 @@ related: [adr-8-published-exports, plan-4-cloud-first-storage, plan-5-narrow-and
 Migrated from `PLAN.md` Goal2, which is deleted. Step 1 done 2026-08-05; the
 spec is `docs/specs/context-pack.md`. **Steps 2 and 3 done 2026-08-06**:
 `tools/context_pack/` generates the DuckDB pack, and every rule the spec says
-must fail the build fails it. Step 4, CI, and the closing ADR are what is left.
+must fail the build fails it. **Step 4 done 2026-08-07 and ADR-13 closes this
+plan**: CI checks the committed pack against the fixture warehouse on every pull
+request, and both open questions are settled in the ADR.
+
+**Closed with one target of three built.** The `published` and `bigquery` packs
+are PLAN-8. Every Done-when box here is ticked, because this plan asked for the
+artifact, the gate and the decision rather than for three artifacts; carrying it
+open for the second pack would make it a plan about targets rather than about
+the thing that was actually being proven.
 
 ## Goal
 
@@ -152,12 +160,29 @@ writes, which carries most of the identity and integrity fields this needs.
    deliberately not compared, because they move on every ingest and a gate that
    fires daily is a gate someone switches off.
 
-4. **Wire generation into CI** so the pack regenerates on every model change
-   and drift shows up as a diff in the pull request. The pieces are in place:
-   both artifacts are committed, `make context-pack-check` is the gate, and
-   `ci-build` already builds a warehouse from fixtures. The open question is
-   which warehouse CI should check against, since a pack generated from the
-   fixture zone carries fixture row counts and profiles.
+4. ~~**Wire generation into CI** so the pack regenerates on every model change
+   and drift shows up as a diff in the pull request.~~ **Done 2026-08-07, as a
+   check and not a generation.** ADR-13 has the argument; the short version is
+   that CI cannot generate an honest pack, because the only warehouse a
+   credential-free runner can build is the fixture one, and a pack built there
+   would carry seven-row counts and fixture example results.
+
+   One step in the `dbt-duckdb` job, after `dbt build`:
+   `python tools/context_pack/generate.py --target duckdb --check`. It exits 3
+   on a moved schema hash, a moved prose revision, a moved spec version or a
+   model set that has changed, and it writes nothing.
+
+   **The measurement that decided it.** `--check` needs a warehouse for exactly
+   one of the four things it compares, the per-model schema hash, and a schema
+   hash is over column names, types and ordinal position. All 19 hashes from the
+   fixture warehouse are identical to the real warehouse's, measured 2026-08-07.
+   Both failure modes were then fired against the fixture warehouse rather than
+   argued: a tampered hash and this session's own spec amendment each exit 3.
+
+   **What it cannot see, and that is the trade.** Row counts, profiles,
+   freshness and example results are not compared, so a pack whose numbers are a
+   month old passes. The alternative is a gate that fires on every ingest, which
+   is a gate someone switches off.
 
 ## Testing
 
@@ -165,7 +190,9 @@ A round-trip test on the JSON, a test that the compact markdown stays under
 budget, and a test that a deliberately stale pack is rejected.
 
 **Done 2026-08-06**, as `tests/test_context_pack.py`, 33 tests in the same
-pytest job as the geometry ones. All three asked for are there, plus the two
+pytest job as the geometry ones, and 34 as of 2026-08-07, when the traps block
+joined the never-dropped rule and gained a test for its position in the
+rendering as well as its presence. All three asked for are there, plus the two
 rules the spec says are easy to implement as warnings by mistake: an entry
 citing something the target does not have raises, and no rendering at any
 budget that succeeds is missing a refusal, a disclosure or a grain sentence.
@@ -187,32 +214,33 @@ pure comparison function that `--check` feeds from the live target.
 - [x] `make context-pack` produces both artifacts. Done 2026-08-06, for the
       duckdb target: `context-pack/context_pack.duckdb.json` and `.md`. The
       other two targets are declared and not generated; see step 2.
-- [ ] CI fails on a stale pack or an unverified example. **Half done
-      2026-08-06.** An unverified example already fails generation, and
-      `make context-pack-check` fails on a stale pack and is demonstrated
-      against a moved schema hash and a moved prose revision in
-      `tests/test_context_pack.py`. What is left is the CI job, which is step 4.
-- [ ] An ADR records the pack format and, specifically, what was left out.
-      Section 10 of the spec is the list it should start from, plus the five
-      departures recorded in step 2.
+- [x] CI fails on a stale pack or an unverified example. **Done 2026-08-07.**
+      An unverified example fails generation, and the `dbt-duckdb` job now runs
+      `--check` against the warehouse it just built from fixtures. Demonstrated
+      there, not only in pytest: a tampered schema hash and a moved spec version
+      both exit 3 against that warehouse.
+- [x] An ADR records the pack format and, specifically, what was left out.
+      **ADR-13, 2026-08-07.** Section 10's six omissions, the five departures
+      from step 2, and the traps question, which it settles by amending the spec
+      rather than by confirming the reading.
 
 ## Open questions
 
-- **Which warehouse does CI check the pack against?** Opened 2026-08-06 by step
-  2, and it is step 4's first decision. `ci-build` builds a warehouse from
-  fixtures, so a pack generated there carries fixture row counts, fixture
-  profiles and fixture example results, and committing that would make the
-  artifact describe something no consumer will ever read. Two honest options: CI
-  runs `context-pack-check` against the fixture warehouse for the parts that do
-  not depend on the data, which is the schema hashes and the prose revision, and
-  ignores the rest; or CI checks nothing and the gate is a pre-commit hook on a
-  developer machine that has the real zone. The first is a real gate on the
-  thing that actually rots, since a column change moves a schema hash on the
-  fixture warehouse exactly as it does on the real one.
-- **Should the traps block be in the compact markdown?** Section 9's rendering
-  order does not list it, so it is not there today. That is a defensible reading
-  and it was not obviously a deliberate one; the closing ADR should either
-  confirm it or amend the spec.
+- ~~**Which warehouse does CI check the pack against?**~~ **Answered 2026-08-07
+  in ADR-13: the fixture warehouse, and CI generates nothing.** The plan's first
+  option, with its reasoning checked rather than inherited and one thing added
+  that had not been noticed. Regenerating in CI fails for a second and
+  independent reason: generation is not deterministic against an unchanged
+  warehouse, because `generated_at`, the dbt invocation id and the clock-derived
+  columns of `mart_pipeline_freshness` move on every run. An idempotent
+  regeneration on 2026-08-07 produced a 40-line diff, every line a clock, so
+  `git diff --exit-code` was never available as a gate at all.
+- ~~**Should the traps block be in the compact markdown?**~~ **Answered
+  2026-08-07 in ADR-13: yes, and the spec was amended.** Section 4.6 defines a
+  trap as a disclosure object without the trigger condition, so rendering the
+  conditional warning and withholding the unconditional one is the wrong way
+  round. It costs 585 estimated tokens of 25,219, and it is never dropped: the
+  budget ladder sheds detail from the models block and a trap is not detail.
 - ~~Does the pack describe the DuckDB warehouse, the BigQuery one, or the
   published Parquet?~~ **Answered 2026-08-05 in `docs/specs/context-pack.md`
   section 2: one pack per target, three self-contained artifacts, one
