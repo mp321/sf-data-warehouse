@@ -32,11 +32,10 @@ they describe, in CI on the fixture zone and credential-free. Its open question
 went against the PLAN-5 step 9 precedent, a separate file rather than a fourth
 verdict in `check_derived.py`, and the dev note says why.
 
-**The working tree is four sessions deep and nothing is committed.** PLAN-5
-step 13, PLAN-6 step 1 and PLAN-7 step 1 are all in it, on top of `ca60c91`.
-That is the working agreement doing its job rather than a problem, but the
-spec Session I builds against is not in git yet. Committing before starting
-the generator is worth it, so that session's diff is its own.
+**Committed and pushed as `e6281c8`, 2026-08-06.** PLAN-5 step 13, PLAN-6 step
+1 and PLAN-7 step 1 went in as one commit, `origin/main` is level with it, and
+CI is green on it. So Session I starts from a clean tree and its diff will be
+its own, which is the arrangement the rest of this file assumes.
 
 The prompts for the sessions that have already run are deleted rather than
 archived. What each one did is in `docs/dev-notes/` under the date it ran, and
@@ -160,7 +159,9 @@ disagreement into the dev note, and change the plan. That is what
 
 ## Open operational items
 
-Neither is a plan step, and neither is an agent's call.
+Not a plan step, and not an agent's call. One item, down from three: the
+scheduled run on 2026-08-06 closed the other two, and they are kept below
+struck through because the next reader will otherwise wonder where they went.
 
 **Two orphaned BigQuery external tables.** `raw_datasf.raw_city_budget` and
 `raw_datasf.raw_street_trees`, created 2026-08-04 11:40 UTC, from before ADR-10
@@ -170,22 +171,20 @@ name every run. Dropping them is two `bq rm` calls. Deleting the Parquet
 underneath them is a separate decision about the bucket, and both belong to a
 human rather than to an agent.
 
-**The bucket's derived zone still carries no code stamp.** ADR-11 landed after
-the last `make spatial` against the bucket, so the stamp exists in the code and
-not in that zone. Checked in `derived_state.describe_code_change`: a manifest
-with no recorded version is graded RECODED and exits 4, saying the zone was
-built before the stamp existed, so pointing `make check-derived` or `make
-build` at the bucket fails until the zone is rebuilt once. One credentialed
-`make spatial` against
-the bucket fixes it permanently, and it is still the first credentialed thing
-to do.
+~~**The bucket's derived zone still carries no code stamp.**~~ **Closed
+2026-08-06 by the cron, not by hand.** The scheduled run's `spatial.py` printed
+"the zone records no code version, so it was built before the stamp existed"
+and rebuilt the whole derived zone against the bucket: 523,339 point cells,
+84,296 polygon cells, 1,332,896 point-boundary rows, 39,301 population cells,
+24,000 pip-sample answers. The bucket's zone now carries a stamp, so
+`make check-derived` against it no longer exits 4 on sight. Nothing was owed to
+a human after all; the item existed for one day.
 
-**`main` now carries the current pipeline, and no cron has run from it yet.**
-As of 2026-08-05 `origin/main` is level with the work: `dataset_registry.py`,
-the four-file `spatial.py`, the derived zone code stamp, and an `ingest.yml`
-that sets `RAW_ZONE_URI` and `DERIVED_ZONE_URI` from the `GCS_BUCKET` secret
-and runs the spatial step. This was not true before that merge, and the
-practical consequence has flipped: the daily 09:17 UTC cron will now do what
-`ingest.yml` says rather than writing to a runner's disk and evaporating. It
-has not fired since the merge, so the first scheduled run is still unobserved.
-Check it before treating the bucket's zones as current.
+~~**`main` now carries the current pipeline, and no cron has run from it yet.**~~
+**Closed 2026-08-06: it fired and it was green.** Run 31097820662, `event:
+schedule`, on `e6281c8`, 11:34 to 11:41 UTC. It ingested into the bucket's raw
+zone (30,731 new 311 cases, 1,708 permits, 415,006 business locations across
+eight files) and then ran the spatial step above. That is the first end-to-end
+verification of the scheduled path against the bucket, which every prior
+session's note said was still owed. The bucket's zones are current as of that
+run, and the local `data/` zones are not the same zone and did not move.
