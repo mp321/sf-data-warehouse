@@ -1,0 +1,1127 @@
+# The one hand-maintained source behind every context pack.
+#
+# Spec: docs/specs/context-pack.md, section 7. Everything in its sections 5 and
+# 6 lives here, plus the traps block, the joins no dbt test declares, and the
+# candidate examples. Three artifacts, one copy of the prose: copies exist at
+# render time and never at source.
+#
+# NOTHING DERIVABLE MAY APPEAR HERE. If a fact can be read from the dbt
+# manifest, the dataset registry or the published manifest, it is read from
+# there, and finding it restated here is a bug rather than a preference. That is
+# not a style rule: this repo has twice paid for two copies of a fact with
+# nothing checking they agree. `tools/context_pack/pack_inputs.py` is the reader
+# for everything derived, and the generator fails on a join entry here that a
+# relationships test already declares.
+#
+# The one deliberate exception is `identity.description`, one sentence about
+# what this warehouse is, which nothing in the schema can produce. It is written
+# once, here, which is what section 4.1 means by "not hand-written twice".
+#
+# EVERY ENTRY DECLARES `applies_to` AND EVERY CITATION MUST RESOLVE. An entry is
+# rendered into a target's pack only when every citation in its evidence
+# resolves against that target's model set, and generation FAILS when an entry
+# claims a target where they do not. An entry about a model that was cut fails
+# the build rather than sitting here reading plausibly.
+#
+# Only the duckdb target is generated today (PLAN-6 step 2). Entries carry
+# `published` and `bigquery` in `applies_to` where the spec says they hold, and
+# those claims are checked the day those targets are built. An entry that would
+# not resolve against the published target's six marts deliberately does not
+# claim it.
+#
+# EDITING AN EXAMPLE MEANS RE-VERIFYING IT. Each example carries the sha256 of
+# the SQL a human executed and read the result of. Change the SQL and the build
+# fails until you run it, confirm it still answers the question, and update the
+# hash. Re-executing proves it parses; only the hash records that someone
+# agreed with the answer.
+
+version: 1
+
+identity:
+  description: >
+    An analytics warehouse over seven public San Francisco datasets, modelled
+    with dbt into staging views, one intermediate model and six marts, in which
+    every geography is precomputed rather than computed at query time.
+  repo: https://github.com/mp321/sf-data-warehouse
+
+# ---------------------------------------------------------------------------
+# The sentences the pack states once, in its own voice.
+# ---------------------------------------------------------------------------
+preamble:
+  # Spec section 5.3. Worth its own place because it generalises past the
+  # enumerated cases below.
+  no_ground_truth: >
+    Every dataset here is an administrative record of an interaction with the
+    city: a service request, a permit application, a business tax registration,
+    a film permit. Not one of them is a survey, a census or a measurement of a
+    condition. THIS WAREHOUSE CONTAINS NO GROUND-TRUTH MEASURE OF THE
+    UNDERLYING STATE OF ANYTHING. A question about what is happening in the
+    city, as opposed to what was reported to the city, is out of scope whether
+    or not it appears in the list below.
+
+  # Stated beside the sentence above, or the sentence above is wrong.
+  census_exception: >
+    The exception is census_block_groups, which is a census, of population and
+    housing units, in April 2020. It is a denominator and never a subject, and
+    the disclosures say what it costs.
+
+  # Spec section 5.7. The only part of the refusal list that stays correct when
+  # the warehouse changes without the prose changing.
+  closed_world_rule: >
+    If answering a question requires a column that is not in this pack, a join
+    that is not in the join map, or a dataset not listed in the identity block,
+    refuse and name what is missing. Do not infer a column from a table name,
+    and do not assume a column exists because it usually does.
+
+  # Spec section 8, rule 3. A pack refuses on its own behalf.
+  self_refusal: >
+    Before trusting this pack, compare its integrity block against the target
+    itself: the schema hash of every model you intend to query, and the dbt
+    invocation it was built from. If they disagree, this pack describes
+    something the target does not contain, and the correct response is to refuse
+    every question rather than to answer from a stale description.
+
+  how_to_read: >
+    Read the refusals and the disclosures before the schema. They are ordered
+    first on purpose: a model that has read the schema has already begun
+    composing SQL, and a constraint that arrives after a draft exists has to
+    overturn something rather than shape it. The refusals are instructions to
+    you, not notes about the data. Each one names the answer to give instead,
+    and giving that answer is how you obey it.
+
+# ---------------------------------------------------------------------------
+# Section 5. Refusal boundaries.
+#
+#   absent        the data is not here                    refuses the question
+#   mismeasured   a query returns a number and the number
+#                 does not mean what the question assumes  refuses the question
+#   misnormalised the measure is right and the arithmetic
+#                 invites a wrong conclusion               refuses the FORM
+# ---------------------------------------------------------------------------
+refusals:
+
+  # -- Class 1, absent. Cheap and uninteresting, and enumerated anyway,
+  # because they are the commonest question shapes a city warehouse gets asked.
+  # Each carries the same `instead` obligation as every other class: naming what
+  # is nearest is what stops the model substituting something worse.
+
+  - id: refuse.no-city-spending-data
+    class: absent
+    applies_to: [duckdb, published, bigquery]
+    question_shapes:
+      - how much does the city spend on street cleaning
+      - which department has the biggest budget
+      - what does it cost to respond to a 311 request
+      - is spending going where the complaints are
+    rule: >
+      Do not answer questions about city spending, budgets or department costs.
+      There is no budget data in this warehouse.
+    why: >
+      city_budget was ingested once and cut by ADR-10. The join anyone wants,
+      spending against 311 demand, needs a crosswalk between budget department
+      codes and the agency 311 records, two independently maintained taxonomies
+      with no reason to agree.
+    evidence:
+      - {kind: adr, ref: adr-10}
+      - {kind: column, ref: stg_datasf__311_cases.agency}
+    instead:
+      answer: >
+        Which agency 311 records as responsible for how many requests, by
+        category and neighborhood. That is a count of demand routed to an
+        agency, and it says nothing about what any of it cost.
+
+  - id: refuse.no-crime-data
+    class: absent
+    applies_to: [duckdb, published, bigquery]
+    question_shapes:
+      - where is crime highest in San Francisco
+      - how many arrests were there in the Mission
+      - which police district has the most incidents
+    rule: >
+      Do not answer questions about crime, police incidents or arrests. That
+      data has never been in this warehouse. Do not substitute 311 volume for
+      it; see refuse.311-is-not-a-safety-measure.
+    why: >
+      No crime dataset is in the registry, and the closed-world rule applies:
+      there is no column to compute one from.
+    evidence:
+      - {kind: adr, ref: adr-10}
+      - {kind: model, ref: mart_activity_by_neighborhood}
+    instead:
+      answer: >
+        311 service requests by category and neighborhood, which is what
+        residents reported to the city, labelled as reports.
+
+  - id: refuse.no-housing-market-data
+    class: absent
+    applies_to: [duckdb, published, bigquery]
+    question_shapes:
+      - what are rents in the Mission
+      - how many evictions happened last year
+      - how many people are homeless in San Francisco
+      - are housing prices rising
+    rule: >
+      Do not answer questions about housing prices, rents, evictions or
+      homelessness counts. None of it is here.
+    why: >
+      Never in the registry. The only housing measure in this warehouse is the
+      2020 Census count of housing units, which is a stock of dwellings and not
+      a market.
+    evidence:
+      - {kind: column, ref: dim_neighborhood.housing_units}
+      - {kind: model, ref: stg_census__block_groups}
+    instead:
+      answer: >
+        Housing units per neighborhood from the 2020 Census, and building
+        permit filings by type over time, both labelled for what they are.
+
+  - id: refuse.no-transit-or-collision-data
+    class: absent
+    applies_to: [duckdb, published, bigquery]
+    question_shapes:
+      - which intersections have the most collisions
+      - how many people ride Muni
+      - where is traffic worst
+    rule: >
+      Do not answer questions about transit, traffic or collisions. None of it
+      is here.
+    why: Never in the registry.
+    evidence:
+      - {kind: adr, ref: adr-10}
+      - {kind: model, ref: mart_activity_by_neighborhood}
+    instead:
+      answer: >
+        311 street and sidewalk categories, which record what was reported
+        about the street rather than what happened on it.
+
+  - id: refuse.no-street-trees
+    class: absent
+    applies_to: [duckdb, published, bigquery]
+    question_shapes:
+      - how many street trees are there
+      - which neighborhood has the most tree canopy
+      - where were trees planted last year
+    rule: Do not answer questions about street trees. The dataset was cut.
+    why: >
+      street_trees was ingested and then cut by ADR-10, along with city_budget,
+      when the project narrowed to seven datasets that are all spatial.
+    evidence:
+      - {kind: adr, ref: adr-10}
+    instead:
+      answer: >
+        311 has a Tree Maintenance service category, which is requests about
+        trees and not an inventory of them.
+
+  - id: refuse.no-distance-or-routing
+    class: absent
+    applies_to: [duckdb, published, bigquery]
+    question_shapes:
+      - how many permits are within 500 metres of this address
+      - what is the nearest neighborhood to this point
+      - how far is it from here to there
+      - draw a buffer around this location
+    rule: >
+      Do not answer questions requiring distance, travel time, routing, buffers
+      or nearest-neighbour search. There is no geometry engine in this
+      warehouse to ask, on either engine.
+    why: >
+      No geometry at query time (ADR-6, and ADR-2 said it first). Boundary
+      membership is a precomputed column and cell coverage is an integer join.
+      No model carries a geometry type, no ST_ function exists here, and no
+      spatial extension is loaded.
+    evidence:
+      - {kind: adr, ref: adr-6}
+      - {kind: adr, ref: adr-2}
+      - {kind: model, ref: stg_spatial__polygon_h3}
+    instead:
+      answer: >
+        Exact membership questions, which are answerable: which neighborhood or
+        supervisor district a row is in, and which H3 cells cover a boundary.
+        An H3 cell at resolution 8 is about 460 metres across, so "in the same
+        cell" is the nearest available thing to "nearby" and should be named as
+        such rather than converted to metres.
+
+  - id: refuse.no-parcel-or-street-mile-rates
+    class: absent
+    applies_to: [duckdb, published, bigquery]
+    question_shapes:
+      - how many 311 cases per parcel
+      - complaints per street mile
+      - requests per lane kilometre
+    rule: >
+      Do not answer questions normalised by parcels or street mileage. Neither
+      dataset is in scope, and this is a recorded gap rather than an oversight.
+    why: >
+      The plan that commissioned the dimension tables asked for rates per parcel
+      and per street mile. Neither dataset was brought into scope, so what is
+      here instead is residents, housing units, land area and registered
+      businesses. ADR-7 records the gap.
+    evidence:
+      - {kind: adr, ref: adr-7}
+      - {kind: model, ref: dim_neighborhood}
+    instead:
+      answer: >
+        The four denominators that do exist on dim_neighborhood: population,
+        housing units, registered businesses and land area. Say which one the
+        rate divides by.
+
+  - id: refuse.no-311-or-permits-before-2024
+    class: absent
+    applies_to: [duckdb, published, bigquery]
+    question_shapes:
+      - how did 311 volume change between 2019 and 2024
+      - what did permit filings look like a decade ago
+      - show me the ten year trend
+    rule: >
+      Do not answer questions about 311 cases or building permits before the
+      backfill boundary in the dataset registry. Those rows were never
+      ingested, so a query returns nothing rather than zero, and an empty
+      result is not evidence of a quiet year.
+    why: >
+      The registry sets a start_date per source and the two large event
+      datasets start at the same boundary. Widening it is an ingestion run, not
+      a query.
+    evidence:
+      - {kind: registry, ref: 311_cases.start_date, equals: "2024-01-01T00:00:00.000Z"}
+      - {kind: registry, ref: building_permits.start_date, equals: "2024-01-01T00:00:00.000Z"}
+      - {kind: model, ref: mart_pipeline_freshness}
+    instead:
+      answer: >
+        A window starting at the registry's start_date, stated in the answer.
+        business_locations backfills fully and can be read further back, with
+        the caveat in refuse.business-history-is-a-current-state-snapshot.
+
+  # -- Class 2, mismeasured. The ones a model will answer happily and wrongly,
+  # so they get the most care.
+
+  - id: refuse.311-measures-reporting-not-incidence
+    class: mismeasured
+    applies_to: [duckdb, published, bigquery]
+    question_shapes:
+      - which neighborhood has the most problems
+      - where are the worst conditions in the city
+      - which part of San Francisco is dirtiest
+      - where is graffiti worst
+      - which neighborhood is most neglected
+    rule: >
+      Do not answer questions about where conditions are worst using 311
+      volume. Report what was reported, and say so in the answer.
+    why: >
+      311 counts reports, not conditions, and reporting propensity varies with
+      who lives somewhere, whether they know the service exists, language,
+      housing tenure, and whether one prolific reporter is active in a block.
+      This warehouse holds no independent measure of incidence to calibrate
+      against, so the direction and size of that bias can be named here and not
+      estimated.
+    evidence:
+      - {kind: adr, ref: adr-10}
+      - {kind: model, ref: mart_activity_by_neighborhood}
+      - {kind: measurement, ref: "the size of the reporting bias", measured: false}
+    instead:
+      answer: >
+        Which neighborhoods file the most 311 reports of a given category per
+        resident or per business, labelled as reports rather than as
+        conditions.
+      example: ex.reports-per-capita-by-neighborhood
+
+  - id: refuse.311-is-not-a-safety-measure
+    class: mismeasured
+    applies_to: [duckdb, published, bigquery]
+    question_shapes:
+      - which neighborhood is most dangerous
+      - where is it least safe to live
+      - rank neighborhoods by safety
+    rule: >
+      Refuse this twice and say both halves. There is no crime data in this
+      warehouse, and 311 volume is not a proxy for it. Do not answer a safety
+      question from any column here.
+    why: >
+      This fails on two independent grounds, and a pack that states only the
+      first invites the substitution the second exists to prevent: with no
+      crime data available, a model looking for the nearest number reaches for
+      311 volume, which measures who reports rather than what happens.
+    evidence:
+      - {kind: adr, ref: adr-10}
+      - {kind: model, ref: mart_activity_by_neighborhood}
+    instead:
+      answer: >
+        Say that neither crime data nor any measure of conditions is present,
+        and offer 311 reports by category per capita as a description of what
+        residents reported, with the label attached.
+      example: ex.reports-per-capita-by-neighborhood
+
+  - id: refuse.permits-are-filings-not-construction
+    class: mismeasured
+    applies_to: [duckdb, published, bigquery]
+    question_shapes:
+      - how much construction is happening in the Mission
+      - is building activity going up
+      - how many buildings went up last year
+      - how many permits were issued in this neighborhood
+    rule: >
+      Do not answer questions about construction from the activity marts. They
+      date a permit at filing, not at issue, and count records rather than
+      permits. Answer about filings, or query the staging model directly and
+      say which question you answered.
+    why: >
+      int_point_activity dates a permit at filed_at, because filing is the
+      demand signal and issuing is the city's response to it, and mixing them
+      makes a permitting backlog look like a drop in construction. A filed
+      permit may never be issued and an issued one may never be built.
+      Separately, permit_record_id is not permit_number: revisions and addenda
+      file as separate records under one permit, up to about 100, so counting
+      records is not counting permits.
+    evidence:
+      - {kind: column, ref: stg_datasf__building_permits.filed_at}
+      - {kind: column, ref: stg_datasf__building_permits.issued_at}
+      - {kind: column, ref: stg_datasf__building_permits.permit_number}
+      - {kind: model, ref: int_point_activity}
+    instead:
+      answer: >
+        Filings per month by permit type, labelled as filings. For issued
+        permits, query stg_datasf__building_permits on issued_at and count
+        distinct permit_number, which is a different query the activity marts
+        do not do.
+      example: ex.permit-filings-per-month-by-type
+
+  - id: refuse.business-registry-is-not-a-business-count
+    class: mismeasured
+    applies_to: [duckdb, published, bigquery]
+    question_shapes:
+      - how many businesses are in the Mission
+      - which neighborhood has the most restaurants
+      - how many businesses opened last year
+    rule: >
+      Do not count rows of the business registry and call the result a number
+      of businesses. Count distinct certificate numbers, and say whether you
+      mean ever registered or currently active.
+    why: >
+      business_locations is a tax certificate registry. Its grain is one row per
+      certificate, location and ownership sequence, so a business that moves or
+      changes hands accumulates rows; is_active means "no end date"; and a
+      substantial share of rows carry coordinates outside San Francisco, which
+      is correct data about businesses registered here and located elsewhere.
+    evidence:
+      - {kind: column, ref: stg_datasf__business_locations.certificate_number}
+      - {kind: column, ref: stg_datasf__business_locations.is_active}
+      - {kind: column, ref: dim_neighborhood.business_count}
+      - {kind: column, ref: dim_neighborhood.active_business_count}
+      - {kind: measurement, ref: "coordinates outside San Francisco, 18.27 percent of rows",
+         measured: "2026-07-31", about: stg_datasf__business_locations}
+    instead:
+      answer: >
+        Count distinct certificate_number and state which universe you counted.
+        dim_neighborhood carries business_count and active_business_count for
+        exactly this reason and they differ by more than half, so which one a
+        rate divides by changes the answer.
+      example: ex.distinct-businesses-by-neighborhood
+
+  - id: refuse.business-history-is-a-current-state-snapshot
+    class: mismeasured
+    applies_to: [duckdb, published, bigquery]
+    question_shapes:
+      - how many businesses existed in San Francisco in 1950
+      - show business openings since 1900
+      - was the city more commercial before the war
+    rule: >
+      Do not read a long historical trend off the business registry. It is a
+      snapshot of what the registry holds today, dated by when each location
+      opened, and it is not a record of what existed at the time.
+    why: >
+      A monthly series of business_locations back through the twentieth century
+      is the set of locations the registry holds now. location_started_at spans
+      1849 to 2028 and the activity mart spreads those rows over hundreds of
+      distinct months; the far end of that range is thin and selected by
+      whatever the city still keeps.
+    evidence:
+      - {kind: column, ref: stg_datasf__business_locations.location_started_at}
+      - {kind: column, ref: mart_activity_by_neighborhood.event_month}
+      - {kind: model, ref: int_point_activity}
+    instead:
+      answer: >
+        Use the registry as a denominator and as a recent series. If a long
+        window is asked for, say that the early years are survivorship rather
+        than history.
+
+  - id: refuse.newest-month-is-partial
+    class: mismeasured
+    applies_to: [duckdb, published, bigquery]
+    question_shapes:
+      - is 311 volume falling this month
+      - what is the trend over the last year
+      - how many permits were filed this month
+    rule: >
+      Never end a monthly series at the current month. End it at the last
+      complete month, and read the cutoff from the freshness block rather than
+      from the calendar.
+    why: >
+      Records arrive and are revised after the event, so the most recent month
+      in any series is incomplete and a trend line ending at today always slopes
+      down. This project has not measured the arrival lag, so the size of the
+      shortfall is unknown rather than small.
+    evidence:
+      - {kind: column, ref: mart_pipeline_freshness.last_load_at}
+      - {kind: column, ref: mart_activity_by_neighborhood.event_month}
+      - {kind: measurement, ref: "the arrival lag", measured: false}
+    instead:
+      answer: >
+        End the series at the last complete month. Every date column in this
+        pack carries its newest complete month and the row count in it, which
+        is the cutoff to use.
+
+  - id: refuse.no-cross-dataset-series-before-2024
+    class: mismeasured
+    applies_to: [duckdb, published, bigquery]
+    question_shapes:
+      - plot all activity by month since 2015
+      - compare permits and business openings over the last decade
+      - show total events per month across every dataset
+    rule: >
+      Do not present a cross-dataset monthly series spanning the registry's
+      backfill boundary. Either start the window at the boundary or hold the
+      dataset constant.
+    why: >
+      311_cases and building_permits start at the boundary in the registry and
+      business_locations backfills fully, so a combined series across it shows
+      one dataset before that date and three after. The step is an artefact of
+      the backfill window rather than anything that happened in the city.
+    evidence:
+      - {kind: registry, ref: 311_cases.start_date, equals: "2024-01-01T00:00:00.000Z"}
+      - {kind: registry, ref: business_locations.start_date, equals: "1970-01-01T00:00:00.000Z"}
+      - {kind: column, ref: mart_activity_by_neighborhood.dataset}
+    instead:
+      answer: >
+        Start the window at the registry's start_date for the latest-starting
+        dataset in the query, or filter to one dataset and say which.
+
+  - id: refuse.supervisor-district-lines-moved-in-2022
+    class: mismeasured
+    applies_to: [duckdb, bigquery]
+    question_shapes:
+      - which supervisor district had the most 311 cases
+      - compare districts over the last ten years
+      - how has district 6 changed
+    rule: >
+      Join on the computed supervisor_district_id, not on the upstream column
+      stamped by DataSF, and say which question you are answering when the
+      window reaches before 2022.
+    why: >
+      Every point staging model carries both an upstream district, stamped when
+      the row was published, and a computed one, decided here against the 2022
+      boundaries. They disagree on rows published before the 2022
+      redistricting, and neither is wrong: they answer "which district was this
+      in at the time" and "which district is this in now".
+    evidence:
+      - {kind: column, ref: stg_datasf__311_cases.upstream_supervisor_district}
+      - {kind: column, ref: stg_datasf__311_cases.supervisor_district_id}
+      - {kind: column, ref: dim_supervisor_district.supervisor_district_id}
+    instead:
+      answer: >
+        Join on supervisor_district_id, which is what dim_supervisor_district
+        keys on, and state that districts are on the 2022 lines throughout.
+
+  # -- Class 3, misnormalised. The measure is right. The arithmetic is the
+  # problem, so these refuse a form of answer rather than a question, and each
+  # one has a verified example showing the form that works.
+
+  - id: refuse.rank-by-raw-count
+    class: misnormalised
+    applies_to: [duckdb, published, bigquery]
+    question_shapes:
+      - which neighborhood has the most 311 cases
+      - rank neighborhoods by number of reports
+      - where is the most activity
+      - which cell has the highest count
+    rule: >
+      Do not rank neighborhoods or cells by event_count. Rank by a rate, name
+      the denominator, and note that the denominators disagree with each other
+      on purpose.
+    why: >
+      A raw count per area is mostly a map of where people live, so the ranking
+      rediscovers the census. Per 1000 residents and per 1000 businesses return
+      different lists, and that disagreement is information: the Financial
+      District has almost no residents and enormous daytime activity, so its
+      per-capita rate is close to meaningless and its per-business rate is not.
+      This is not the pack's opinion; CLAUDE.md requires every count mart to
+      expose a normalised companion for the same reason.
+    evidence:
+      - {kind: column, ref: mart_activity_by_neighborhood.event_count}
+      - {kind: column, ref: mart_activity_by_neighborhood.events_per_1000_residents}
+      - {kind: column, ref: mart_activity_by_neighborhood.events_per_1000_businesses}
+      - {kind: doc, ref: CLAUDE.md}
+    instead:
+      answer: >
+        Rank by a rate, name the denominator in the answer, and where the
+        question is commercial prefer per 1000 businesses.
+      example: ex.reports-per-capita-by-neighborhood
+
+  - id: refuse.events-per-sq-km-on-the-h3-mart
+    class: misnormalised
+    applies_to: [duckdb, published, bigquery]
+    question_shapes:
+      - which cells are densest in events per square kilometre
+      - does the density agree with the count
+      - show both the count and the density per cell
+    rule: >
+      Do not present mart_activity_by_h3.events_per_sq_km as a second measure
+      that agrees with the count. It is the count times a constant.
+    why: >
+      Every cell at a fixed resolution has the same area, so events_per_sq_km
+      ranks identically to event_count by construction. It exists to be
+      comparable with the neighborhood mart, where areas genuinely differ, and
+      for no other reason.
+    evidence:
+      - {kind: column, ref: mart_activity_by_h3.events_per_sq_km}
+      - {kind: column, ref: mart_activity_by_h3.cell_area_sq_km}
+      - {kind: column, ref: mart_activity_by_neighborhood.events_per_sq_km}
+    instead:
+      answer: >
+        Rank cells by events_per_1000_residents, which is the normalisation
+        that varies per cell, and use events_per_sq_km only when comparing a
+        cell against a neighborhood.
+      example: ex.h3-cells-ranked-by-rate
+
+  - id: refuse.per-capita-divides-by-april-2020
+    class: misnormalised
+    applies_to: [duckdb, published, bigquery]
+    question_shapes:
+      - has the rate per resident changed since 2024
+      - which neighborhood grew fastest
+      - are complaints per capita rising
+    rule: >
+      State the denominator's vintage in any answer that uses a per-capita
+      rate, and never attribute a change in such a rate to population change.
+    why: >
+      Population is the 2020 Decennial count, because the ACS API now requires a
+      key and ADR-1 keeps credentials off the ingestion path. Every per-capita
+      rate here divides recent events by an April 2020 denominator, so
+      neighborhoods that have grown or shrunk since then are systematically
+      off and no change in a rate over time can be attributed to population.
+    evidence:
+      - {kind: adr, ref: adr-1}
+      - {kind: column, ref: dim_neighborhood.population}
+      - {kind: column, ref: mart_activity_by_neighborhood.events_per_1000_residents}
+    instead:
+      answer: >
+        Give the rate with the denominator labelled as the April 2020 Census
+        count, and prefer per 1000 businesses where the question is commercial.
+      example: ex.rate-with-denominator-vintage
+
+  - id: refuse.null-rate-is-not-a-low-rate
+    class: misnormalised
+    applies_to: [duckdb, published, bigquery]
+    question_shapes:
+      - which area has the lowest complaint rate
+      - where are the quietest cells
+      - which neighborhood has the fewest reports per resident
+    rule: >
+      Never answer a lowest-rate question without excluding null rates
+      explicitly and saying how many were excluded.
+    why: >
+      events_per_1000_residents is null, not zero, where the denominator is
+      zero. That is correct and common: the bay, the Presidio and the Financial
+      District all have real activity and close to nobody living in them. An
+      area with no residents does not have an infinite complaint rate; it has a
+      question that does not apply.
+    evidence:
+      - {kind: column, ref: mart_activity_by_h3.events_per_1000_residents}
+      - {kind: column, ref: mart_activity_by_h3.cell_population}
+    instead:
+      answer: >
+        Exclude the nulls in the query, report how many rows that removed, and
+        say that those areas have no denominator rather than a low rate.
+      example: ex.lowest-rate-with-exclusions-counted
+
+# ---------------------------------------------------------------------------
+# Section 6. Mandatory disclosures.
+#
+# Answerable, with a bounded and measured error the consumer has to be told
+# rather than left to discover. Filing these as refusals would be crying wolf,
+# and a refusal list that cries wolf is ignored whole.
+# ---------------------------------------------------------------------------
+disclosures:
+
+  - id: disclose.h3-mart-neighborhood-labels-are-approximate
+    applies_to: [duckdb, published, bigquery]
+    when: >
+      Any answer that filters, groups or sums mart_activity_by_h3 by
+      analysis_neighborhood or by supervisor_district_id.
+    state: >
+      Cell-based neighborhood labels are approximate. At resolution 8 they
+      agree with exact point-in-polygon membership for 72.6 percent of sampled
+      points for neighborhoods and 83.6 percent for supervisor districts, so
+      this is not the same query as the neighborhood mart. When both marts can
+      answer a question, use mart_activity_by_neighborhood.
+    why: >
+      Point-level membership is exact: ADR-6 moved refinement from query time to
+      precompute time, so the neighborhood on a point staging model and the
+      mart built from it are exact answers, and a singular test fails on a
+      single disagreement. The H3 mart is different. It labels each cell with
+      the boundary that owns the cell, at a resolution where one hexagon is
+      about 460 metres across, and the disagreement near edges is not noise: it
+      correlates with geography, so every neighborhood comparison built that way
+      inherits a bias.
+    numbers:
+      - {boundary_set: analysis_neighborhood, r8: "72.6%", r10: "94.7%"}
+      - {boundary_set: supervisor_district, r8: "83.6%", r10: "96.8%"}
+    evidence:
+      - {kind: adr, ref: adr-6}
+      - {kind: model, ref: mart_activity_by_h3}
+      - {kind: model, ref: mart_activity_by_neighborhood}
+      - {kind: measurement, ref: "cell membership against exact point-in-polygon, 10,000 sampled
+         points per boundary set", measured: "2026-07-31"}
+
+  - id: disclose.the-two-marts-have-different-totals
+    applies_to: [duckdb, published, bigquery]
+    when: >
+      Any answer that gives a total from mart_activity_by_neighborhood, or that
+      compares a total from it against one from the H3 mart or from
+      int_point_activity.
+    state: >
+      State which universe the total is over. mart_activity_by_neighborhood
+      excludes events outside every neighborhood rather than bucketing them
+      into an Unknown row, so its total is lower than the underlying event
+      spine's and is exactly the sum of its neighborhoods.
+    why: >
+      Two marts over the same events differ for two unrelated reasons: this one,
+      and the cell-labelling error in the disclosure above. Reporting a
+      difference without separating them attributes an exclusion rule to a
+      measurement error.
+    evidence:
+      - {kind: model, ref: mart_activity_by_neighborhood}
+      - {kind: model, ref: int_point_activity}
+      - {kind: column, ref: mart_activity_by_h3.analysis_neighborhood}
+
+  - id: disclose.coordinate-drop-rates
+    applies_to: [duckdb, published, bigquery]
+    when: >
+      Any answer that totals or ranks by geography, for any dataset.
+    state: >
+      Totals by geography are short by the rows that could not be placed on a
+      map. Measured as the share of each source: 311 1.20 percent, building
+      permits 0.12, film locations 3.93, business locations 18.27. The last is
+      high because the registry records businesses located outside San
+      Francisco, which is correct data rather than dirty data.
+    why: >
+      Rows with no usable coordinate are kept with null geography, so they exist
+      in the staging models and vanish from any grouping by geography. A
+      grouped total is therefore not the model's row count, and the gap is
+      large enough on one dataset to change an answer.
+    evidence:
+      - {kind: column, ref: mart_pipeline_freshness.coordinate_drop_rate_pct}
+      - {kind: column, ref: stg_datasf__business_locations.coordinate_status}
+      - {kind: measurement, ref: "coordinate drop rate per source", measured: "2026-07-31",
+         about: mart_pipeline_freshness}
+
+  - id: disclose.population-is-interpolated-twice
+    applies_to: [duckdb, bigquery]
+    when: >
+      Any answer using population, housing_units or a per-capita rate, and any
+      query that spreads a measure across H3 cells.
+    state: >
+      Population here is interpolated twice and is not a census count: residents
+      are assumed uniform within a block group, and a boundary cell's residents
+      all go to whichever boundary owns the cell. Good to about a percent at
+      resolution 10. To spread a measure across cells use is_allocation_cell and
+      never is_primary.
+    why: >
+      The Census publishes population by block group, block groups do not nest
+      inside neighborhoods, and rather than clip polygons this project sums
+      population over the H3 cells each neighborhood owns. is_primary keeps one
+      boundary per cell, so using it to allocate discards the losing boundaries
+      and their residents with them: 653,000 of 874,000 San Franciscans
+      disappeared the once this was got wrong.
+    evidence:
+      - {kind: column, ref: stg_spatial__polygon_h3.is_primary}
+      - {kind: column, ref: stg_spatial__polygon_h3.is_allocation_cell}
+      - {kind: model, ref: stg_spatial__h3_population}
+      - {kind: column, ref: dim_neighborhood.population}
+
+  - id: disclose.areas-are-spherical-and-two-are-enormous
+    applies_to: [duckdb, published, bigquery]
+    when: >
+      Any answer using area_sq_km, a density, or a comparison of how dense two
+      boundaries are.
+    state: >
+      Areas are spherical, so they are off by the Earth's flattening, about 0.3
+      percent, which is far below the uncertainty in what a boundary means. Two
+      boundaries are legitimately enormous and will dominate any density
+      ranking: Supervisorial District 4 reaches the Farallon Islands 43 km
+      offshore and covers 261 square kilometres, and one census block group is
+      248 square kilometres of ocean.
+    why: >
+      Areas come from ingestion/geometry.py by spherical excess. The flattening
+      error is negligible and the two outliers are not: "which district is least
+      dense" is answerable, and the answer is District 4 for a reason that has
+      nothing to do with how many people live there.
+    evidence:
+      - {kind: column, ref: dim_supervisor_district.area_sq_km}
+      - {kind: column, ref: dim_neighborhood.area_sq_km}
+      - {kind: doc, ref: ingestion/geometry.py}
+      - {kind: measurement, ref: "spherical area error, about 0.3 percent",
+         measured: "2026-07-31", about: stg_spatial__boundary}
+
+  - id: disclose.freshness-tests-are-one-run-behind
+    applies_to: [duckdb, published, bigquery]
+    when: >
+      Any answer about test results or pipeline health read from
+      mart_pipeline_freshness.
+    state: >
+      The test columns describe the previous completed dbt run, not the run that
+      built the table, so any answer about test results from this mart is one
+      run stale.
+    why: >
+      dbt writes run results after models finish, so a run cannot report its own
+      outcome. On a first ever build the test columns are all zero. This cannot
+      be fixed by reordering.
+    evidence:
+      - {kind: column, ref: mart_pipeline_freshness.tests_total}
+      - {kind: column, ref: mart_pipeline_freshness.last_test_run_at}
+      - {kind: doc, ref: dbt/macros/audit_run_results.sql}
+
+# ---------------------------------------------------------------------------
+# Section 4.6. Traps: true of the data, and not refusals, because they do not
+# make a question unanswerable. Kept separate so the refusal list stays short
+# enough to be read. These are in the JSON and not in the compact markdown.
+# ---------------------------------------------------------------------------
+traps:
+
+  - id: trap.category-means-something-different-per-dataset
+    applies_to: [duckdb, published, bigquery]
+    state: >
+      Group by dataset whenever you group by category, or filter to one dataset
+      first. Never sum a category across datasets.
+    why: >
+      category is each dataset's own category dimension: service type for 311,
+      permit type for permits, licence description for businesses. The column
+      has one name and three vocabularies, so a group by category alone silently
+      pools three unrelated taxonomies.
+    evidence:
+      - {kind: column, ref: int_point_activity.category}
+      - {kind: column, ref: mart_activity_by_neighborhood.category}
+
+  - id: trap.h3-cells-are-bigints
+    applies_to: [duckdb, published, bigquery]
+    state: >
+      H3 cells are BIGINTs here, not the 15-character hexadecimal strings the
+      H3 documentation uses. Compare and join them as integers, and do not
+      expect an h3 function to exist in the warehouse.
+    why: >
+      Neither engine computes H3; both read precomputed BIGINTs from the derived
+      zone (ADR-5). BigQuery has no H3 function at all, so there is nothing to
+      dispatch to, and a cell id rendered as a string will match nothing.
+    evidence:
+      - {kind: adr, ref: adr-5}
+      - {kind: column, ref: mart_activity_by_h3.h3_cell}
+      - {kind: column, ref: stg_spatial__polygon_h3.h3_cell}
+
+  - id: trap.null-neighborhood-is-an-answer
+    applies_to: [duckdb, published, bigquery]
+    state: >
+      A null analysis_neighborhood means the row is outside every neighborhood,
+      which is a correct answer and not a missing value. It is water, just past
+      the city line, or a row with no usable coordinate; coordinate_status on
+      the staging models is what tells those apart.
+    why: >
+      Treating it as missing invites an inner join that drops the rows silently,
+      and the drop is not uniform: it falls on the bay, the edges of the city
+      and the registered businesses located elsewhere.
+    evidence:
+      - {kind: column, ref: int_point_activity.analysis_neighborhood}
+      - {kind: column, ref: stg_spatial__point_geography.coordinate_status}
+
+  - id: trap.staging-models-are-views-over-parquet
+    applies_to: [duckdb, bigquery]
+    state: >
+      Staging and intermediate models are views, and marts are tables. A query
+      against a staging model re-reads the raw zone every time, so prefer a mart
+      when one answers the question.
+    why: >
+      The layer materialisations are set in dbt_project.yml: views are cheap and
+      always fresh, which is right for a renaming layer and wrong for anything a
+      dashboard hits repeatedly.
+    evidence:
+      - {kind: model, ref: stg_datasf__311_cases}
+      - {kind: model, ref: int_point_activity}
+      - {kind: doc, ref: dbt/dbt_project.yml}
+
+# ---------------------------------------------------------------------------
+# Section 4.4. Joins that no dbt test declares. The ones a relationships test
+# does declare are derived from the manifest and must not be restated here; the
+# generator fails on a duplicate.
+# ---------------------------------------------------------------------------
+joins:
+
+  - id: join.film-upstream-neighborhood-is-dirty
+    applies_to: [duckdb, published, bigquery]
+    from: mart_film_locations.upstream_analysis_neighborhood
+    to: dim_neighborhood.analysis_neighborhood
+    "on": mart_film_locations.upstream_analysis_neighborhood = dim_neighborhood.analysis_neighborhood
+    cardinality: many to one
+    safe: false
+    why: >
+      The dirty join, and the worked example of the class. This is the
+      neighborhood DataSF stamped on the row, not the one computed here from
+      the coordinates. It will mostly match, which is what makes it dangerous:
+      the join succeeds and answers a different question. Join on
+      analysis_neighborhood instead.
+    evidence:
+      - {kind: column, ref: mart_film_locations.upstream_analysis_neighborhood}
+      - {kind: column, ref: mart_film_locations.analysis_neighborhood}
+
+  - id: join.upstream-district-is-dirty
+    applies_to: [duckdb, bigquery]
+    from: stg_datasf__311_cases.upstream_supervisor_district
+    to: dim_supervisor_district.supervisor_district
+    "on": stg_datasf__311_cases.upstream_supervisor_district = dim_supervisor_district.supervisor_district
+    cardinality: many to one
+    safe: false
+    why: >
+      The same shape of trap on the districts. The upstream column was assigned
+      when the row was published, under whichever boundaries were current then,
+      and the dimension is on the 2022 lines. Join on supervisor_district_id.
+    evidence:
+      - {kind: column, ref: stg_datasf__311_cases.upstream_supervisor_district}
+      - {kind: column, ref: stg_datasf__311_cases.supervisor_district_id}
+
+  - id: join.h3-bridge-label-a-cell
+    applies_to: [duckdb, bigquery]
+    from: mart_activity_by_h3.h3_cell
+    to: stg_spatial__polygon_h3.h3_cell
+    "on": >
+      mart_activity_by_h3.h3_cell = stg_spatial__polygon_h3.h3_cell
+      and stg_spatial__polygon_h3.resolution = mart_activity_by_h3.h3_resolution
+      and stg_spatial__polygon_h3.boundary_set = 'analysis_neighborhood'
+      and stg_spatial__polygon_h3.is_primary
+    cardinality: many to one, but only with is_primary in the join
+    safe: true
+    why: >
+      Three flags, each for a different job, and picking the wrong one is the
+      easiest mistake available here. is_primary: this boundary owns the cell,
+      at most one per cell, so the join cannot fan out. Use it to LABEL a cell.
+      is_interior: the cell is entirely inside. Plain membership with neither
+      flag fans every edge cell out into two or three rows and double counts
+      every event in it.
+    evidence:
+      - {kind: column, ref: stg_spatial__polygon_h3.is_primary}
+      - {kind: column, ref: stg_spatial__polygon_h3.is_interior}
+      - {kind: column, ref: mart_activity_by_h3.h3_resolution}
+
+  - id: join.h3-bridge-spread-a-measure
+    applies_to: [duckdb, bigquery]
+    from: stg_spatial__h3_population.h3_cell
+    to: stg_spatial__polygon_h3.h3_cell
+    "on": >
+      stg_spatial__h3_population.h3_cell = stg_spatial__polygon_h3.h3_cell
+      and stg_spatial__h3_population.resolution = stg_spatial__polygon_h3.resolution
+      and stg_spatial__polygon_h3.is_allocation_cell
+    cardinality: many to many by design, one row per boundary the cell serves
+    safe: true
+    why: >
+      The third flag, and the one that is not interchangeable with is_primary.
+      To SPREAD a measure such as population across boundaries, use
+      is_allocation_cell: is_primary keeps one boundary per cell and would
+      discard the losing boundaries and their residents with them.
+    evidence:
+      - {kind: column, ref: stg_spatial__polygon_h3.is_allocation_cell}
+      - {kind: column, ref: stg_spatial__h3_population.population}
+
+  - id: join.point-activity-to-neighborhood-dim
+    applies_to: [duckdb, bigquery]
+    from: int_point_activity.analysis_neighborhood
+    to: dim_neighborhood.analysis_neighborhood
+    "on": int_point_activity.analysis_neighborhood = dim_neighborhood.analysis_neighborhood
+    cardinality: many to one
+    safe: true
+    why: >
+      The spine to its denominators. Nulls do not match, which is correct and is
+      the exclusion the two-marts disclosure is about: the join silently drops
+      events that are outside every neighborhood.
+    evidence:
+      - {kind: column, ref: int_point_activity.analysis_neighborhood}
+      - {kind: column, ref: dim_neighborhood.population}
+
+  - id: join.h3-mart-to-district-dim
+    applies_to: [duckdb, published, bigquery]
+    from: mart_activity_by_h3.supervisor_district_id
+    to: dim_supervisor_district.supervisor_district_id
+    "on": mart_activity_by_h3.supervisor_district_id = dim_supervisor_district.supervisor_district_id
+    cardinality: many to one
+    safe: true
+    why: >
+      Join on the string id rather than on the integer district number: the
+      dimension carries both for exactly this reason, so neither side needs a
+      cast. The label is subject to the cell-membership disclosure.
+    evidence:
+      - {kind: column, ref: mart_activity_by_h3.supervisor_district_id}
+      - {kind: column, ref: dim_supervisor_district.supervisor_district_id}
+
+# ---------------------------------------------------------------------------
+# Section 4.7. Candidate examples. Every one is executed at generation time and
+# an error fails the build. `verified.sql_sha256` is the attestation that a
+# human ran it and read the result; editing the SQL without updating it fails
+# the build too.
+#
+# Every class 3 refusal must have at least one example here that demonstrates
+# its substitute, which is what makes the examples a consequence of the
+# refusals rather than a wishlist beside them.
+# ---------------------------------------------------------------------------
+examples:
+
+  - id: ex.reports-per-capita-by-neighborhood
+    applies_to: [duckdb]
+    question: >
+      Which neighborhoods report the most street cleaning per resident?
+    demonstrates: [refuse.rank-by-raw-count, refuse.311-measures-reporting-not-incidence]
+    sql: |
+      -- Reports per resident, not reports. The denominator is named in the
+      -- output so the answer cannot quietly drop it.
+      select
+          m.analysis_neighborhood,
+          sum(m.event_count) as reports,
+          d.population as residents_april_2020,
+          round(1000.0 * sum(m.event_count) / d.population, 1) as reports_per_1000_residents
+      from mart_activity_by_neighborhood as m
+      join dim_neighborhood as d
+          on m.analysis_neighborhood = d.analysis_neighborhood
+      where m.dataset = '311_cases'
+          and m.category = 'Street and Sidewalk Cleaning'
+          and d.population > 0
+      group by m.analysis_neighborhood, d.population
+      order by reports_per_1000_residents desc
+    verified:
+      sql_sha256: 20be5a70e09baa921d16a235c8c60d1a3b5729482a868b1283a1331775bd682e
+
+  - id: ex.h3-cells-ranked-by-rate
+    applies_to: [duckdb]
+    question: >
+      Which hexagons are noisier than their population explains?
+    demonstrates: [refuse.events-per-sq-km-on-the-h3-mart]
+    sql: |
+      -- Ranked by the rate that varies per cell. events_per_sq_km is the count
+      -- times a constant at fixed resolution and would return the same order as
+      -- event_count.
+      select
+          h3_cell,
+          analysis_neighborhood,
+          sum(event_count) as events,
+          round(max(cell_population), 1) as cell_population,
+          round(1000.0 * sum(event_count) / max(cell_population), 1)
+              as events_per_1000_residents
+      from mart_activity_by_h3
+      where dataset = '311_cases'
+          and cell_population > 0
+      group by h3_cell, analysis_neighborhood
+      order by events_per_1000_residents desc
+      limit 20
+    verified:
+      sql_sha256: 77a21fe11f69aa444422517b664135d6a3965897930c0a47e872f0b83494e02b
+
+  - id: ex.rate-with-denominator-vintage
+    applies_to: [duckdb]
+    question: >
+      What is the 311 rate per resident by neighborhood, with the denominator's
+      vintage stated?
+    demonstrates: [refuse.per-capita-divides-by-april-2020]
+    sql: |
+      -- The vintage is a column rather than a footnote: every row carries the
+      -- April 2020 denominator it was divided by, and the label travels with the
+      -- number into whatever reads this.
+      select
+          d.analysis_neighborhood,
+          'April 2020 Decennial Census' as denominator_vintage,
+          d.population as residents,
+          sum(m.event_count) as events,
+          round(1000.0 * sum(m.event_count) / d.population, 1) as events_per_1000_residents
+      from mart_activity_by_neighborhood as m
+      join dim_neighborhood as d
+          on m.analysis_neighborhood = d.analysis_neighborhood
+      where m.dataset = '311_cases'
+          and d.population > 0
+      group by d.analysis_neighborhood, d.population
+      order by events_per_1000_residents desc
+      limit 15
+    verified:
+      sql_sha256: 21e20dc93e8ffda20cbe8a16805e9ffa6b1fc1a678ea50fb590e707dd58e23de
+
+  - id: ex.lowest-rate-with-exclusions-counted
+    applies_to: [duckdb]
+    question: >
+      Which hexagons have the lowest 311 rate per resident, and how many were
+      excluded for having no residents?
+    demonstrates: [refuse.null-rate-is-not-a-low-rate]
+    sql: |
+      -- A lowest-rate question is only answerable alongside the count of areas
+      -- the question does not apply to, so that count is in every row.
+      with per_cell as (
+          select
+              h3_cell,
+              analysis_neighborhood,
+              sum(event_count) as events,
+              max(cell_population) as cell_population
+          from mart_activity_by_h3
+          where dataset = '311_cases'
+          group by h3_cell, analysis_neighborhood
+      )
+      select
+          h3_cell,
+          analysis_neighborhood,
+          events,
+          round(cell_population, 1) as cell_population,
+          round(1000.0 * events / cell_population, 1) as events_per_1000_residents,
+          (select count(*) from per_cell where coalesce(cell_population, 0) = 0)
+              as cells_excluded_no_residents,
+          (select count(*) from per_cell) as cells_total
+      from per_cell
+      where cell_population > 0
+      order by events_per_1000_residents asc, h3_cell
+      limit 10
+    verified:
+      sql_sha256: 51b046b4f9a793e3db971aa879fc8cbd33267920f7d6560cd1a0faa3985a06d4
+
+  - id: ex.permit-filings-per-month-by-type
+    applies_to: [duckdb]
+    question: >
+      How many building permits were filed per month, by permit type?
+    demonstrates: [refuse.permits-are-filings-not-construction]
+    sql: |
+      -- Filings, and labelled as filings. The activity spine dates a permit at
+      -- filing, so this is demand and not construction, and the newest month is
+      -- excluded because it is always partial.
+      select
+          date_trunc('month', filed_at) as filed_month,
+          permit_type,
+          count(*) as records_filed,
+          count(distinct permit_number) as permits_filed
+      from stg_datasf__building_permits
+      where filed_at >= timestamp '2025-01-01'
+          and date_trunc('month', filed_at)
+              < date_trunc('month', (select max(filed_at) from stg_datasf__building_permits))
+      group by filed_month, permit_type
+      order by filed_month desc, records_filed desc
+      limit 40
+    verified:
+      sql_sha256: 327ec311a7aea090dd9776a00d041bcedffb4acfec92441479663b46dcdf5011
+
+  - id: ex.distinct-businesses-by-neighborhood
+    applies_to: [duckdb]
+    question: >
+      How many businesses are registered in each neighborhood, counting
+      certificates rather than rows?
+    demonstrates: [refuse.business-registry-is-not-a-business-count]
+    sql: |
+      -- Three numbers because there are three answers: rows, certificates ever
+      -- registered, and certificates with no end date. Reporting one of them
+      -- alone is the failure this example exists for.
+      select
+          analysis_neighborhood,
+          count(*) as registry_rows,
+          count(distinct certificate_number) as certificates_ever,
+          count(distinct case when is_active then certificate_number end) as certificates_active
+      from stg_datasf__business_locations
+      where analysis_neighborhood is not null
+      group by analysis_neighborhood
+      order by certificates_active desc
+      limit 15
+    verified:
+      sql_sha256: 5849d81cdd3c16c385fbd64163fd26be8e195316e9062c9483708614a53a77ad

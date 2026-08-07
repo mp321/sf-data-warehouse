@@ -15,4 +15,12 @@ is the wrong way round: the tests should exercise the arrangement that runs.
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "ingestion"))
+REPO_ROOT = Path(__file__).resolve().parent.parent
+
+sys.path.insert(0, str(REPO_ROOT / "ingestion"))
+
+# tools/context_pack/ is the same arrangement for the same reason: a directory
+# of scripts whose entry point puts itself on sys.path at runtime. Its modules
+# are prefixed `pack_` so that adding this line cannot shadow anything, which
+# `ingestion/datasets.py` is the cautionary tale for; see ruff.toml.
+sys.path.insert(0, str(REPO_ROOT / "tools" / "context_pack"))

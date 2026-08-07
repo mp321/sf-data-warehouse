@@ -198,12 +198,20 @@ coverage on the geometry code, and a derived zone that records the code that
 built it and rebuilds only what has moved. See `docs/README.md` for the plan
 index and status.
 
+PLAN-7 closed later the same day. Both of its checks exist: `make check-runs`
+reconciles the raw zone's run manifests against the Parquet beside them, in CI
+and credential-free, and `make parity-columns` asserts the BigQuery
+external-table column sets against the zone.
+
 What is open:
 
-- Reconcile the run manifests against the data they claim to describe
-  (PLAN-7 step 1). Its sibling, asserting the BigQuery external-table column
-  sets, is done and is `make parity-columns`.
+- **The context pack (PLAN-6), and it is most of the way there.** A
+  model-agnostic artifact that lets any capable LLM query this warehouse
+  correctly and tells it what it must refuse to answer.
+  `docs/specs/context-pack.md` is the contract and was written before the
+  generator; `make context-pack` produces the DuckDB pack, with 20 refusals
+  sorted into three classes, 6 mandatory disclosures and 6 examples that are
+  executed at generation time or the build fails. What is left is CI, the
+  packs for the other two targets, and the ADR that closes the plan.
 - Per-boundary-set H3 resolution. The measurements in ADR-6 show block groups
   want a finer one and supervisor districts would be fine with a coarser one.
-- A model-agnostic context pack so any capable LLM can query this warehouse
-  correctly, and knows what it must refuse to answer (PLAN-6).

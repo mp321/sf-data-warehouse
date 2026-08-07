@@ -72,7 +72,7 @@ export DUCKDB_PATH := $(CURDIR)/$(DATA_DIR)/sf.duckdb
 .PHONY: help setup all ingest spatial load load-bigquery build build-bigquery \
         publish test test-python docs docs-serve lint fmt leak-check compile-duckdb \
         compile-bigquery ci-build rebuild clean clean-warehouse clean-derived check check-derived \
-        check-runs parity-check parity-columns
+        check-runs parity-check parity-columns context-pack context-pack-check
 
 # `make build` refuses to run against a derived zone that is behind the raw
 # zone. Set DERIVED_CHECK=0 to build anyway, which is worth doing only when you
@@ -227,6 +227,50 @@ PUBLISH_DEST ?=
 publish: ## Export marts to published/ as one Parquet file each with a manifest
 	$(PY) publish/export.py --all \
 		$(if $(PUBLISH_DEST),--destination $(PUBLISH_DEST),)
+
+# ---------------------------------------------------------------------------
+# The context pack: what a model must know about this warehouse, and what it
+# must refuse to answer (PLAN-6, docs/specs/context-pack.md).
+#
+# ONE PACK PER TARGET, and only the duckdb one is generated today. It needs no
+# credentials, so it is the one CI can gate on, which is the same constraint
+# ADR-1 put on the build. The published and bigquery targets are declared in
+# tools/context_pack/pack_target.py and are PLAN-6's remaining work.
+#
+# Both artifacts are COMMITTED, unlike everything else this repo generates.
+# That is the point of PLAN-6 step 4: a model change that moves the pack shows
+# up as a diff in the pull request rather than as a pack nobody regenerated.
+#
+# Generation reads the dbt manifest and the warehouse, so `make build` has to
+# have run. It fails, rather than warning, on a model with no grain sentence, a
+# refusal citing something this target does not have, an example query that
+# errors or whose SQL was edited without re-verification, and a markdown
+# rendering that cannot fit the budget with every refusal present.
+#
+# RUN IT AFTER `make build` AND NOT AFTER `make check`. The pack records the
+# dbt invocation in dbt/target/manifest.json as the build its numbers came
+# from, and `make ci-build` overwrites that manifest with the fixture build's
+# while leaving data/sf.duckdb alone. Generating in between produces a pack
+# whose row counts are the real warehouse's and whose invocation id is a
+# fixture run's. Nothing detects that, because comparing invocation ids in
+# context-pack-check would fail after every dbt run.
+#
+# TOKEN_BUDGET is the markdown budget in estimated tokens. The default is in
+# generate.py beside the measurement that chose it.
+# ---------------------------------------------------------------------------
+
+TOKEN_BUDGET ?=
+
+context-pack: ## Generate the DuckDB context pack into context-pack/
+	$(PY) tools/context_pack/generate.py --target duckdb \
+		$(if $(TOKEN_BUDGET),--token-budget $(TOKEN_BUDGET),)
+
+# The drift gate, and the thing to run before opening a pull request that
+# touched a model. Compares the committed pack's integrity block against the
+# live warehouse and exits 3 when they disagree. Row counts are not compared:
+# they move on every ingest, and a gate that fires daily gets switched off.
+context-pack-check: ## Does the committed pack still describe the warehouse? Nonzero if not.
+	$(PY) tools/context_pack/generate.py --target duckdb --check
 
 # compile renders every model to real SQL without touching a warehouse, which
 # is what catches engine-specific syntax that slipped past the cross_engine

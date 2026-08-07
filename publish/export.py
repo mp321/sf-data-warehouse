@@ -121,6 +121,14 @@ PUBLISHED_MARTS = {
 
 MANIFEST_NAME = "manifest.json"
 
+# One licence statement covers the whole export, and now the context pack as
+# well: PLAN-6's spec says the pack states the licence `publish/export.py`
+# already writes rather than a second one of its own, so this became a constant
+# when tools/context_pack/ started importing it. DataSF and the Census Bureau
+# are different publishers under the same public-domain terms, and the spec
+# records leaving the per-dataset distinction out.
+LICENSE = "Public domain. Source data from DataSF (data.sfgov.org) and the US Census Bureau."
+
 # Bumped when the layout or the manifest shape changes in a way a consumer
 # would notice. A consumer that pins this can refuse to read a newer export
 # rather than misreading it.
@@ -218,8 +226,7 @@ def write_manifest(entries: list[dict], root: Path) -> Path:
                 "manifest_version": MANIFEST_VERSION,
                 "generated_at": datetime.now(timezone.utc).isoformat(),
                 "source": "sf-data-warehouse",
-                "license": "Public domain. Source data from DataSF (data.sfgov.org) "
-                "and the US Census Bureau.",
+                "license": LICENSE,
                 "datasets": entries,
             },
             indent=2,

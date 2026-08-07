@@ -290,6 +290,20 @@ models:
         tests:
           - not_null
 
+      # Added 2026-08-06, PLAN-6 step 2. It had been in the SQL and in the
+      # unique_combination test below and missing from this file since the
+      # mart was written, so it was in the grain and undocumented at the same
+      # time. The context pack generator surfaced it by reporting every column
+      # with no description, which is what that warning is for.
+      - name: category
+        description: >
+          The dataset's own category dimension: service type for 311, permit
+          type for permits, licence description for businesses. Part of the
+          grain. One column name over three vocabularies, so grouping by it
+          without also grouping by dataset pools three unrelated taxonomies.
+        tests:
+          - not_null
+
       - name: event_month
         description: First day of the month. Part of the grain.
         tests:
@@ -306,6 +320,13 @@ models:
                 to: ref('dim_neighborhood')
                 field: analysis_neighborhood
 
+      - name: supervisor_district_id
+        description: >
+          The supervisor district owning this cell, as a string, on the 2022
+          boundaries. Null under the same rule as analysis_neighborhood. Join
+          to dim_supervisor_district on this rather than on the integer
+          district number, which is what the id exists for.
+
       - name: event_count
         description: Events in this cell, dataset, category and month.
         tests:
@@ -318,12 +339,29 @@ models:
           Interpolated residents in this cell. Null where the cell has no
           block group overlap at all, zero where it genuinely has nobody.
 
+      - name: cell_housing_units
+        description: >
+          Interpolated housing units in this cell, same method and same
+          caveat as cell_population, and null under the same condition.
+
+      - name: cell_area_sq_km
+        description: >
+          The H3 constant for this resolution, carried so a density can be
+          re-derived without another lookup. Identical on every row of a
+          build, which is exactly why events_per_sq_km ranks like the count.
+
       - name: events_per_1000_residents
         description: >
           The normalised companion, and the one to rank on. Null rather than
           infinite where the cell has no residents, which is correct and
           common: the bay, the Presidio and the Financial District all have
           real activity and close to nobody living in them.
+
+      - name: events_per_1000_housing_units
+        description: >
+          The same normalisation against dwellings rather than people. Useful
+          where the question is about the building stock; null where the cell
+          has no housing units, for the same reason as above.
 
       - name: events_per_sq_km
         description: >
@@ -390,10 +428,42 @@ models:
           - accepted_range:
               arguments: {min_value: 1}
 
+      # The four denominators the description above argues about, carried on
+      # every row so a rate can be re-derived or re-based without joining back
+      # to dim_neighborhood. Undocumented until PLAN-6 step 2, when the pack
+      # generator listed them as columns with no description.
+      - name: population
+        description: >
+          Interpolated 2020 residents in this neighborhood, from
+          dim_neighborhood. The denominator behind
+          events_per_1000_residents, and an April 2020 count regardless of
+          which month the events are from.
+
+      - name: housing_units
+        description: Interpolated 2020 housing units, the denominator behind the rate below.
+
+      - name: business_count
+        description: >
+          Registered business locations ever, the denominator behind
+          events_per_1000_businesses. Not the active count, which is the one
+          dim_neighborhood carries separately and which is less than half of
+          this.
+
+      - name: area_sq_km
+        description: >
+          Spherical land area. Unlike the H3 mart this genuinely differs per
+          row, which is what makes events_per_sq_km a real second measure
+          here and a rescaled count there.
+
       - name: events_per_1000_residents
         description: >
           The default normalised companion. Null where the neighborhood has
           no residents.
+
+      - name: events_per_1000_housing_units
+        description: >
+          The same normalisation against dwellings. Null where the
+          neighborhood has no housing units.
 
       - name: events_per_1000_businesses
         description: >

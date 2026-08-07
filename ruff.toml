@@ -78,6 +78,22 @@ known-first-party = [
     # sits beside in ingestion/, which reads as a dependency and is the exact
     # confusion this list exists to prevent.
     "load",
+    # tools/context_pack/, added 2026-08-06 with PLAN-6 step 2. Same
+    # arrangement as ingestion/: a directory of scripts whose entry point puts
+    # itself on sys.path, imported by tests/ through conftest.py. The modules
+    # are prefixed `pack_` precisely because of the hazard this list documents,
+    # since `profile` and `render` are names something else on sys.path can
+    # plausibly hold, and `profile` is in the standard library. `generate` and
+    # `export` are the two entry points and keep their plain names, on the same
+    # judgement as `load` above: generic, but with no arrival path in this
+    # dependency tree.
+    "export",
+    "generate",
+    "pack_inputs",
+    "pack_profile",
+    "pack_prose",
+    "pack_render",
+    "pack_target",
 ]
 
 [format]
