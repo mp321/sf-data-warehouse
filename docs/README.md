@@ -13,6 +13,7 @@ anything else in here.
 | PLAN-4 cloud-first-storage | done | Parquet raw zone in GCS, BigQuery on external tables and proven row for row against DuckDB, the CI cache step gone. Closed 2026-08-03 when `ingest.yml` went green on a runner against the bucket. Its residue is now homed: assurance items in PLAN-7, the publish object count in PLAN-5 step 12, the `dbt_dev` expiry question closed by measurement. |
 | PLAN-5 narrow-and-polish | done | Cut two datasets and one H3 resolution, one registry, pytest on the geometry code. Closed 2026-08-05 by step 13, the obsolescence sweep, which found the stale documents were USER-NOTES.md and SETUP.md rather than anything in the code. Recorded in ADR-10 (scope), ADR-11 (the derived zone's code stamp) and ADR-12 (the published layout). One Done-when box was resolved by judgement rather than met; the plan says which and why. |
 | PLAN-6 context-pack | done | The versioned context artifact with explicit refusal boundaries. Last, deliberately. Step 1 done 2026-08-05: `docs/specs/context-pack.md`, written before the generator, which answers the plan's open question as one pack per target. Steps 2 and 3 done 2026-08-06: `tools/context_pack/` generates the DuckDB pack and the four rules the spec says must fail the build fail it. Closed 2026-08-07 by step 4 and ADR-13: CI checks the committed pack against the fixture warehouse and generates nothing, because the only warehouse a credential-free runner can build has seven-row tables. Both open questions are settled in the ADR, and the second one amended the spec: the traps block is in the compact markdown, because a trap is a disclosure with no condition. Closed with one target of three; the other two are PLAN-8. |
+| **PLAN-9 raw-zone-retention** | **draft** | Bound what the two buckets accumulate. The only item in the project with a date attached: the raw prefix measured 511.9 MB over 329 objects on 2026-08-07 and reaches the free storage allowance between mid-September and early October. The growth is upstream republish events on a current-state registry, and the fix turns on one distinction, that snapshot datasets can be pruned when a later complete snapshot exists and delta datasets can never be. Carries the `--prune` the published uploader has always lacked. |
 | **PLAN-8 remaining-context-packs** | **active** | The `published` and `bigquery` packs. PLAN-6's residue, homed rather than carried. The published one is the point: the export is six marts and no staging models, so it is the first test of whether one prose file with `applies_to` beats three hand-kept documents. Starts with the audit already done, on the plan. |
 | PLAN-7 pipeline-assurance | done | Reconcile run manifests against the data; assert the BigQuery column sets against DuckDB's. PLAN-4 residue that had been carried forward three times. Closed 2026-08-05, both steps the same day. Step 2 was overtaken on the way: the column-set disagreement it was written to detect turned `make build-bigquery` red first, so `parity-check.py --columns` was built against a live defect. Step 1 is `ingestion/check_runs.py` and `make check-runs`, and it answered its own open question against the precedent: a separate file from `check_derived.py`, because the reader and the moment it runs are both different. |
 
@@ -43,18 +44,11 @@ superseding convention exists to prevent. If a future ADR changes only part of
 another, say so in the new ADR, add a note at the top of the old one pointing at
 it, and leave the old one active.
 
-`review-2026-07-31-scope-and-cloud.md` is an outside assessment that produced
-PLAN-4, PLAN-5 and PLAN-6. It is not one of the four kinds below and can be
-deleted once those plans are done. **All three are, as of 2026-08-07, so it is
-now deletable.** It is fully harvested, and carries a table at the top saying
-where each of its recommendations landed, so deleting it loses nothing recorded
-nowhere else. Left in place for one reader to confirm that; the deletion is a
-one-line commit whenever someone agrees.
-
-`handoff-prompt.md` was the fourth non-canonical file: the session prompts for
-work that had not run yet. It said it would delete itself when PLAN-6 closed,
-and it did, on 2026-08-07. There is no standing handoff document; a session that
-needs one writes it and the session that consumes it deletes it.
+**Everything in `docs/` is one of the four kinds below.** The two files that
+were not, the 2026-07-31 outside review and `handoff-prompt.md`, were deleted on
+2026-08-07 when PLAN-6 closed, which is the condition each of them named for its
+own deletion. Both are in git history. There is no standing handoff document: a
+session that needs one writes it, and the session that consumes it deletes it.
 
 ## The four kinds of document
 
