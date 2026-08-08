@@ -23,11 +23,15 @@
 # claims a target where they do not. An entry about a model that was cut fails
 # the build rather than sitting here reading plausibly.
 #
-# Only the duckdb target is generated today (PLAN-6 step 2). Entries carry
-# `published` and `bigquery` in `applies_to` where the spec says they hold, and
-# those claims are checked the day those targets are built. An entry that would
-# not resolve against the published target's six marts deliberately does not
-# claim it.
+# TWO TARGETS ARE GENERATED, duckdb and published, and a claim is only checked
+# against a target that gets generated. That is not a nicety: 12 entries carried
+# `published` in `applies_to` and could not resolve against its six marts, and
+# nothing said so until the published pack was built (PLAN-8, 2026-08-07). So a
+# `bigquery` claim here is an unchecked claim today, exactly as those 12 were.
+# An entry that would not resolve against a target deliberately does not claim
+# it, and where the refusal holds in both but the substitute does not, the entry
+# is split rather than hedged: a pack that hedges across surfaces is wrong about
+# whichever one the reader is holding (spec section 2).
 #
 # EDITING AN EXAMPLE MEANS RE-VERIFYING IT. Each example carries the sha256 of
 # the SQL a human executed and read the result of. Change the SQL and the build
@@ -119,16 +123,16 @@ refusals:
     why: >
       city_budget was ingested once and cut by ADR-10. The join anyone wants,
       spending against 311 demand, needs a crosswalk between budget department
-      codes and the agency 311 records, two independently maintained taxonomies
-      with no reason to agree.
+      codes and the agencies 311 routes work to, two independently maintained
+      taxonomies with no reason to agree.
     evidence:
       - {kind: adr, ref: adr-10}
-      - {kind: column, ref: stg_datasf__311_cases.agency}
+      - {kind: column, ref: mart_activity_by_neighborhood.category}
     instead:
       answer: >
-        Which agency 311 records as responsible for how many requests, by
-        category and neighborhood. That is a count of demand routed to an
-        agency, and it says nothing about what any of it cost.
+        How many requests were reported, by category, neighborhood and month.
+        That is a count of demand on the city, and it says nothing about what
+        any of it cost.
 
   - id: refuse.no-crime-data
     class: absent
@@ -169,7 +173,7 @@ refusals:
       a market.
     evidence:
       - {kind: column, ref: dim_neighborhood.housing_units}
-      - {kind: model, ref: stg_census__block_groups}
+      - {kind: adr, ref: adr-10}
     instead:
       answer: >
         Housing units per neighborhood from the 2020 Census, and building
@@ -232,14 +236,14 @@ refusals:
     evidence:
       - {kind: adr, ref: adr-6}
       - {kind: adr, ref: adr-2}
-      - {kind: model, ref: stg_spatial__polygon_h3}
+      - {kind: column, ref: mart_activity_by_h3.h3_cell}
     instead:
       answer: >
         Exact membership questions, which are answerable: which neighborhood or
-        supervisor district a row is in, and which H3 cells cover a boundary.
-        An H3 cell at resolution 8 is about 460 metres across, so "in the same
-        cell" is the nearest available thing to "nearby" and should be named as
-        such rather than converted to metres.
+        supervisor district a row is in, since that is a precomputed column
+        rather than a computation. An H3 cell at resolution 8 is about 460
+        metres across, so "in the same cell" is the nearest available thing to
+        "nearby" and should be named as such rather than converted to metres.
 
   - id: refuse.no-parcel-or-street-mile-rates
     class: absent
@@ -290,6 +294,105 @@ refusals:
         A window starting at the registry's start_date, stated in the answer.
         business_locations backfills fully and can be read further back, with
         the caveat in refuse.business-history-is-a-current-state-snapshot.
+
+  # -- Class 1, absent, and published only: "this is in the warehouse and not in
+  # this export". Spec section 2 commissions these and they are what make the
+  # published pack a different document rather than a shorter one. Each names
+  # one capability the warehouse has, says the export does not have it, and
+  # names what the six marts answer instead. They are class `absent` because the
+  # data genuinely is not in the artifact the reader is holding; that it exists
+  # elsewhere is a pointer, not a mitigation.
+
+  - id: refuse.export-has-no-row-level-records
+    class: absent
+    applies_to: [published]
+    question_shapes:
+      - list the 311 cases in the Mission last week
+      - show me the individual permits filed on this street
+      - which addresses have the most complaints
+      - how many distinct permits were filed, not records
+      - how many businesses are registered, counting certificates
+    rule: >
+      Do not answer questions that need one row per case, permit or business
+      registration. This export carries monthly aggregates and two dimension
+      tables. The only per-record model in it is mart_film_locations, which is
+      one row per shoot location.
+    why: >
+      The export is six marts written as one Parquet file each. 311 cases,
+      building permits and business registrations reach it only as counts per
+      neighborhood or per H3 cell, per dataset, category and month, so there is
+      no case number, no permit number, no certificate number and no address to
+      group by, filter on or count distinct.
+    evidence:
+      - {kind: adr, ref: adr-12}
+      - {kind: column, ref: mart_activity_by_neighborhood.event_count}
+      - {kind: column, ref: mart_activity_by_neighborhood.event_month}
+      - {kind: model, ref: mart_film_locations}
+    instead:
+      answer: >
+        Counts by neighborhood or cell, dataset, category and month, with the
+        rate beside the count. If the question genuinely needs a record, say
+        that this export cannot answer it and that the warehouse the export is
+        written from can.
+
+  - id: refuse.export-has-no-staging-or-intermediate-models
+    class: absent
+    applies_to: [published]
+    question_shapes:
+      - join this to the staging model
+      - recompute the monthly counts on the issue date instead
+      - deduplicate the underlying rows yourself
+      - group the raw events by something other than these columns
+    rule: >
+      Do not write a query against a staging or intermediate model. None of them
+      is in this export, and the aggregates here cannot be recomputed on a
+      different basis from what is in the files.
+    why: >
+      The warehouse has a staging view per source and one intermediate event
+      spine, and the marts are built from them with the grain, the date basis
+      and the geography already chosen. This export is the marts. A different
+      choice of any of the three is a rebuild of the warehouse rather than a
+      different query here.
+    evidence:
+      - {kind: adr, ref: adr-8}
+      - {kind: adr, ref: adr-12}
+      - {kind: column, ref: mart_activity_by_neighborhood.dataset}
+    instead:
+      answer: >
+        Answer from the marts on the basis they were built with, and state that
+        basis in the answer: counts per month by dataset and category, dated the
+        way the mart dates them. If a different basis is required, say the
+        export cannot provide it.
+
+  - id: refuse.export-has-no-h3-bridge
+    class: absent
+    applies_to: [published]
+    question_shapes:
+      - which cells fall in this neighborhood
+      - relabel these cells by supervisor district
+      - spread population across the cells of a district
+      - which cells does this boundary cover
+    rule: >
+      Do not attempt to relabel an H3 cell or to allocate a measure across
+      cells. The cell-to-boundary bridge is not in this export, and the labels
+      on mart_activity_by_h3 are the only ones available.
+    why: >
+      In the warehouse a bridge table maps every cell to the boundaries it
+      touches, with three flags for labelling, interior membership and
+      allocation. This export carries the result of that join and not the join:
+      analysis_neighborhood and supervisor_district_id on the H3 mart are the
+      labelling flag already applied, and cell_population is the allocation
+      already done. There is no flag here to choose differently with.
+    evidence:
+      - {kind: column, ref: mart_activity_by_h3.analysis_neighborhood}
+      - {kind: column, ref: mart_activity_by_h3.supervisor_district_id}
+      - {kind: column, ref: mart_activity_by_h3.cell_population}
+      - {kind: adr, ref: adr-5}
+    instead:
+      answer: >
+        Use the labels the H3 mart carries, subject to
+        disclose.h3-mart-neighborhood-labels-are-approximate, and prefer
+        mart_activity_by_neighborhood when both marts can answer the question.
 
   # -- Class 2, mismeasured. The ones a model will answer happily and wrongly,
   # so they get the most care.
@@ -350,9 +453,12 @@ refusals:
         residents reported, with the label attached.
       example: ex.reports-per-capita-by-neighborhood
 
+  # Not published: every substitute this entry offers is a staging model, so the
+  # export gets its own version of the same mismeasurement below, with the
+  # substitute the export can actually serve.
   - id: refuse.permits-are-filings-not-construction
     class: mismeasured
-    applies_to: [duckdb, published, bigquery]
+    applies_to: [duckdb, bigquery]
     question_shapes:
       - how much construction is happening in the Mission
       - is building activity going up
@@ -384,9 +490,11 @@ refusals:
         do not do.
       example: ex.permit-filings-per-month-by-type
 
+  # Not published, for the same reason: counting distinct certificates needs the
+  # staging model. See refuse.export-counts-registrations-not-businesses.
   - id: refuse.business-registry-is-not-a-business-count
     class: mismeasured
-    applies_to: [duckdb, published, bigquery]
+    applies_to: [duckdb, bigquery]
     question_shapes:
       - how many businesses are in the Mission
       - which neighborhood has the most restaurants
@@ -418,7 +526,7 @@ refusals:
 
   - id: refuse.business-history-is-a-current-state-snapshot
     class: mismeasured
-    applies_to: [duckdb, published, bigquery]
+    applies_to: [duckdb, bigquery]
     question_shapes:
       - how many businesses existed in San Francisco in 1950
       - show business openings since 1900
@@ -519,6 +627,77 @@ refusals:
       answer: >
         Join on supervisor_district_id, which is what dim_supervisor_district
         keys on, and state that districts are on the 2022 lines throughout.
+
+  # -- Class 2, mismeasured, and published only. The same two mismeasurements
+  # the warehouse pack carries, with the substitute the export can serve: there,
+  # the answer is a different query against a staging model, and here there is
+  # no staging model to send anyone to.
+
+  - id: refuse.export-counts-permit-records-at-filing
+    class: mismeasured
+    applies_to: [published]
+    question_shapes:
+      - how much construction is happening in the Mission
+      - is building activity going up
+      - how many permits were issued last year
+      - how many permits were filed in this neighborhood
+    rule: >
+      Do not answer construction or permit-count questions from this export.
+      The building_permits rows here count permit records dated at filing, and
+      the export holds no permit number to deduplicate them and no issue date to
+      date them by. Answer about records filed, labelled as such, or refuse.
+    why: >
+      A permit is filed as several records, since revisions and addenda file
+      separately under one permit number, so a count of records is not a count
+      of permits. Filing is also not issuing and neither is building: a filed
+      permit may never be issued and an issued one may never be built. In the
+      warehouse both of those are answerable with a different query. Here
+      neither is, because the deduplicating column and the issue date are
+      upstream of this export.
+    evidence:
+      - {kind: adr, ref: adr-12}
+      - {kind: column, ref: mart_activity_by_neighborhood.dataset}
+      - {kind: column, ref: mart_activity_by_neighborhood.category}
+      - {kind: column, ref: mart_activity_by_neighborhood.event_count}
+    instead:
+      answer: >
+        Permit records filed per month by category, which is the permit type,
+        labelled as records filed rather than as permits or as construction. Say
+        that this export cannot count distinct permits.
+
+  - id: refuse.export-counts-registrations-not-businesses
+    class: mismeasured
+    applies_to: [published]
+    question_shapes:
+      - how many businesses are in the Mission
+      - which neighborhood has the most restaurants
+      - how many businesses opened last year
+      - show business openings since 1900
+      - was the city more commercial before the war
+    rule: >
+      Do not read the business_locations rows of the activity marts as a count
+      of businesses, and do not plot them as a historical series. Use the
+      business counts on the dimension tables for a number of businesses, and
+      say the early months are survivorship rather than history.
+    why: >
+      Those rows count registry records dated by when each location opened, and
+      one business accumulates records by moving or changing hands. The export
+      has no certificate number to count distinct with. The same column is why
+      the series runs back to the nineteenth century: it is the set of locations
+      the registry holds today, dated backwards, so the far end is whatever the
+      city still keeps rather than what existed at the time.
+    evidence:
+      - {kind: column, ref: mart_activity_by_neighborhood.event_month}
+      - {kind: column, ref: dim_neighborhood.business_count}
+      - {kind: column, ref: dim_neighborhood.active_business_count}
+      - {kind: measurement, ref: "coordinates outside San Francisco, 18.27 percent of
+         business registry rows", measured: "2026-07-31", about: mart_pipeline_freshness}
+    instead:
+      answer: >
+        dim_neighborhood.business_count and active_business_count for how many
+        businesses, which differ by more than half, so state which one a rate
+        divides by. For a series, restrict the window to recent years and say
+        the registry is a current-state snapshot.
 
   # -- Class 3, misnormalised. The measure is right. The arithmetic is the
   # problem, so these refuse a form of answer rather than a question, and each
@@ -675,8 +854,8 @@ disclosures:
     applies_to: [duckdb, published, bigquery]
     when: >
       Any answer that gives a total from mart_activity_by_neighborhood, or that
-      compares a total from it against one from the H3 mart or from
-      int_point_activity.
+      compares a total from it against one from the H3 mart or from the event
+      spine the two marts are built from.
     state: >
       State which universe the total is over. mart_activity_by_neighborhood
       excludes events outside every neighborhood rather than bucketing them
@@ -689,7 +868,7 @@ disclosures:
       measurement error.
     evidence:
       - {kind: model, ref: mart_activity_by_neighborhood}
-      - {kind: model, ref: int_point_activity}
+      - {kind: model, ref: mart_activity_by_h3}
       - {kind: column, ref: mart_activity_by_h3.analysis_neighborhood}
 
   - id: disclose.coordinate-drop-rates
@@ -703,13 +882,13 @@ disclosures:
       high because the registry records businesses located outside San
       Francisco, which is correct data rather than dirty data.
     why: >
-      Rows with no usable coordinate are kept with null geography, so they exist
-      in the staging models and vanish from any grouping by geography. A
-      grouped total is therefore not the model's row count, and the gap is
+      Rows with no usable coordinate are kept with null geography upstream, so
+      they exist in the source and vanish from any grouping by geography. A
+      grouped total is therefore not the source's row count, and the gap is
       large enough on one dataset to change an answer.
     evidence:
       - {kind: column, ref: mart_pipeline_freshness.coordinate_drop_rate_pct}
-      - {kind: column, ref: stg_datasf__business_locations.coordinate_status}
+      - {kind: column, ref: mart_pipeline_freshness.point_count}
       - {kind: measurement, ref: "coordinate drop rate per source", measured: "2026-07-31",
          about: mart_pipeline_freshness}
 
@@ -737,6 +916,35 @@ disclosures:
       - {kind: model, ref: stg_spatial__h3_population}
       - {kind: column, ref: dim_neighborhood.population}
 
+  # Published only, and the counterpart of disclose.population-is-interpolated-twice
+  # above. That entry is about choosing the right flag on the bridge, which the
+  # export does not carry; this one is the half of it a reader of the export can
+  # act on, because cell_population and every rate built on it are in these files.
+  - id: disclose.export-cell-population-is-interpolated
+    applies_to: [published]
+    when: >
+      Any answer using mart_activity_by_h3.cell_population, or a per-capita rate
+      computed from it.
+    state: >
+      A cell's population is interpolated twice and is not a census count:
+      residents are assumed spread evenly within a census block group, and the
+      share falling in each H3 cell is allocated from there. Treat it as an
+      estimate good to about a percent in aggregate and not as a population of
+      that hexagon, and never report it for a single cell as though it were
+      measured.
+    why: >
+      The Census publishes population by block group. Block groups do not nest
+      inside neighborhoods or inside hexagons, so this project spreads block
+      group population over the cells each one covers rather than clipping
+      polygons. The neighborhood denominators in dim_neighborhood are the same
+      arithmetic summed back up, which is why a rate from the neighborhood mart
+      is the more defensible of the two.
+    evidence:
+      - {kind: column, ref: mart_activity_by_h3.cell_population}
+      - {kind: column, ref: mart_activity_by_h3.events_per_1000_residents}
+      - {kind: column, ref: dim_neighborhood.population}
+      - {kind: adr, ref: adr-6}
+
   - id: disclose.areas-are-spherical-and-two-are-enormous
     applies_to: [duckdb, published, bigquery]
     when: >
@@ -759,7 +967,7 @@ disclosures:
       - {kind: column, ref: dim_neighborhood.area_sq_km}
       - {kind: doc, ref: ingestion/geometry.py}
       - {kind: measurement, ref: "spherical area error, about 0.3 percent",
-         measured: "2026-07-31", about: stg_spatial__boundary}
+         measured: "2026-07-31", about: dim_neighborhood}
 
   - id: disclose.freshness-tests-are-one-run-behind
     applies_to: [duckdb, published, bigquery]
@@ -797,8 +1005,9 @@ traps:
       has one name and three vocabularies, so a group by category alone silently
       pools three unrelated taxonomies.
     evidence:
-      - {kind: column, ref: int_point_activity.category}
+      - {kind: column, ref: mart_activity_by_h3.category}
       - {kind: column, ref: mart_activity_by_neighborhood.category}
+      - {kind: column, ref: mart_activity_by_neighborhood.dataset}
 
   - id: trap.h3-cells-are-bigints
     applies_to: [duckdb, published, bigquery]
@@ -813,22 +1022,23 @@ traps:
     evidence:
       - {kind: adr, ref: adr-5}
       - {kind: column, ref: mart_activity_by_h3.h3_cell}
-      - {kind: column, ref: stg_spatial__polygon_h3.h3_cell}
+      - {kind: column, ref: mart_activity_by_h3.h3_resolution}
 
   - id: trap.null-neighborhood-is-an-answer
     applies_to: [duckdb, published, bigquery]
     state: >
       A null analysis_neighborhood means the row is outside every neighborhood,
       which is a correct answer and not a missing value. It is water, just past
-      the city line, or a row with no usable coordinate; coordinate_status on
-      the staging models is what tells those apart.
+      the city line, or a row with no usable coordinate, and
+      disclose.coordinate-drop-rates says how many of the last kind there are
+      per source.
     why: >
       Treating it as missing invites an inner join that drops the rows silently,
       and the drop is not uniform: it falls on the bay, the edges of the city
       and the registered businesses located elsewhere.
     evidence:
-      - {kind: column, ref: int_point_activity.analysis_neighborhood}
-      - {kind: column, ref: stg_spatial__point_geography.coordinate_status}
+      - {kind: column, ref: mart_activity_by_h3.analysis_neighborhood}
+      - {kind: column, ref: mart_film_locations.analysis_neighborhood}
 
   - id: trap.staging-models-are-views-over-parquet
     applies_to: [duckdb, bigquery]
@@ -1125,3 +1335,145 @@ examples:
       limit 15
     verified:
       sql_sha256: 5849d81cdd3c16c385fbd64163fd26be8e195316e9062c9483708614a53a77ad
+
+  # -- Published only, and none of them inherited. An example is verified
+  # against the target whose pack it appears in and nowhere else (spec 4.7 rule
+  # 1), so these four were written over the export's Parquet, executed against
+  # it, and their results read before the hashes below were stamped. Three of
+  # the four ask the same questions as the duckdb examples above and none of
+  # them is the same query: the marts carry their own denominators here, so the
+  # joins are gone, and two of them answer in a shape the warehouse versions do
+  # not because the export is what a consumer has.
+
+  - id: ex.export-reports-per-capita-by-neighborhood
+    applies_to: [published]
+    question: >
+      Which neighborhoods report the most street cleaning per resident, and does
+      the answer hold when the denominator changes?
+    demonstrates: [refuse.rank-by-raw-count, refuse.311-measures-reporting-not-incidence,
+      refuse.311-is-not-a-safety-measure]
+    sql: |
+      -- Reports per resident, not reports, and the second denominator beside the
+      -- first because they disagree on purpose. The export needs no join for this:
+      -- mart_activity_by_neighborhood carries its own denominators.
+      select
+          analysis_neighborhood,
+          sum(event_count) as reports,
+          max(population) as residents_april_2020,
+          max(business_count) as businesses,
+          round(1000.0 * sum(event_count) / max(population), 1) as reports_per_1000_residents,
+          round(1000.0 * sum(event_count) / max(business_count), 1) as reports_per_1000_businesses
+      from mart_activity_by_neighborhood
+      where dataset = '311_cases'
+          and category = 'Street and Sidewalk Cleaning'
+          and population > 0
+          and business_count > 0
+      group by analysis_neighborhood
+      order by reports_per_1000_residents desc
+      limit 15
+    verified:
+      sql_sha256: 0437e724da7d696dd7a322dd7b4d45f465ef49a2193be3fac79a54fa5eced7cd
+
+  - id: ex.export-h3-cells-ranked-by-rate
+    applies_to: [published]
+    question: >
+      Which hexagons are noisier than their population explains?
+    demonstrates: [refuse.events-per-sq-km-on-the-h3-mart]
+    sql: |
+      -- The refusal made checkable in one result set. Ranking cells by
+      -- events_per_sq_km returns the count's order exactly, because every cell at a
+      -- fixed resolution has the same area; the per-resident rate does not.
+      with per_cell as (
+          select
+              h3_cell,
+              analysis_neighborhood,
+              sum(event_count) as events,
+              max(cell_area_sq_km) as cell_area_sq_km,
+              max(cell_population) as cell_population
+          from mart_activity_by_h3
+          where dataset = '311_cases'
+              and cell_population > 0
+          group by h3_cell, analysis_neighborhood
+      )
+      select
+          h3_cell,
+          analysis_neighborhood,
+          events,
+          rank() over (order by events desc) as rank_by_count,
+          rank() over (order by events / cell_area_sq_km desc) as rank_by_events_per_sq_km,
+          round(1000.0 * events / cell_population, 1) as events_per_1000_residents,
+          rank() over (order by events / cell_population desc) as rank_by_rate
+      from per_cell
+      order by events_per_1000_residents desc
+      limit 12
+    verified:
+      sql_sha256: 96b99d0667233c6fc8373ff72abec031aa10bd0b988c44447fe9b06c59a3a94b
+
+  - id: ex.export-rate-with-denominator-vintage
+    applies_to: [published]
+    question: >
+      What is the 311 rate per resident by neighborhood, with the denominator's
+      vintage stated?
+    demonstrates: [refuse.per-capita-divides-by-april-2020]
+    sql: |
+      -- The vintage is a column, and so is the window it divides, because the two do
+      -- not match: April 2020 residents under events from 2024 onward. Anything
+      -- reading this result can see the gap without being told about it separately.
+      select
+          analysis_neighborhood,
+          'April 2020 Decennial Census' as denominator_vintage,
+          max(population) as residents,
+          min(event_month) as first_event_month,
+          max(event_month) as last_event_month,
+          sum(event_count) as events,
+          round(1000.0 * sum(event_count) / max(population), 1) as events_per_1000_residents
+      from mart_activity_by_neighborhood
+      where dataset = '311_cases'
+          and population > 0
+      group by analysis_neighborhood
+      order by events_per_1000_residents desc
+      limit 12
+    verified:
+      sql_sha256: d67e2f29f7a9600435bccbb428c08de5b503641d7052d050906f871b8309cfd7
+
+  - id: ex.export-lowest-rate-with-exclusions-counted
+    applies_to: [published]
+    question: >
+      Which hexagons have the lowest 311 rate per resident, and how many were
+      excluded for having no residents?
+    demonstrates: [refuse.null-rate-is-not-a-low-rate]
+    sql: |
+      -- A lowest-rate answer is only honest alongside the number of areas the
+      -- question does not apply to, so that count rides in every row rather than in a
+      -- caveat. Cells with no residents are excluded and counted, never read as zero.
+      with per_cell as (
+          select
+              h3_cell,
+              analysis_neighborhood,
+              sum(event_count) as events,
+              max(cell_population) as cell_population
+          from mart_activity_by_h3
+          where dataset = '311_cases'
+          group by h3_cell, analysis_neighborhood
+      ),
+      counted as (
+          select
+              count(*) as cells_total,
+              count(*) filter (where coalesce(cell_population, 0) = 0) as cells_excluded_no_residents
+          from per_cell
+      )
+      select
+          p.h3_cell,
+          p.analysis_neighborhood,
+          p.events,
+          round(p.cell_population, 1) as cell_population,
+          round(1000.0 * p.events / p.cell_population, 1) as events_per_1000_residents,
+          c.cells_excluded_no_residents,
+          c.cells_total
+      from per_cell as p
+      cross join counted as c
+      where p.cell_population > 0
+      order by events_per_1000_residents asc, p.h3_cell
+      limit 10
+    verified:
+      sql_sha256: 326a6e803ca0e284accf2f92631d099d6bc30f970018836735a2cf9224e4eb85

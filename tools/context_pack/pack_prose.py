@@ -351,6 +351,48 @@ def check_join_duplication(prose_joins: list[dict], derived_joins: list[dict]) -
         )
 
 
+def point_at_this_target_examples(refusals: list[dict], examples: list[dict]) -> list[dict]:
+    """A refusal names an example that is in the same pack, or names none.
+
+    `instead.example` is written once in prose and every target reads it, but an
+    example belongs to exactly one target (spec 4.7 rule 1), so the id a refusal
+    names is usually another pack's. A published pack telling a reader to "see
+    example ex.reports-per-capita-by-neighborhood" when no such example is in it
+    is the closed-world rule broken by the pack itself.
+
+    So a pointer that this pack carries is left alone, one that it does not is
+    rewritten to an example here that demonstrates this refusal, and one with no
+    such example is dropped. The first case is the common one and matters: an
+    author can point a refusal at an example that demonstrates a neighbouring
+    refusal, and rewriting that to "the example that demonstrates this one"
+    would quietly overrule them.
+
+    Nothing here can hide a missing example: `check_class_three_examples` has
+    already failed the build for a class 3 refusal with nothing demonstrating
+    it, and this runs after it.
+    """
+    present = {example["id"] for example in examples}
+    by_refusal: dict[str, str] = {}
+    for example in examples:
+        for refusal_id in example.get("demonstrates") or []:
+            by_refusal.setdefault(refusal_id, example["id"])
+
+    rewritten = []
+    for entry in refusals:
+        named = (entry.get("instead") or {}).get("example")
+        if not named or named in present:
+            rewritten.append(entry)
+            continue
+        instead = dict(entry["instead"])
+        substitute = by_refusal.get(entry["id"])
+        if substitute:
+            instead["example"] = substitute
+        else:
+            instead.pop("example", None)
+        rewritten.append({**entry, "instead": instead})
+    return rewritten
+
+
 def check_class_three_examples(refusals: list[dict], examples: list[dict]) -> None:
     """Every class 3 refusal must have a rendered example (section 4.7, rule 3).
 

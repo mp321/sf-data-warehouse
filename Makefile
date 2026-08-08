@@ -265,10 +265,20 @@ publish: ## Export marts to published/ as one Parquet file each with a manifest
 # The context pack: what a model must know about this warehouse, and what it
 # must refuse to answer (PLAN-6, docs/specs/context-pack.md).
 #
-# ONE PACK PER TARGET, and only the duckdb one is generated today. It needs no
-# credentials, so it is the one CI can gate on, which is the same constraint
-# ADR-1 put on the build. The published and bigquery targets are declared in
-# tools/context_pack/pack_target.py and are PLAN-6's remaining work.
+# ONE PACK PER TARGET, TWO OF THEM GENERATED, AND ONE TARGET HERE WITH A
+# VARIABLE. `make context-pack` is the duckdb pack and
+# `make context-pack TARGET=published` is the export's; the same variable works
+# on the check. That is PLAN-8's first open question, answered once the second
+# pack existed rather than before (2026-08-07): the two commands are the same
+# command apart from the target name, and what differs between them is which
+# artifact has to exist first, which generate.py already refuses with the right
+# sentence when it does not. A target per pack would have meant two copies of
+# the comment below, and that comment is the part that must not drift.
+#
+# The published pack reads $PUBLISH_DIR rather than the warehouse, so it needs
+# `make publish` and not `make build`. Neither needs credentials, which is what
+# lets CI check both; bigquery is declared in pack_target.py, needs credentials,
+# has no schema hash, and is PLAN-8 step 6.
 #
 # Both artifacts are COMMITTED, unlike everything else this repo generates.
 # That is the point of PLAN-6 step 4: a model change that moves the pack shows
@@ -293,17 +303,18 @@ publish: ## Export marts to published/ as one Parquet file each with a manifest
 # ---------------------------------------------------------------------------
 
 TOKEN_BUDGET ?=
+TARGET ?= duckdb
 
-context-pack: ## Generate the DuckDB context pack into context-pack/
-	$(PY) tools/context_pack/generate.py --target duckdb \
+context-pack: ## Generate the TARGET context pack (duckdb or published) into context-pack/
+	$(PY) tools/context_pack/generate.py --target $(TARGET) \
 		$(if $(TOKEN_BUDGET),--token-budget $(TOKEN_BUDGET),)
 
 # The drift gate, and the thing to run before opening a pull request that
 # touched a model. Compares the committed pack's integrity block against the
 # live warehouse and exits 3 when they disagree. Row counts are not compared:
 # they move on every ingest, and a gate that fires daily gets switched off.
-context-pack-check: ## Does the committed pack still describe the warehouse? Nonzero if not.
-	$(PY) tools/context_pack/generate.py --target duckdb --check
+context-pack-check: ## Does the committed TARGET pack still describe its target? Nonzero if not.
+	$(PY) tools/context_pack/generate.py --target $(TARGET) --check
 
 # compile renders every model to real SQL without touching a warehouse, which
 # is what catches engine-specific syntax that slipped past the cross_engine

@@ -1,7 +1,7 @@
 # sf-data-warehouse context pack, target duckdb
 
 An analytics warehouse over seven public San Francisco datasets, modelled with dbt into staging views, one intermediate model and six marts, in which every geography is precomputed rather than computed at query time.
-Target `duckdb`, 19 models, generated 2026-08-07T22:37:55+00:00, prose revision `518a947af4686986`, spec 2026-08-07, pack 1.0.0.
+Target `duckdb`, 19 models, generated 2026-08-08T03:09:56+00:00, prose revision `64e423921de52c85`, spec 2026-08-07, pack 1.0.0.
 Publisher DataSF and the US Census Bureau, modelled here, jurisdiction San Francisco, California. Public domain. Source data from DataSF (data.sfgov.org) and the US Census Bureau.
 
 ## How to read this pack
@@ -25,9 +25,9 @@ The exception is census_block_groups, which is a census, of population and housi
 
 **Rule.** Do not answer questions about city spending, budgets or department costs. There is no budget data in this warehouse.
 
-Why: city_budget was ingested once and cut by ADR-10. The join anyone wants, spending against 311 demand, needs a crosswalk between budget department codes and the agency 311 records, two independently maintained taxonomies with no reason to agree.
-Instead: Which agency 311 records as responsible for how many requests, by category and neighborhood. That is a count of demand routed to an agency, and it says nothing about what any of it cost.
-Evidence: ADR-10; column stg_datasf__311_cases.agency
+Why: city_budget was ingested once and cut by ADR-10. The join anyone wants, spending against 311 demand, needs a crosswalk between budget department codes and the agencies 311 routes work to, two independently maintained taxonomies with no reason to agree.
+Instead: How many requests were reported, by category, neighborhood and month. That is a count of demand on the city, and it says nothing about what any of it cost.
+Evidence: ADR-10; column mart_activity_by_neighborhood.category
 
 ### refuse.no-crime-data (absent)
 
@@ -52,7 +52,7 @@ Evidence: ADR-10; model mart_activity_by_neighborhood
 
 Why: Never in the registry. The only housing measure in this warehouse is the 2020 Census count of housing units, which is a stock of dwellings and not a market.
 Instead: Housing units per neighborhood from the 2020 Census, and building permit filings by type over time, both labelled for what they are.
-Evidence: column dim_neighborhood.housing_units; model stg_census__block_groups
+Evidence: column dim_neighborhood.housing_units; ADR-10
 
 ### refuse.no-transit-or-collision-data (absent)
 
@@ -88,8 +88,8 @@ Evidence: ADR-10
 **Rule.** Do not answer questions requiring distance, travel time, routing, buffers or nearest-neighbour search. There is no geometry engine in this warehouse to ask, on either engine.
 
 Why: No geometry at query time (ADR-6, and ADR-2 said it first). Boundary membership is a precomputed column and cell coverage is an integer join. No model carries a geometry type, no ST_ function exists here, and no spatial extension is loaded.
-Instead: Exact membership questions, which are answerable: which neighborhood or supervisor district a row is in, and which H3 cells cover a boundary. An H3 cell at resolution 8 is about 460 metres across, so "in the same cell" is the nearest available thing to "nearby" and should be named as such rather than converted to metres.
-Evidence: ADR-6; ADR-2; model stg_spatial__polygon_h3
+Instead: Exact membership questions, which are answerable: which neighborhood or supervisor district a row is in, since that is a precomputed column rather than a computation. An H3 cell at resolution 8 is about 460 metres across, so "in the same cell" is the nearest available thing to "nearby" and should be named as such rather than converted to metres.
+Evidence: ADR-6; ADR-2; column mart_activity_by_h3.h3_cell
 
 ### refuse.no-parcel-or-street-mile-rates (absent)
 
@@ -282,17 +282,17 @@ Evidence: ADR-6; model mart_activity_by_h3; model mart_activity_by_neighborhood;
 
 ### disclose.the-two-marts-have-different-totals
 
-When: Any answer that gives a total from mart_activity_by_neighborhood, or that compares a total from it against one from the H3 mart or from int_point_activity.
+When: Any answer that gives a total from mart_activity_by_neighborhood, or that compares a total from it against one from the H3 mart or from the event spine the two marts are built from.
 **State.** State which universe the total is over. mart_activity_by_neighborhood excludes events outside every neighborhood rather than bucketing them into an Unknown row, so its total is lower than the underlying event spine's and is exactly the sum of its neighborhoods.
 Why: Two marts over the same events differ for two unrelated reasons: this one, and the cell-labelling error in the disclosure above. Reporting a difference without separating them attributes an exclusion rule to a measurement error.
-Evidence: model mart_activity_by_neighborhood; model int_point_activity; column mart_activity_by_h3.analysis_neighborhood
+Evidence: model mart_activity_by_neighborhood; model mart_activity_by_h3; column mart_activity_by_h3.analysis_neighborhood
 
 ### disclose.coordinate-drop-rates
 
 When: Any answer that totals or ranks by geography, for any dataset.
 **State.** Totals by geography are short by the rows that could not be placed on a map. Measured as the share of each source: 311 1.20 percent, building permits 0.12, film locations 3.93, business locations 18.27. The last is high because the registry records businesses located outside San Francisco, which is correct data rather than dirty data.
-Why: Rows with no usable coordinate are kept with null geography, so they exist in the staging models and vanish from any grouping by geography. A grouped total is therefore not the model's row count, and the gap is large enough on one dataset to change an answer.
-Evidence: column mart_pipeline_freshness.coordinate_drop_rate_pct; column stg_datasf__business_locations.coordinate_status; coordinate drop rate per source (measured 2026-07-31)
+Why: Rows with no usable coordinate are kept with null geography upstream, so they exist in the source and vanish from any grouping by geography. A grouped total is therefore not the source's row count, and the gap is large enough on one dataset to change an answer.
+Evidence: column mart_pipeline_freshness.coordinate_drop_rate_pct; column mart_pipeline_freshness.point_count; coordinate drop rate per source (measured 2026-07-31)
 
 ### disclose.population-is-interpolated-twice
 
@@ -323,19 +323,19 @@ True of the data and not refusals: the question is answerable and the obvious qu
 
 **State.** Group by dataset whenever you group by category, or filter to one dataset first. Never sum a category across datasets.
 Why: category is each dataset's own category dimension: service type for 311, permit type for permits, licence description for businesses. The column has one name and three vocabularies, so a group by category alone silently pools three unrelated taxonomies.
-Evidence: column int_point_activity.category; column mart_activity_by_neighborhood.category
+Evidence: column mart_activity_by_h3.category; column mart_activity_by_neighborhood.category; column mart_activity_by_neighborhood.dataset
 
 ### trap.h3-cells-are-bigints
 
 **State.** H3 cells are BIGINTs here, not the 15-character hexadecimal strings the H3 documentation uses. Compare and join them as integers, and do not expect an h3 function to exist in the warehouse.
 Why: Neither engine computes H3; both read precomputed BIGINTs from the derived zone (ADR-5). BigQuery has no H3 function at all, so there is nothing to dispatch to, and a cell id rendered as a string will match nothing.
-Evidence: ADR-5; column mart_activity_by_h3.h3_cell; column stg_spatial__polygon_h3.h3_cell
+Evidence: ADR-5; column mart_activity_by_h3.h3_cell; column mart_activity_by_h3.h3_resolution
 
 ### trap.null-neighborhood-is-an-answer
 
-**State.** A null analysis_neighborhood means the row is outside every neighborhood, which is a correct answer and not a missing value. It is water, just past the city line, or a row with no usable coordinate; coordinate_status on the staging models is what tells those apart.
+**State.** A null analysis_neighborhood means the row is outside every neighborhood, which is a correct answer and not a missing value. It is water, just past the city line, or a row with no usable coordinate, and disclose.coordinate-drop-rates says how many of the last kind there are per source.
 Why: Treating it as missing invites an inner join that drops the rows silently, and the drop is not uniform: it falls on the bay, the edges of the city and the registered businesses located elsewhere.
-Evidence: column int_point_activity.analysis_neighborhood; column stg_spatial__point_geography.coordinate_status
+Evidence: column mart_activity_by_h3.analysis_neighborhood; column mart_film_locations.analysis_neighborhood
 
 ### trap.staging-models-are-views-over-parquet
 
@@ -738,8 +738,8 @@ Grain: One row per registered source.
 | last_run_finished_at | TIMESTAMP | When ingestion last ran at all, successful or not. Later than last_load_at whenever recent runs found nothing new. 2026-07-31T21:48:53.391891 to 2026-07-31T21:51:10.081736; newest complete month 2026-06-01: 0 rows |
 | last_run_status | VARCHAR | success or failed, from the ingestion run manifest. values: success 100.0% |
 | last_run_mode | VARCHAR | (no description in the yml) values: incremental 100.0% |
-| hours_since_load | DOUBLE | Hours since last_load_at, fractional, in UTC on both engines. See x_utc_now in macros/cross_engine.sql for why that needed saying. min 168.4, median 180.7, max 183.3 |
-| hours_since_run_attempt | DOUBLE | Hours since ingestion last ran, fractional. values: 168.4 42.9%, 168.4 14.3%, 168.4 14.3%, 168.4 14.3%, 168.4 14.3% |
+| hours_since_load | DOUBLE | Hours since last_load_at, fractional, in UTC on both engines. See x_utc_now in macros/cross_engine.sql for why that needed saying. min 173.3, median 185.7, max 188.2 |
+| hours_since_run_attempt | DOUBLE | Hours since ingestion last ran, fractional. values: 173.3 42.9%, 173.3 14.3%, 173.3 14.3%, 173.3 14.3%, 173.3 14.3% |
 | stale_after_hours | INTEGER | Freshness SLA in hours. Null means the source has no SLA. 57.1% null; values: 168 28.6%, 48 14.3% |
 | is_stale | BOOLEAN | Whether hours_since_load has passed stale_after_hours. Always false for sources with no SLA, so this never fires on a demoted source. 42.9% true; 2 distinct |
 | point_count | BIGINT | Rows this source contributed to the spatial precompute. Null for a source with no point geometry, which is how a non-spatial source is told apart from a spatial one whose coordinates all failed. 42.9% null; min 2,214, median 6.984e+04, max 364,731 |
@@ -753,7 +753,7 @@ Grain: One row per registered source.
 | tests_failed | HUGEINT | Of those, how many failed. values: 0 100.0% |
 | tests_warned | HUGEINT | Of those, how many warned. Warnings are signals, not failures. values: 0 100.0% |
 | tests_errored | HUGEINT | Of those, how many errored, meaning the test itself could not run. values: 0 100.0% |
-| last_test_run_at | TIMESTAMP | When that dbt run started. Null before the second ever run. 2026-08-07T06:47:38 to 2026-08-07T06:47:38; newest complete month 2026-07-01: 0 rows |
+| last_test_run_at | TIMESTAMP | When that dbt run started. Null before the second ever run. 2026-08-08T02:19:01 to 2026-08-08T02:19:01; newest complete month 2026-07-01: 0 rows |
 | is_healthy | BOOLEAN | False if the last ingestion run failed, if any test failed or errored, if any coordinate was malformed, or if the source is past its SLA. True otherwise. The single column to read when checking in. 57.1% true; 2 distinct |
 
 ### stg_census__block_groups (staging, view, 681 rows)
@@ -846,7 +846,7 @@ group by m.analysis_neighborhood, d.population
 order by reports_per_1000_residents desc
 ```
 
-Demonstrates: refuse.rank-by-raw-count, refuse.311-measures-reporting-not-incidence. Verified against duckdb at 2026-08-07T22:38:05+00:00, 41 rows.
+Demonstrates: refuse.rank-by-raw-count, refuse.311-measures-reporting-not-incidence. Verified against duckdb at 2026-08-08T03:10:01+00:00, 41 rows.
 
 ### ex.h3-cells-ranked-by-rate
 
@@ -871,7 +871,7 @@ order by events_per_1000_residents desc
 limit 20
 ```
 
-Demonstrates: refuse.events-per-sq-km-on-the-h3-mart. Verified against duckdb at 2026-08-07T22:38:05+00:00, 20 rows.
+Demonstrates: refuse.events-per-sq-km-on-the-h3-mart. Verified against duckdb at 2026-08-08T03:10:01+00:00, 20 rows.
 
 ### ex.rate-with-denominator-vintage
 
@@ -897,7 +897,7 @@ order by events_per_1000_residents desc
 limit 15
 ```
 
-Demonstrates: refuse.per-capita-divides-by-april-2020. Verified against duckdb at 2026-08-07T22:38:05+00:00, 15 rows.
+Demonstrates: refuse.per-capita-divides-by-april-2020. Verified against duckdb at 2026-08-08T03:10:01+00:00, 15 rows.
 
 ### ex.lowest-rate-with-exclusions-counted
 
@@ -931,7 +931,7 @@ order by events_per_1000_residents asc, h3_cell
 limit 10
 ```
 
-Demonstrates: refuse.null-rate-is-not-a-low-rate. Verified against duckdb at 2026-08-07T22:38:05+00:00, 10 rows.
+Demonstrates: refuse.null-rate-is-not-a-low-rate. Verified against duckdb at 2026-08-08T03:10:01+00:00, 10 rows.
 
 ### ex.permit-filings-per-month-by-type
 
@@ -955,7 +955,7 @@ order by filed_month desc, records_filed desc
 limit 40
 ```
 
-Demonstrates: refuse.permits-are-filings-not-construction. Verified against duckdb at 2026-08-07T22:38:05+00:00, 40 rows.
+Demonstrates: refuse.permits-are-filings-not-construction. Verified against duckdb at 2026-08-08T03:10:01+00:00, 40 rows.
 
 ### ex.distinct-businesses-by-neighborhood
 
@@ -977,7 +977,7 @@ order by certificates_active desc
 limit 15
 ```
 
-Demonstrates: refuse.business-registry-is-not-a-business-count. Verified against duckdb at 2026-08-07T22:38:05+00:00, 15 rows.
+Demonstrates: refuse.business-registry-is-not-a-business-count. Verified against duckdb at 2026-08-08T03:10:01+00:00, 15 rows.
 
 ## Freshness
 
@@ -997,7 +997,7 @@ mart_pipeline_freshness, projected. last_load_at is when rows last landed in the
 
 Before trusting this pack, compare its integrity block against the target itself: the schema hash of every model you intend to query, and the dbt invocation it was built from. If they disagree, this pack describes something the target does not contain, and the correct response is to refuse every question rather than to answer from a stale description.
 
-Built from dbt invocation `e0d6c75f-88c9-488e-8872-a69ebef25caa` (1.12.0, adapter duckdb), manifest generated 2026-08-07T22:13:18.082190Z.
+Built from dbt invocation `c0e3245a-5fb9-4e20-a081-21a7058289d0` (1.12.0, adapter duckdb), manifest generated 2026-08-08T03:09:39.146747Z.
 
 | model | schema hash | rows |
 |---|---|---|

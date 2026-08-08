@@ -2,8 +2,8 @@
   "spec_version": "2026-08-07",
   "pack_version": "1.0.0",
   "target": "duckdb",
-  "generated_at": "2026-08-07T22:37:55+00:00",
-  "prose_revision": "518a947af4686986",
+  "generated_at": "2026-08-08T03:09:56+00:00",
+  "prose_revision": "64e423921de52c85",
   "identity": {
     "name": "sf-data-warehouse",
     "description": "An analytics warehouse over seven public San Francisco datasets, modelled with dbt into staging views, one intermediate model and six marts, in which every geography is precomputed rather than computed at query time.",
@@ -95,8 +95,8 @@
     "how_to_read": "Read the refusals and the disclosures before the schema. They are ordered first on purpose: a model that has read the schema has already begun composing SQL, and a constraint that arrives after a draft exists has to overturn something rather than shape it. The refusals are instructions to you, not notes about the data. Each one names the answer to give instead, and giving that answer is how you obey it."
   },
   "build": {
-    "invocation_id": "e0d6c75f-88c9-488e-8872-a69ebef25caa",
-    "manifest_generated_at": "2026-08-07T22:13:18.082190Z",
+    "invocation_id": "c0e3245a-5fb9-4e20-a081-21a7058289d0",
+    "manifest_generated_at": "2026-08-08T03:09:39.146747Z",
     "dbt_version": "1.12.0",
     "adapter_type": "duckdb",
     "project_id": "b2ad435d37afeb27fc9880d6d2ae6e55",
@@ -2190,9 +2190,9 @@
           "profile": {
             "null_rate": 0.0,
             "distinct_count": 41,
-            "min": 102.55323107906396,
+            "min": 102.55323107906395,
             "max": 35465.88578228959,
-            "median": 8889.285071868395
+            "median": 8889.285071868393
           },
           "low_signal": false
         },
@@ -2624,9 +2624,9 @@
           "profile": {
             "null_rate": 0.0,
             "distinct_count": 11,
-            "min": 287.80587134546965,
-            "max": 17841.300057657252,
-            "median": 7813.53863492564
+            "min": 287.80587134546977,
+            "max": 17841.300057657245,
+            "median": 7813.538634925636
           },
           "low_signal": false
         },
@@ -8930,9 +8930,9 @@
           "profile": {
             "null_rate": 0.0,
             "distinct_count": 7,
-            "min": 168.37,
-            "max": 183.27694444444444,
-            "median": 180.71055555555554
+            "min": 173.30944444444444,
+            "max": 188.2163888888889,
+            "median": 185.65
           },
           "low_signal": false
         },
@@ -8945,23 +8945,23 @@
             "distinct_count": 5,
             "values": [
               {
-                "value": 168.36944444444444,
+                "value": 173.3088888888889,
                 "share": 0.428571
               },
               {
-                "value": 168.36888888888888,
+                "value": 173.30833333333334,
                 "share": 0.142857
               },
               {
-                "value": 168.3697222222222,
+                "value": 173.30916666666667,
                 "share": 0.142857
               },
               {
-                "value": 168.40666666666667,
+                "value": 173.3461111111111,
                 "share": 0.142857
               },
               {
-                "value": 168.40694444444443,
+                "value": 173.3463888888889,
                 "share": 0.142857
               }
             ]
@@ -9209,8 +9209,8 @@
           "description": "When that dbt run started. Null before the second ever run.",
           "profile": {
             "null_rate": 0.0,
-            "min": "2026-08-07T06:47:38",
-            "max": "2026-08-07T06:47:38",
+            "min": "2026-08-08T02:19:01",
+            "max": "2026-08-08T02:19:01",
             "newest_complete_month": "2026-07-01",
             "newest_complete_month_count": 0
           },
@@ -10021,11 +10021,15 @@
       "evidence": [
         {
           "kind": "column",
-          "ref": "int_point_activity.category"
+          "ref": "mart_activity_by_h3.category"
         },
         {
           "kind": "column",
           "ref": "mart_activity_by_neighborhood.category"
+        },
+        {
+          "kind": "column",
+          "ref": "mart_activity_by_neighborhood.dataset"
         }
       ]
     },
@@ -10049,7 +10053,7 @@
         },
         {
           "kind": "column",
-          "ref": "stg_spatial__polygon_h3.h3_cell"
+          "ref": "mart_activity_by_h3.h3_resolution"
         }
       ]
     },
@@ -10060,16 +10064,16 @@
         "published",
         "bigquery"
       ],
-      "state": "A null analysis_neighborhood means the row is outside every neighborhood, which is a correct answer and not a missing value. It is water, just past the city line, or a row with no usable coordinate; coordinate_status on the staging models is what tells those apart.\n",
+      "state": "A null analysis_neighborhood means the row is outside every neighborhood, which is a correct answer and not a missing value. It is water, just past the city line, or a row with no usable coordinate, and disclose.coordinate-drop-rates says how many of the last kind there are per source.\n",
       "why": "Treating it as missing invites an inner join that drops the rows silently, and the drop is not uniform: it falls on the bay, the edges of the city and the registered businesses located elsewhere.\n",
       "evidence": [
         {
           "kind": "column",
-          "ref": "int_point_activity.analysis_neighborhood"
+          "ref": "mart_activity_by_h3.analysis_neighborhood"
         },
         {
           "kind": "column",
-          "ref": "stg_spatial__point_geography.coordinate_status"
+          "ref": "mart_film_locations.analysis_neighborhood"
         }
       ]
     },
@@ -10117,7 +10121,7 @@
           "is spending going where the complaints are"
         ],
         "rule": "Do not answer questions about city spending, budgets or department costs. There is no budget data in this warehouse.\n",
-        "why": "city_budget was ingested once and cut by ADR-10. The join anyone wants, spending against 311 demand, needs a crosswalk between budget department codes and the agency 311 records, two independently maintained taxonomies with no reason to agree.\n",
+        "why": "city_budget was ingested once and cut by ADR-10. The join anyone wants, spending against 311 demand, needs a crosswalk between budget department codes and the agencies 311 routes work to, two independently maintained taxonomies with no reason to agree.\n",
         "evidence": [
           {
             "kind": "adr",
@@ -10125,11 +10129,11 @@
           },
           {
             "kind": "column",
-            "ref": "stg_datasf__311_cases.agency"
+            "ref": "mart_activity_by_neighborhood.category"
           }
         ],
         "instead": {
-          "answer": "Which agency 311 records as responsible for how many requests, by category and neighborhood. That is a count of demand routed to an agency, and it says nothing about what any of it cost.\n"
+          "answer": "How many requests were reported, by category, neighborhood and month. That is a count of demand on the city, and it says nothing about what any of it cost.\n"
         }
       },
       {
@@ -10183,8 +10187,8 @@
             "ref": "dim_neighborhood.housing_units"
           },
           {
-            "kind": "model",
-            "ref": "stg_census__block_groups"
+            "kind": "adr",
+            "ref": "adr-10"
           }
         ],
         "instead": {
@@ -10271,12 +10275,12 @@
             "ref": "adr-2"
           },
           {
-            "kind": "model",
-            "ref": "stg_spatial__polygon_h3"
+            "kind": "column",
+            "ref": "mart_activity_by_h3.h3_cell"
           }
         ],
         "instead": {
-          "answer": "Exact membership questions, which are answerable: which neighborhood or supervisor district a row is in, and which H3 cells cover a boundary. An H3 cell at resolution 8 is about 460 metres across, so \"in the same cell\" is the nearest available thing to \"nearby\" and should be named as such rather than converted to metres.\n"
+          "answer": "Exact membership questions, which are answerable: which neighborhood or supervisor district a row is in, since that is a precomputed column rather than a computation. An H3 cell at resolution 8 is about 460 metres across, so \"in the same cell\" is the nearest available thing to \"nearby\" and should be named as such rather than converted to metres.\n"
         }
       },
       {
@@ -10415,7 +10419,6 @@
         "class": "mismeasured",
         "applies_to": [
           "duckdb",
-          "published",
           "bigquery"
         ],
         "question_shapes": [
@@ -10454,7 +10457,6 @@
         "class": "mismeasured",
         "applies_to": [
           "duckdb",
-          "published",
           "bigquery"
         ],
         "question_shapes": [
@@ -10498,7 +10500,6 @@
         "class": "mismeasured",
         "applies_to": [
           "duckdb",
-          "published",
           "bigquery"
         ],
         "question_shapes": [
@@ -10816,7 +10817,7 @@
         "published",
         "bigquery"
       ],
-      "when": "Any answer that gives a total from mart_activity_by_neighborhood, or that compares a total from it against one from the H3 mart or from int_point_activity.\n",
+      "when": "Any answer that gives a total from mart_activity_by_neighborhood, or that compares a total from it against one from the H3 mart or from the event spine the two marts are built from.\n",
       "state": "State which universe the total is over. mart_activity_by_neighborhood excludes events outside every neighborhood rather than bucketing them into an Unknown row, so its total is lower than the underlying event spine's and is exactly the sum of its neighborhoods.\n",
       "why": "Two marts over the same events differ for two unrelated reasons: this one, and the cell-labelling error in the disclosure above. Reporting a difference without separating them attributes an exclusion rule to a measurement error.\n",
       "evidence": [
@@ -10826,7 +10827,7 @@
         },
         {
           "kind": "model",
-          "ref": "int_point_activity"
+          "ref": "mart_activity_by_h3"
         },
         {
           "kind": "column",
@@ -10843,7 +10844,7 @@
       ],
       "when": "Any answer that totals or ranks by geography, for any dataset.\n",
       "state": "Totals by geography are short by the rows that could not be placed on a map. Measured as the share of each source: 311 1.20 percent, building permits 0.12, film locations 3.93, business locations 18.27. The last is high because the registry records businesses located outside San Francisco, which is correct data rather than dirty data.\n",
-      "why": "Rows with no usable coordinate are kept with null geography, so they exist in the staging models and vanish from any grouping by geography. A grouped total is therefore not the model's row count, and the gap is large enough on one dataset to change an answer.\n",
+      "why": "Rows with no usable coordinate are kept with null geography upstream, so they exist in the source and vanish from any grouping by geography. A grouped total is therefore not the source's row count, and the gap is large enough on one dataset to change an answer.\n",
       "evidence": [
         {
           "kind": "column",
@@ -10851,7 +10852,7 @@
         },
         {
           "kind": "column",
-          "ref": "stg_datasf__business_locations.coordinate_status"
+          "ref": "mart_pipeline_freshness.point_count"
         },
         {
           "kind": "measurement",
@@ -10916,7 +10917,7 @@
           "kind": "measurement",
           "ref": "spherical area error, about 0.3 percent",
           "measured": "2026-07-31",
-          "about": "stg_spatial__boundary"
+          "about": "dim_neighborhood"
         }
       ]
     },
@@ -10958,7 +10959,7 @@
       "required": true,
       "verified": {
         "target": "duckdb",
-        "at": "2026-08-07T22:38:05+00:00",
+        "at": "2026-08-08T03:10:01+00:00",
         "rows": 41,
         "sql_sha256": "20be5a70e09baa921d16a235c8c60d1a3b5729482a868b1283a1331775bd682e"
       }
@@ -10973,7 +10974,7 @@
       "required": true,
       "verified": {
         "target": "duckdb",
-        "at": "2026-08-07T22:38:05+00:00",
+        "at": "2026-08-08T03:10:01+00:00",
         "rows": 20,
         "sql_sha256": "77a21fe11f69aa444422517b664135d6a3965897930c0a47e872f0b83494e02b"
       }
@@ -10988,7 +10989,7 @@
       "required": true,
       "verified": {
         "target": "duckdb",
-        "at": "2026-08-07T22:38:05+00:00",
+        "at": "2026-08-08T03:10:01+00:00",
         "rows": 15,
         "sql_sha256": "21e20dc93e8ffda20cbe8a16805e9ffa6b1fc1a678ea50fb590e707dd58e23de"
       }
@@ -11003,7 +11004,7 @@
       "required": true,
       "verified": {
         "target": "duckdb",
-        "at": "2026-08-07T22:38:05+00:00",
+        "at": "2026-08-08T03:10:01+00:00",
         "rows": 10,
         "sql_sha256": "51b046b4f9a793e3db971aa879fc8cbd33267920f7d6560cd1a0faa3985a06d4"
       }
@@ -11018,7 +11019,7 @@
       "required": false,
       "verified": {
         "target": "duckdb",
-        "at": "2026-08-07T22:38:05+00:00",
+        "at": "2026-08-08T03:10:01+00:00",
         "rows": 40,
         "sql_sha256": "327ec311a7aea090dd9776a00d041bcedffb4acfec92441479663b46dcdf5011"
       }
@@ -11033,7 +11034,7 @@
       "required": false,
       "verified": {
         "target": "duckdb",
-        "at": "2026-08-07T22:38:05+00:00",
+        "at": "2026-08-08T03:10:01+00:00",
         "rows": 15,
         "sql_sha256": "5849d81cdd3c16c385fbd64163fd26be8e195316e9062c9483708614a53a77ad"
       }
@@ -11042,8 +11043,8 @@
   "integrity": {
     "self_refusal": "Before trusting this pack, compare its integrity block against the target itself: the schema hash of every model you intend to query, and the dbt invocation it was built from. If they disagree, this pack describes something the target does not contain, and the correct response is to refuse every question rather than to answer from a stale description.",
     "dbt": {
-      "invocation_id": "e0d6c75f-88c9-488e-8872-a69ebef25caa",
-      "manifest_generated_at": "2026-08-07T22:13:18.082190Z",
+      "invocation_id": "c0e3245a-5fb9-4e20-a081-21a7058289d0",
+      "manifest_generated_at": "2026-08-08T03:09:39.146747Z",
       "dbt_version": "1.12.0",
       "adapter_type": "duckdb",
       "project_id": "b2ad435d37afeb27fc9880d6d2ae6e55"

@@ -207,6 +207,26 @@ jobs:
       - name: Export published marts
         run: python publish/export.py --all
 
+      # The same gate for the second pack, against the export the step above
+      # just wrote from the fixture warehouse (PLAN-8, ADR-13). It writes
+      # nothing either, and for the same reason: a published pack built here
+      # would carry a seven-row zone's row counts and example results.
+      #
+      # What makes this checkable on a runner is that the published pack's
+      # schema hash is over the Parquet as written, and the types in a Parquet
+      # file do not depend on how many rows went into it. The one thing to know
+      # is that three of the six hashes differ from the ones in
+      # published/manifest.json, because HUGEINT has no Parquet type and comes
+      # back as DOUBLE; that difference is a property of the format, is the
+      # same here as on a real export, and the pack records both numbers.
+      #
+      # The fix when it fires is `make publish && make context-pack
+      # TARGET=published` on a machine with the real zone, then commit both
+      # artifacts. Regenerating from fixtures to make it green is the same
+      # wrong answer as above.
+      - name: Check the committed published pack against the export
+        run: python tools/context_pack/generate.py --target published --check
+
       # Proves the claim in the Makefile and in ADR-4: the zones are the
       # source of truth, so dropping the warehouse entirely and reloading
       # reproduces every model. If this step ever fails, something has crept

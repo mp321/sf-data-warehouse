@@ -337,11 +337,20 @@ def _examples(lines: list[str], pack: dict, stage: int) -> None:
 
 
 def _freshness(lines: list[str], pack: dict) -> None:
+    freshness = pack["freshness"]
     lines.append("## Freshness")
     lines.append("")
-    lines.append(f"{pack['freshness']['basis']}")
+    lines.append(f"{freshness['basis']}")
     lines.append("")
-    lines.extend(_table(pack["freshness"]["sources"]))
+    # The publish time before the table, because for the published target it is
+    # the freshness and the table is the build's view of the raw zone (spec 4.5).
+    if freshness.get("published_at"):
+        lines.append(
+            f"**Published at {freshness['published_at']}**, manifest version "
+            f"{freshness['manifest_version']}."
+        )
+        lines.append("")
+    lines.extend(_table(freshness["sources"]))
     lines.append("")
 
 
@@ -361,11 +370,30 @@ def _integrity(lines: list[str], pack: dict) -> None:
         lines.append(f"No schema hash: {_flat(integrity['schema_hash_absent_because'])}")
         lines.append("")
     else:
-        lines.append("| model | schema hash | rows |")
-        lines.append("|---|---|---|")
-        for name, entry in integrity["models"].items():
-            lines.append(f"| {name} | {entry['schema_hash']} | {entry['row_count']:,} |")
-        lines.append("")
+        manifest_hashes = integrity.get("published_manifest_schema_hashes") or {}
+        if manifest_hashes:
+            lines.append(_flat(integrity["schema_hash_basis"]))
+            lines.append("")
+            lines.append("| model | schema hash | manifest schema hash | rows |")
+            lines.append("|---|---|---|---|")
+            for name, entry in integrity["models"].items():
+                lines.append(
+                    f"| {name} | {entry['schema_hash']} | {manifest_hashes.get(name)} | "
+                    f"{entry['row_count']:,} |"
+                )
+            lines.append("")
+            if integrity.get("schema_hash_disagreements"):
+                lines.append(
+                    f"The two disagree on {', '.join(integrity['schema_hash_disagreements'])}: "
+                    + _flat(integrity["schema_hash_disagreements_because"])
+                )
+                lines.append("")
+        else:
+            lines.append("| model | schema hash | rows |")
+            lines.append("|---|---|---|")
+            for name, entry in integrity["models"].items():
+                lines.append(f"| {name} | {entry['schema_hash']} | {entry['row_count']:,} |")
+            lines.append("")
 
 
 # ---------------------------------------------------------------------------

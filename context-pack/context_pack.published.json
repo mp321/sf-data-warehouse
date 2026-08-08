@@ -1,0 +1,4635 @@
+{
+  "spec_version": "2026-08-07",
+  "pack_version": "1.0.0",
+  "target": "published",
+  "generated_at": "2026-08-08T03:10:01+00:00",
+  "prose_revision": "64e423921de52c85",
+  "identity": {
+    "name": "sf-data-warehouse",
+    "description": "An analytics warehouse over seven public San Francisco datasets, modelled with dbt into staging views, one intermediate model and six marts, in which every geography is precomputed rather than computed at query time. This pack describes the published export of that warehouse and not the warehouse: 6 marts, one Parquet file each, and nothing else. Anything the export does not carry is a refusal here even where the warehouse can answer it.",
+    "publisher": "DataSF and the US Census Bureau, modelled here",
+    "jurisdiction": "San Francisco, California",
+    "licence": "Public domain. Source data from DataSF (data.sfgov.org) and the US Census Bureau.",
+    "repo": "https://github.com/mp321/sf-data-warehouse",
+    "source_urls": [
+      {
+        "dataset": "311_cases",
+        "publisher": "DataSF",
+        "url": "https://data.sfgov.org/d/vw6y-z8j6"
+      },
+      {
+        "dataset": "building_permits",
+        "publisher": "DataSF",
+        "url": "https://data.sfgov.org/d/i98e-djp9"
+      },
+      {
+        "dataset": "business_locations",
+        "publisher": "DataSF",
+        "url": "https://data.sfgov.org/d/g8m3-pdis"
+      },
+      {
+        "dataset": "analysis_neighborhoods",
+        "publisher": "DataSF",
+        "url": "https://data.sfgov.org/d/ajp5-b2md"
+      },
+      {
+        "dataset": "supervisor_districts",
+        "publisher": "DataSF",
+        "url": "https://data.sfgov.org/d/f2zs-jevy"
+      },
+      {
+        "dataset": "census_block_groups",
+        "publisher": "US Census Bureau",
+        "url": "https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb"
+      },
+      {
+        "dataset": "film_locations",
+        "publisher": "DataSF",
+        "url": "https://data.sfgov.org/d/yitu-d5am"
+      }
+    ],
+    "update_cadence": [
+      {
+        "dataset": "311_cases",
+        "tier": "core",
+        "stale_after_hours": 48,
+        "ingest_schedule": "cron \"17 9 * * *\" (UTC)"
+      },
+      {
+        "dataset": "building_permits",
+        "tier": "core",
+        "stale_after_hours": 168,
+        "ingest_schedule": "cron \"17 9 * * *\" (UTC)"
+      },
+      {
+        "dataset": "business_locations",
+        "tier": "core",
+        "stale_after_hours": 168,
+        "ingest_schedule": "cron \"17 9 * * *\" (UTC)"
+      },
+      {
+        "dataset": "analysis_neighborhoods",
+        "tier": "reference",
+        "stale_after_hours": null,
+        "ingest_schedule": "cron \"17 9 * * *\" (UTC)"
+      },
+      {
+        "dataset": "supervisor_districts",
+        "tier": "reference",
+        "stale_after_hours": null,
+        "ingest_schedule": "cron \"17 9 * * *\" (UTC)"
+      },
+      {
+        "dataset": "census_block_groups",
+        "tier": "reference",
+        "stale_after_hours": null,
+        "ingest_schedule": "cron \"17 9 * * *\" (UTC)"
+      },
+      {
+        "dataset": "film_locations",
+        "tier": "demoted",
+        "stale_after_hours": null,
+        "ingest_schedule": "cron \"17 9 * * *\" (UTC)"
+      }
+    ],
+    "how_to_read": "Read the refusals and the disclosures before the schema. They are ordered first on purpose: a model that has read the schema has already begun composing SQL, and a constraint that arrives after a draft exists has to overturn something rather than shape it. The refusals are instructions to you, not notes about the data. Each one names the answer to give instead, and giving that answer is how you obey it."
+  },
+  "build": {
+    "invocation_id": "c0e3245a-5fb9-4e20-a081-21a7058289d0",
+    "manifest_generated_at": "2026-08-08T03:09:39.146747Z",
+    "dbt_version": "1.12.0",
+    "adapter_type": "duckdb",
+    "project_id": "b2ad435d37afeb27fc9880d6d2ae6e55",
+    "engine_version": "v1.5.5",
+    "h3_resolutions": {
+      "membership": 10,
+      "mart": 8,
+      "available": [
+        8,
+        10
+      ]
+    },
+    "dataset_registry": [
+      {
+        "name": "311_cases",
+        "table": "raw_311_cases",
+        "staging_model": "stg_datasf__311_cases",
+        "tier": "core",
+        "kind": "point",
+        "start_date": "2024-01-01T00:00:00.000Z"
+      },
+      {
+        "name": "building_permits",
+        "table": "raw_building_permits",
+        "staging_model": "stg_datasf__building_permits",
+        "tier": "core",
+        "kind": "point",
+        "start_date": "2024-01-01T00:00:00.000Z"
+      },
+      {
+        "name": "business_locations",
+        "table": "raw_business_locations",
+        "staging_model": "stg_datasf__business_locations",
+        "tier": "core",
+        "kind": "point",
+        "start_date": "1970-01-01T00:00:00.000Z"
+      },
+      {
+        "name": "analysis_neighborhoods",
+        "table": "raw_analysis_neighborhoods",
+        "staging_model": "stg_datasf__analysis_neighborhoods",
+        "tier": "reference",
+        "kind": "polygon",
+        "start_date": "1970-01-01T00:00:00.000Z"
+      },
+      {
+        "name": "supervisor_districts",
+        "table": "raw_supervisor_districts",
+        "staging_model": "stg_datasf__supervisor_districts",
+        "tier": "reference",
+        "kind": "polygon",
+        "start_date": "1970-01-01T00:00:00.000Z"
+      },
+      {
+        "name": "census_block_groups",
+        "table": "raw_census_block_groups",
+        "staging_model": "stg_census__block_groups",
+        "tier": "reference",
+        "kind": "polygon",
+        "start_date": "1970-01-01T00:00:00.000Z"
+      },
+      {
+        "name": "film_locations",
+        "table": "raw_film_locations",
+        "staging_model": "stg_datasf__film_locations",
+        "tier": "demoted",
+        "kind": "point",
+        "start_date": "1970-01-01T00:00:00.000Z"
+      }
+    ]
+  },
+  "models": [
+    {
+      "name": "dim_neighborhood",
+      "layer": "mart",
+      "materialisation": "table",
+      "grain": "One row per analysis neighborhood, 41 rows.",
+      "row_count": 41,
+      "depends_on": [],
+      "columns": [
+        {
+          "name": "analysis_neighborhood",
+          "type": "VARCHAR",
+          "description": "Neighborhood name. The grain of this model.",
+          "profile": {
+            "null_rate": 0.0,
+            "distinct_count": 41,
+            "examples": [
+              "Bayview Hunters Point",
+              "Bernal Heights",
+              "Castro/Upper Market",
+              "Chinatown",
+              "Excelsior"
+            ]
+          },
+          "low_signal": false
+        },
+        {
+          "name": "area_sq_km",
+          "type": "DOUBLE",
+          "description": "Spherical area from ingestion/geometry.py.",
+          "profile": {
+            "null_rate": 0.0,
+            "distinct_count": 41,
+            "min": 0.31245120938646426,
+            "max": 13.392414190748209,
+            "median": 2.137847627382922
+          },
+          "low_signal": false
+        },
+        {
+          "name": "published_area_sq_mi",
+          "type": "DOUBLE",
+          "description": "",
+          "profile": {
+            "null_rate": 0.0,
+            "distinct_count": 41,
+            "min": 0.12068710553,
+            "max": 5.17287865537,
+            "median": 0.82575240243
+          },
+          "low_signal": false
+        },
+        {
+          "name": "population",
+          "type": "BIGINT",
+          "description": "Interpolated 2020 residents. Zero is possible in principle and does not occur today; every rate divides through x_safe_divide anyway.",
+          "profile": {
+            "null_rate": 0.0,
+            "distinct_count": 41,
+            "min": 178,
+            "max": 74656,
+            "median": 20098.0
+          },
+          "low_signal": false
+        },
+        {
+          "name": "housing_units",
+          "type": "BIGINT",
+          "description": "Interpolated 2020 housing units.",
+          "profile": {
+            "null_rate": 0.0,
+            "distinct_count": 41,
+            "min": 63,
+            "max": 28042,
+            "median": 8980.0
+          },
+          "low_signal": false
+        },
+        {
+          "name": "business_count",
+          "type": "BIGINT",
+          "description": "Registered business locations, ever. The right denominator for a historical commercial rate; use active_business_count for a current one, and note the two differ by more than half.",
+          "profile": {
+            "null_rate": 0.0,
+            "distinct_count": 41,
+            "min": 39,
+            "max": 44708,
+            "median": 6045.0
+          },
+          "low_signal": false
+        },
+        {
+          "name": "active_business_count",
+          "type": "DOUBLE",
+          "description": "",
+          "profile": {
+            "null_rate": 0.0,
+            "distinct_count": 41,
+            "min": 18.0,
+            "max": 14227.0,
+            "median": 2063.0
+          },
+          "low_signal": false
+        },
+        {
+          "name": "population_per_sq_km",
+          "type": "DOUBLE",
+          "description": "",
+          "profile": {
+            "null_rate": 0.0,
+            "distinct_count": 41,
+            "min": 102.55323107906395,
+            "max": 35465.88578228959,
+            "median": 8889.285071868393
+          },
+          "low_signal": false
+        },
+        {
+          "name": "businesses_per_sq_km",
+          "type": "DOUBLE",
+          "description": "",
+          "profile": {
+            "null_rate": 0.0,
+            "distinct_count": 41,
+            "min": 28.892674140591502,
+            "max": 16359.052455865305,
+            "median": 2253.780119165178
+          },
+          "low_signal": false
+        },
+        {
+          "name": "h3_cell_count",
+          "type": "BIGINT",
+          "description": "How many r10 cells this neighborhood owns. A coverage diagnostic: a neighborhood whose cell count is out of line with its area has a boundary problem, not a population problem.",
+          "profile": {
+            "null_rate": 0.0,
+            "distinct_count": 37,
+            "values": [
+              {
+                "value": 82,
+                "share": 0.073171
+              },
+              {
+                "value": 131,
+                "share": 0.04878
+              },
+              {
+                "value": 66,
+                "share": 0.04878
+              },
+              {
+                "value": 101,
+                "share": 0.02439
+              },
+              {
+                "value": 106,
+                "share": 0.02439
+              },
+              {
+                "value": 113,
+                "share": 0.02439
+              },
+              {
+                "value": 120,
+                "share": 0.02439
+              },
+              {
+                "value": 135,
+                "share": 0.02439
+              },
+              {
+                "value": 139,
+                "share": 0.02439
+              },
+              {
+                "value": 141,
+                "share": 0.02439
+              },
+              {
+                "value": 145,
+                "share": 0.02439
+              },
+              {
+                "value": 161,
+                "share": 0.02439
+              },
+              {
+                "value": 166,
+                "share": 0.02439
+              },
+              {
+                "value": 171,
+                "share": 0.02439
+              },
+              {
+                "value": 174,
+                "share": 0.02439
+              },
+              {
+                "value": 178,
+                "share": 0.02439
+              },
+              {
+                "value": 185,
+                "share": 0.02439
+              },
+              {
+                "value": 187,
+                "share": 0.02439
+              },
+              {
+                "value": 21,
+                "share": 0.02439
+              },
+              {
+                "value": 234,
+                "share": 0.02439
+              },
+              {
+                "value": 238,
+                "share": 0.02439
+              },
+              {
+                "value": 287,
+                "share": 0.02439
+              },
+              {
+                "value": 299,
+                "share": 0.02439
+              },
+              {
+                "value": 318,
+                "share": 0.02439
+              },
+              {
+                "value": 35,
+                "share": 0.02439
+              },
+              {
+                "value": 38,
+                "share": 0.02439
+              },
+              {
+                "value": 397,
+                "share": 0.02439
+              },
+              {
+                "value": 419,
+                "share": 0.02439
+              },
+              {
+                "value": 506,
+                "share": 0.02439
+              },
+              {
+                "value": 67,
+                "share": 0.02439
+              },
+              {
+                "value": 700,
+                "share": 0.02439
+              },
+              {
+                "value": 84,
+                "share": 0.02439
+              },
+              {
+                "value": 859,
+                "share": 0.02439
+              },
+              {
+                "value": 92,
+                "share": 0.02439
+              },
+              {
+                "value": 94,
+                "share": 0.02439
+              },
+              {
+                "value": 96,
+                "share": 0.02439
+              },
+              {
+                "value": 99,
+                "share": 0.02439
+              }
+            ]
+          },
+          "low_signal": false
+        },
+        {
+          "name": "geojson",
+          "type": "VARCHAR",
+          "description": "",
+          "profile": {
+            "null_rate": 0.0,
+            "distinct_count": 41
+          },
+          "low_signal": true
+        }
+      ]
+    },
+    {
+      "name": "dim_supervisor_district",
+      "layer": "mart",
+      "materialisation": "table",
+      "grain": "One row per supervisor district, 11 rows, on the 2022 boundaries.",
+      "row_count": 11,
+      "depends_on": [],
+      "columns": [
+        {
+          "name": "supervisor_district",
+          "type": "BIGINT",
+          "description": "District number, 1 to 11. The grain of this model.",
+          "profile": {
+            "null_rate": 0.0,
+            "distinct_count": 11,
+            "min": 1,
+            "max": 11,
+            "median": 6.0
+          },
+          "low_signal": false
+        },
+        {
+          "name": "supervisor_district_id",
+          "type": "VARCHAR",
+          "description": "The same value as a string, which is what the H3 bridge and the point staging models carry. Kept so the join does not need a cast on one side.",
+          "profile": {
+            "null_rate": 0.0,
+            "distinct_count": 11,
+            "examples": [
+              "1.0",
+              "10.0",
+              "11.0",
+              "2.0",
+              "3.0"
+            ]
+          },
+          "low_signal": false
+        },
+        {
+          "name": "district_name",
+          "type": "VARCHAR",
+          "description": "",
+          "profile": {
+            "null_rate": 0.0,
+            "distinct_count": 11,
+            "examples": [
+              "SUPERVISORIAL DISTRICT 1",
+              "SUPERVISORIAL DISTRICT 10",
+              "SUPERVISORIAL DISTRICT 11",
+              "SUPERVISORIAL DISTRICT 2",
+              "SUPERVISORIAL DISTRICT 3"
+            ]
+          },
+          "low_signal": false
+        },
+        {
+          "name": "supervisor_name",
+          "type": "VARCHAR",
+          "description": "",
+          "profile": {
+            "null_rate": 0.0,
+            "distinct_count": 11,
+            "examples": [
+              "Bilal Mahmood",
+              "Chyanne Chen",
+              "Connie Chan",
+              "Danny Sauter",
+              "Jackie Fielder"
+            ]
+          },
+          "low_signal": false
+        },
+        {
+          "name": "area_sq_km",
+          "type": "DOUBLE",
+          "description": "Spherical area from ingestion/geometry.py.",
+          "profile": {
+            "null_rate": 0.0,
+            "distinct_count": 11,
+            "min": 4.603020843753833,
+            "max": 260.61724500965374,
+            "median": 9.353560573271254
+          },
+          "low_signal": false
+        },
+        {
+          "name": "population",
+          "type": "BIGINT",
+          "description": "Interpolated 2020 residents.",
+          "profile": {
+            "null_rate": 0.0,
+            "distinct_count": 11,
+            "min": 71813,
+            "max": 83206,
+            "median": 78814.0
+          },
+          "low_signal": false
+        },
+        {
+          "name": "housing_units",
+          "type": "BIGINT",
+          "description": "",
+          "profile": {
+            "null_rate": 0.0,
+            "distinct_count": 11,
+            "min": 24422,
+            "max": 50052,
+            "median": 33470.0
+          },
+          "low_signal": false
+        },
+        {
+          "name": "business_count",
+          "type": "BIGINT",
+          "description": "",
+          "profile": {
+            "null_rate": 0.0,
+            "distinct_count": 11,
+            "min": 11927,
+            "max": 57386,
+            "median": 23117.0
+          },
+          "low_signal": false
+        },
+        {
+          "name": "active_business_count",
+          "type": "DOUBLE",
+          "description": "",
+          "profile": {
+            "null_rate": 0.0,
+            "distinct_count": 11,
+            "min": 4070.0,
+            "max": 19293.0,
+            "median": 7760.0
+          },
+          "low_signal": false
+        },
+        {
+          "name": "population_per_sq_km",
+          "type": "DOUBLE",
+          "description": "",
+          "profile": {
+            "null_rate": 0.0,
+            "distinct_count": 11,
+            "min": 287.80587134546977,
+            "max": 17841.300057657245,
+            "median": 7813.538634925636
+          },
+          "low_signal": false
+        },
+        {
+          "name": "h3_cell_count",
+          "type": "BIGINT",
+          "description": "",
+          "profile": {
+            "null_rate": 0.0,
+            "distinct_count": 11,
+            "min": 291,
+            "max": 16767,
+            "median": 595.0
+          },
+          "low_signal": false
+        },
+        {
+          "name": "geojson",
+          "type": "VARCHAR",
+          "description": "",
+          "profile": {
+            "null_rate": 0.0,
+            "distinct_count": 11
+          },
+          "low_signal": true
+        }
+      ]
+    },
+    {
+      "name": "mart_activity_by_h3",
+      "layer": "mart",
+      "materialisation": "table",
+      "grain": "One row per H3 cell per dataset per category per month, at var('h3_mart_resolution'), currently 8.",
+      "row_count": 140163,
+      "depends_on": [],
+      "columns": [
+        {
+          "name": "h3_cell",
+          "type": "BIGINT",
+          "description": "The cell as a BIGINT. Part of the grain.",
+          "profile": {
+            "null_rate": 0.0,
+            "distinct_count": 15760
+          },
+          "low_signal": false
+        },
+        {
+          "name": "h3_resolution",
+          "type": "INTEGER",
+          "description": "The resolution this mart was built at. Constant per build.",
+          "profile": {
+            "null_rate": 0.0,
+            "distinct_count": 1
+          },
+          "low_signal": false
+        },
+        {
+          "name": "dataset",
+          "type": "VARCHAR",
+          "description": "Registry name of the source. Part of the grain.",
+          "profile": {
+            "null_rate": 0.0,
+            "distinct_count": 3,
+            "values": [
+              {
+                "value": "business_locations",
+                "share": 0.852921
+              },
+              {
+                "value": "building_permits",
+                "share": 0.098471
+              },
+              {
+                "value": "311_cases",
+                "share": 0.048608
+              }
+            ]
+          },
+          "low_signal": false
+        },
+        {
+          "name": "category",
+          "type": "VARCHAR",
+          "description": "The dataset's own category dimension: service type for 311, permit type for permits, licence description for businesses. Part of the grain. One column name over three vocabularies, so grouping by it without also grouping by dataset pools three unrelated taxonomies.",
+          "profile": {
+            "null_rate": 0.0,
+            "distinct_count": 176,
+            "examples": [
+              "Unknown",
+              "otc alterations permit",
+              "Multiple",
+              "additions alterations or repairs",
+              "RESTAURANT 1,000 - 2,000 SQFT"
+            ]
+          },
+          "low_signal": false
+        },
+        {
+          "name": "event_month",
+          "type": "TIMESTAMP",
+          "description": "First day of the month. Part of the grain.",
+          "profile": {
+            "null_rate": 0.0,
+            "min": "1849-05-01T00:00:00",
+            "max": "2028-02-01T00:00:00",
+            "newest_complete_month": "2028-01-01",
+            "newest_complete_month_count": 0
+          },
+          "low_signal": false
+        },
+        {
+          "name": "analysis_neighborhood",
+          "type": "VARCHAR",
+          "description": "The neighborhood owning this cell, for filtering and labelling. Null where the cell's centre is outside every neighborhood, which is water or just past the city line.",
+          "profile": {
+            "null_rate": 0.446416,
+            "distinct_count": 41,
+            "values": [
+              {
+                "value": "Sunset/Parkside",
+                "share": 0.046061
+              },
+              {
+                "value": "Mission",
+                "share": 0.043043
+              },
+              {
+                "value": "Bayview Hunters Point",
+                "share": 0.041773
+              },
+              {
+                "value": "West of Twin Peaks",
+                "share": 0.029337
+              },
+              {
+                "value": "Financial District",
+                "share": 0.022317
+              },
+              {
+                "value": "Outer Richmond",
+                "share": 0.021054
+              },
+              {
+                "value": "South of Market",
+                "share": 0.021026
+              },
+              {
+                "value": "Bernal Heights",
+                "share": 0.016909
+              },
+              {
+                "value": "Inner Richmond",
+                "share": 0.016096
+              },
+              {
+                "value": "Potrero Hill",
+                "share": 0.015981
+              },
+              {
+                "value": "Inner Sunset",
+                "share": 0.015439
+              },
+              {
+                "value": "Marina",
+                "share": 0.015025
+              },
+              {
+                "value": "Outer Mission",
+                "share": 0.014533
+              },
+              {
+                "value": "Excelsior",
+                "share": 0.014055
+              },
+              {
+                "value": "Lone Mountain/USF",
+                "share": 0.013912
+              },
+              {
+                "value": "Noe Valley",
+                "share": 0.01367
+              },
+              {
+                "value": "Western Addition",
+                "share": 0.013306
+              },
+              {
+                "value": "Russian Hill",
+                "share": 0.012864
+              },
+              {
+                "value": "Hayes Valley",
+                "share": 0.01123
+              },
+              {
+                "value": "Castro/Upper Market",
+                "share": 0.010823
+              },
+              {
+                "value": "Golden Gate Park",
+                "share": 0.010609
+              },
+              {
+                "value": "Oceanview/Merced/Ingleside",
+                "share": 0.010509
+              },
+              {
+                "value": "Pacific Heights",
+                "share": 0.010138
+              },
+              {
+                "value": "Haight Ashbury",
+                "share": 0.010095
+              },
+              {
+                "value": "Chinatown",
+                "share": 0.009946
+              },
+              {
+                "value": "Nob Hill",
+                "share": 0.009403
+              },
+              {
+                "value": "Lakeshore",
+                "share": 0.00879
+              },
+              {
+                "value": "Glen Park",
+                "share": 0.008718
+              },
+              {
+                "value": "Mission Bay",
+                "share": 0.00834
+              },
+              {
+                "value": "Presidio",
+                "share": 0.008226
+              },
+              {
+                "value": "Tenderloin",
+                "share": 0.008048
+              },
+              {
+                "value": "Twin Peaks",
+                "share": 0.007734
+              },
+              {
+                "value": "Japantown",
+                "share": 0.006435
+              },
+              {
+                "value": "Portola",
+                "share": 0.006186
+              },
+              {
+                "value": "Presidio Heights",
+                "share": 0.005058
+              },
+              {
+                "value": "McLaren Park",
+                "share": 0.005001
+              },
+              {
+                "value": "North Beach",
+                "share": 0.00351
+              },
+              {
+                "value": "Visitacion Valley",
+                "share": 0.002832
+              },
+              {
+                "value": "Treasure Island",
+                "share": 0.002568
+              },
+              {
+                "value": "Seacliff",
+                "share": 0.002483
+              },
+              {
+                "value": "Lincoln Park",
+                "share": 0.000499
+              }
+            ]
+          },
+          "low_signal": false
+        },
+        {
+          "name": "supervisor_district_id",
+          "type": "VARCHAR",
+          "description": "The supervisor district owning this cell, as a string, on the 2022 boundaries. Null under the same rule as analysis_neighborhood. Join to dim_supervisor_district on this rather than on the integer district number, which is what the id exists for.",
+          "profile": {
+            "null_rate": 0.445895,
+            "distinct_count": 11,
+            "values": [
+              {
+                "value": "7.0",
+                "share": 0.064939
+              },
+              {
+                "value": "10.0",
+                "share": 0.064553
+              },
+              {
+                "value": "8.0",
+                "share": 0.057026
+              },
+              {
+                "value": "9.0",
+                "share": 0.056541
+              },
+              {
+                "value": "2.0",
+                "share": 0.055207
+              },
+              {
+                "value": "3.0",
+                "share": 0.051169
+              },
+              {
+                "value": "4.0",
+                "share": 0.046061
+              },
+              {
+                "value": "1.0",
+                "share": 0.046046
+              },
+              {
+                "value": "6.0",
+                "share": 0.04529
+              },
+              {
+                "value": "5.0",
+                "share": 0.036172
+              },
+              {
+                "value": "11.0",
+                "share": 0.0311
+              }
+            ]
+          },
+          "low_signal": false
+        },
+        {
+          "name": "event_count",
+          "type": "BIGINT",
+          "description": "Events in this cell, dataset, category and month.",
+          "profile": {
+            "null_rate": 0.0,
+            "distinct_count": 257,
+            "min": 1,
+            "max": 1699,
+            "median": 1.0
+          },
+          "low_signal": false
+        },
+        {
+          "name": "cell_population",
+          "type": "DOUBLE",
+          "description": "Interpolated residents in this cell. Null where the cell has no block group overlap at all, zero where it genuinely has nobody.",
+          "profile": {
+            "null_rate": 0.415766,
+            "distinct_count": 156,
+            "min": 0.0,
+            "max": 29427.0,
+            "median": 6199.0
+          },
+          "low_signal": false
+        },
+        {
+          "name": "cell_housing_units",
+          "type": "DOUBLE",
+          "description": "Interpolated housing units in this cell, same method and same caveat as cell_population, and null under the same condition.",
+          "profile": {
+            "null_rate": 0.415766,
+            "distinct_count": 154,
+            "min": 0.0,
+            "max": 16110.0,
+            "median": 2568.0
+          },
+          "low_signal": false
+        },
+        {
+          "name": "cell_area_sq_km",
+          "type": "DECIMAL(11,10)",
+          "description": "The H3 constant for this resolution, carried so a density can be re-derived without another lookup. Identical on every row of a build, which is exactly why events_per_sq_km ranks like the count.",
+          "profile": {
+            "null_rate": 0.0,
+            "distinct_count": 1,
+            "values": [
+              {
+                "value": 0.7373275976,
+                "share": 1.0
+              }
+            ]
+          },
+          "low_signal": false
+        },
+        {
+          "name": "events_per_1000_residents",
+          "type": "DOUBLE",
+          "description": "The normalised companion, and the one to rank on. Null rather than infinite where the cell has no residents, which is correct and common: the bay, the Presidio and the Financial District all have real activity and close to nobody living in them.",
+          "profile": {
+            "null_rate": 0.418163,
+            "distinct_count": 3938,
+            "min": 0.03398239711829273,
+            "max": 654.9295774647887,
+            "median": 0.39904229848363926
+          },
+          "low_signal": false
+        },
+        {
+          "name": "events_per_1000_housing_units",
+          "type": "DOUBLE",
+          "description": "The same normalisation against dwellings rather than people. Useful where the question is about the building stock; null where the cell has no housing units, for the same reason as above.",
+          "profile": {
+            "null_rate": 0.418163,
+            "distinct_count": 3819,
+            "min": 0.06207324643078833,
+            "max": 18000.0,
+            "median": 0.9149130832570905
+          },
+          "low_signal": false
+        },
+        {
+          "name": "events_per_sq_km",
+          "type": "DOUBLE",
+          "description": "Density. A constant rescaling of event_count at fixed resolution, so it ranks identically; kept for comparability with the neighborhood mart.",
+          "profile": {
+            "null_rate": 0.0,
+            "distinct_count": 257,
+            "min": 1.3562492483056354,
+            "max": 2304.2674728712745,
+            "median": 1.3562492483056354
+          },
+          "low_signal": false
+        }
+      ]
+    },
+    {
+      "name": "mart_activity_by_neighborhood",
+      "layer": "mart",
+      "materialisation": "table",
+      "grain": "One row per neighborhood per dataset per category per month.",
+      "row_count": 40157,
+      "depends_on": [
+        "dim_neighborhood"
+      ],
+      "columns": [
+        {
+          "name": "analysis_neighborhood",
+          "type": "VARCHAR",
+          "description": "Neighborhood name. Part of the grain.",
+          "profile": {
+            "null_rate": 0.0,
+            "distinct_count": 41,
+            "values": [
+              {
+                "value": "Financial District",
+                "share": 0.055109
+              },
+              {
+                "value": "Mission",
+                "share": 0.052743
+              },
+              {
+                "value": "South of Market",
+                "share": 0.040217
+              },
+              {
+                "value": "Bayview Hunters Point",
+                "share": 0.039619
+              },
+              {
+                "value": "Sunset/Parkside",
+                "share": 0.03703
+              },
+              {
+                "value": "Tenderloin",
+                "share": 0.036432
+              },
+              {
+                "value": "Chinatown",
+                "share": 0.035062
+              },
+              {
+                "value": "Marina",
+                "share": 0.033045
+              },
+              {
+                "value": "Nob Hill",
+                "share": 0.032572
+              },
+              {
+                "value": "Outer Richmond",
+                "share": 0.032124
+              },
+              {
+                "value": "Castro/Upper Market",
+                "share": 0.030082
+              },
+              {
+                "value": "Inner Richmond",
+                "share": 0.028638
+              },
+              {
+                "value": "West of Twin Peaks",
+                "share": 0.028613
+              },
+              {
+                "value": "Pacific Heights",
+                "share": 0.028364
+              },
+              {
+                "value": "North Beach",
+                "share": 0.02814
+              },
+              {
+                "value": "Hayes Valley",
+                "share": 0.02799
+              },
+              {
+                "value": "Inner Sunset",
+                "share": 0.027293
+              },
+              {
+                "value": "Bernal Heights",
+                "share": 0.026645
+              },
+              {
+                "value": "Russian Hill",
+                "share": 0.026546
+              },
+              {
+                "value": "Noe Valley",
+                "share": 0.026023
+              },
+              {
+                "value": "Haight Ashbury",
+                "share": 0.025624
+              },
+              {
+                "value": "Potrero Hill",
+                "share": 0.024529
+              },
+              {
+                "value": "Mission Bay",
+                "share": 0.024155
+              },
+              {
+                "value": "Western Addition",
+                "share": 0.023956
+              },
+              {
+                "value": "Presidio Heights",
+                "share": 0.022636
+              },
+              {
+                "value": "Excelsior",
+                "share": 0.022412
+              },
+              {
+                "value": "Lone Mountain/USF",
+                "share": 0.020768
+              },
+              {
+                "value": "Outer Mission",
+                "share": 0.020569
+              },
+              {
+                "value": "Oceanview/Merced/Ingleside",
+                "share": 0.018876
+              },
+              {
+                "value": "Lakeshore",
+                "share": 0.016535
+              },
+              {
+                "value": "Portola",
+                "share": 0.016386
+              },
+              {
+                "value": "Glen Park",
+                "share": 0.015913
+              },
+              {
+                "value": "Japantown",
+                "share": 0.015464
+              },
+              {
+                "value": "Visitacion Valley",
+                "share": 0.01407
+              },
+              {
+                "value": "Twin Peaks",
+                "share": 0.013298
+              },
+              {
+                "value": "Presidio",
+                "share": 0.008342
+              },
+              {
+                "value": "Treasure Island",
+                "share": 0.008317
+              },
+              {
+                "value": "Seacliff",
+                "share": 0.007645
+              },
+              {
+                "value": "Golden Gate Park",
+                "share": 0.004632
+              },
+              {
+                "value": "McLaren Park",
+                "share": 0.002042
+              },
+              {
+                "value": "Lincoln Park",
+                "share": 0.001544
+              }
+            ]
+          },
+          "low_signal": false
+        },
+        {
+          "name": "dataset",
+          "type": "VARCHAR",
+          "description": "Registry name of the source. Part of the grain.",
+          "profile": {
+            "null_rate": 0.0,
+            "distinct_count": 3,
+            "values": [
+              {
+                "value": "business_locations",
+                "share": 0.71467
+              },
+              {
+                "value": "building_permits",
+                "share": 0.211893
+              },
+              {
+                "value": "311_cases",
+                "share": 0.073437
+              }
+            ]
+          },
+          "low_signal": false
+        },
+        {
+          "name": "category",
+          "type": "VARCHAR",
+          "description": "The dataset's own category dimension. Part of the grain.",
+          "profile": {
+            "null_rate": 0.0,
+            "distinct_count": 172,
+            "examples": [
+              "Unknown",
+              "otc alterations permit",
+              "Multiple",
+              "additions alterations or repairs",
+              "RESTAURANT - UNDER 1,000 SQFT"
+            ]
+          },
+          "low_signal": false
+        },
+        {
+          "name": "event_month",
+          "type": "TIMESTAMP",
+          "description": "First day of the month. Part of the grain.",
+          "profile": {
+            "null_rate": 0.0,
+            "min": "1849-05-01T00:00:00",
+            "max": "2028-02-01T00:00:00",
+            "newest_complete_month": "2028-01-01",
+            "newest_complete_month_count": 0
+          },
+          "low_signal": false
+        },
+        {
+          "name": "event_count",
+          "type": "BIGINT",
+          "description": "Events in this neighborhood, dataset, category and month.",
+          "profile": {
+            "null_rate": 0.0,
+            "distinct_count": 336,
+            "min": 1,
+            "max": 4509,
+            "median": 2.0
+          },
+          "low_signal": false
+        },
+        {
+          "name": "population",
+          "type": "BIGINT",
+          "description": "Interpolated 2020 residents in this neighborhood, from dim_neighborhood. The denominator behind events_per_1000_residents, and an April 2020 count regardless of which month the events are from.",
+          "profile": {
+            "null_rate": 0.0,
+            "distinct_count": 41,
+            "values": [
+              {
+                "value": 23908,
+                "share": 0.055109
+              },
+              {
+                "value": 58062,
+                "share": 0.052743
+              },
+              {
+                "value": 28426,
+                "share": 0.040217
+              },
+              {
+                "value": 40384,
+                "share": 0.039619
+              },
+              {
+                "value": 74656,
+                "share": 0.03703
+              },
+              {
+                "value": 36067,
+                "share": 0.036432
+              },
+              {
+                "value": 14455,
+                "share": 0.035062
+              },
+              {
+                "value": 23325,
+                "share": 0.033045
+              },
+              {
+                "value": 26398,
+                "share": 0.032572
+              },
+              {
+                "value": 43211,
+                "share": 0.032124
+              },
+              {
+                "value": 22118,
+                "share": 0.030082
+              },
+              {
+                "value": 21895,
+                "share": 0.028638
+              },
+              {
+                "value": 37441,
+                "share": 0.028613
+              },
+              {
+                "value": 24948,
+                "share": 0.028364
+              },
+              {
+                "value": 11805,
+                "share": 0.02814
+              },
+              {
+                "value": 20098,
+                "share": 0.02799
+              },
+              {
+                "value": 28141,
+                "share": 0.027293
+              },
+              {
+                "value": 23416,
+                "share": 0.026645
+              },
+              {
+                "value": 18125,
+                "share": 0.026546
+              },
+              {
+                "value": 22859,
+                "share": 0.026023
+              },
+              {
+                "value": 17882,
+                "share": 0.025624
+              },
+              {
+                "value": 15752,
+                "share": 0.024529
+              },
+              {
+                "value": 16415,
+                "share": 0.024155
+              },
+              {
+                "value": 23348,
+                "share": 0.023956
+              },
+              {
+                "value": 10426,
+                "share": 0.022636
+              },
+              {
+                "value": 37199,
+                "share": 0.022412
+              },
+              {
+                "value": 16547,
+                "share": 0.020768
+              },
+              {
+                "value": 22240,
+                "share": 0.020569
+              },
+              {
+                "value": 25803,
+                "share": 0.018876
+              },
+              {
+                "value": 11642,
+                "share": 0.016535
+              },
+              {
+                "value": 15649,
+                "share": 0.016386
+              },
+              {
+                "value": 8286,
+                "share": 0.015913
+              },
+              {
+                "value": 3899,
+                "share": 0.015464
+              },
+              {
+                "value": 17925,
+                "share": 0.01407
+              },
+              {
+                "value": 7767,
+                "share": 0.013298
+              },
+              {
+                "value": 2216,
+                "share": 0.008342
+              },
+              {
+                "value": 1285,
+                "share": 0.008317
+              },
+              {
+                "value": 1986,
+                "share": 0.007645
+              },
+              {
+                "value": 458,
+                "share": 0.004632
+              },
+              {
+                "value": 1047,
+                "share": 0.002042
+              },
+              {
+                "value": 178,
+                "share": 0.001544
+              }
+            ]
+          },
+          "low_signal": false
+        },
+        {
+          "name": "housing_units",
+          "type": "BIGINT",
+          "description": "Interpolated 2020 housing units, the denominator behind the rate below.",
+          "profile": {
+            "null_rate": 0.0,
+            "distinct_count": 41,
+            "values": [
+              {
+                "value": 16050,
+                "share": 0.055109
+              },
+              {
+                "value": 26545,
+                "share": 0.052743
+              },
+              {
+                "value": 15863,
+                "share": 0.040217
+              },
+              {
+                "value": 12437,
+                "share": 0.039619
+              },
+              {
+                "value": 28042,
+                "share": 0.03703
+              },
+              {
+                "value": 20807,
+                "share": 0.036432
+              },
+              {
+                "value": 7617,
+                "share": 0.035062
+              },
+              {
+                "value": 14164,
+                "share": 0.033045
+              },
+              {
+                "value": 18501,
+                "share": 0.032572
+              },
+              {
+                "value": 19516,
+                "share": 0.032124
+              },
+              {
+                "value": 12435,
+                "share": 0.030082
+              },
+              {
+                "value": 10192,
+                "share": 0.028638
+              },
+              {
+                "value": 14620,
+                "share": 0.028613
+              },
+              {
+                "value": 14947,
+                "share": 0.028364
+              },
+              {
+                "value": 7137,
+                "share": 0.02814
+              },
+              {
+                "value": 11126,
+                "share": 0.02799
+              },
+              {
+                "value": 12842,
+                "share": 0.027293
+              },
+              {
+                "value": 9583,
+                "share": 0.026645
+              },
+              {
+                "value": 11182,
+                "share": 0.026546
+              },
+              {
+                "value": 11504,
+                "share": 0.026023
+              },
+              {
+                "value": 8980,
+                "share": 0.025624
+              },
+              {
+                "value": 8163,
+                "share": 0.024529
+              },
+              {
+                "value": 7870,
+                "share": 0.024155
+              },
+              {
+                "value": 13065,
+                "share": 0.023956
+              },
+              {
+                "value": 5203,
+                "share": 0.022636
+              },
+              {
+                "value": 10938,
+                "share": 0.022412
+              },
+              {
+                "value": 7012,
+                "share": 0.020768
+              },
+              {
+                "value": 6655,
+                "share": 0.020569
+              },
+              {
+                "value": 8023,
+                "share": 0.018876
+              },
+              {
+                "value": 5865,
+                "share": 0.016535
+              },
+              {
+                "value": 4784,
+                "share": 0.016386
+              },
+              {
+                "value": 3781,
+                "share": 0.015913
+              },
+              {
+                "value": 2380,
+                "share": 0.015464
+              },
+              {
+                "value": 4897,
+                "share": 0.01407
+              },
+              {
+                "value": 3716,
+                "share": 0.013298
+              },
+              {
+                "value": 908,
+                "share": 0.008342
+              },
+              {
+                "value": 338,
+                "share": 0.008317
+              },
+              {
+                "value": 853,
+                "share": 0.007645
+              },
+              {
+                "value": 124,
+                "share": 0.004632
+              },
+              {
+                "value": 394,
+                "share": 0.002042
+              },
+              {
+                "value": 63,
+                "share": 0.001544
+              }
+            ]
+          },
+          "low_signal": false
+        },
+        {
+          "name": "business_count",
+          "type": "BIGINT",
+          "description": "Registered business locations ever, the denominator behind events_per_1000_businesses. Not the active count, which is the one dim_neighborhood carries separately and which is less than half of this.",
+          "profile": {
+            "null_rate": 0.0,
+            "distinct_count": 41,
+            "values": [
+              {
+                "value": 44708,
+                "share": 0.055109
+              },
+              {
+                "value": 23440,
+                "share": 0.052743
+              },
+              {
+                "value": 18314,
+                "share": 0.040217
+              },
+              {
+                "value": 13341,
+                "share": 0.039619
+              },
+              {
+                "value": 13949,
+                "share": 0.03703
+              },
+              {
+                "value": 8908,
+                "share": 0.036432
+              },
+              {
+                "value": 9514,
+                "share": 0.035062
+              },
+              {
+                "value": 9660,
+                "share": 0.033045
+              },
+              {
+                "value": 8521,
+                "share": 0.032572
+              },
+              {
+                "value": 9640,
+                "share": 0.032124
+              },
+              {
+                "value": 9097,
+                "share": 0.030082
+              },
+              {
+                "value": 6266,
+                "share": 0.028638
+              },
+              {
+                "value": 8199,
+                "share": 0.028613
+              },
+              {
+                "value": 7915,
+                "share": 0.028364
+              },
+              {
+                "value": 6230,
+                "share": 0.02814
+              },
+              {
+                "value": 7317,
+                "share": 0.02799
+              },
+              {
+                "value": 6276,
+                "share": 0.027293
+              },
+              {
+                "value": 6045,
+                "share": 0.026645
+              },
+              {
+                "value": 5756,
+                "share": 0.026546
+              },
+              {
+                "value": 6205,
+                "share": 0.026023
+              },
+              {
+                "value": 5470,
+                "share": 0.025624
+              },
+              {
+                "value": 6634,
+                "share": 0.024529
+              },
+              {
+                "value": 7312,
+                "share": 0.024155
+              },
+              {
+                "value": 4898,
+                "share": 0.023956
+              },
+              {
+                "value": 4070,
+                "share": 0.022636
+              },
+              {
+                "value": 5054,
+                "share": 0.022412
+              },
+              {
+                "value": 3465,
+                "share": 0.020768
+              },
+              {
+                "value": 3638,
+                "share": 0.020569
+              },
+              {
+                "value": 3588,
+                "share": 0.018876
+              },
+              {
+                "value": 2187,
+                "share": 0.016535
+              },
+              {
+                "value": 2224,
+                "share": 0.016386
+              },
+              {
+                "value": 1908,
+                "share": 0.015913
+              },
+              {
+                "value": 1650,
+                "share": 0.015464
+              },
+              {
+                "value": 1846,
+                "share": 0.01407
+              },
+              {
+                "value": 1332,
+                "share": 0.013298
+              },
+              {
+                "value": 1292,
+                "share": 0.008342
+              },
+              {
+                "value": 975,
+                "share": 0.008317
+              },
+              {
+                "value": 329,
+                "share": 0.007645
+              },
+              {
+                "value": 129,
+                "share": 0.004632
+              },
+              {
+                "value": 52,
+                "share": 0.002042
+              },
+              {
+                "value": 39,
+                "share": 0.001544
+              }
+            ]
+          },
+          "low_signal": false
+        },
+        {
+          "name": "area_sq_km",
+          "type": "DOUBLE",
+          "description": "Spherical land area. Unlike the H3 mart this genuinely differs per row, which is what makes events_per_sq_km a real second measure here and a rescaled count there.",
+          "profile": {
+            "null_rate": 0.0,
+            "distinct_count": 41,
+            "values": [
+              {
+                "value": 2.908880921516469,
+                "share": 0.055109
+              },
+              {
+                "value": 4.876489501759858,
+                "share": 0.052743
+              },
+              {
+                "value": 2.2911580154881084,
+                "share": 0.040217
+              },
+              {
+                "value": 13.392414190748209,
+                "share": 0.039619
+              },
+              {
+                "value": 10.947223725006571,
+                "share": 0.03703
+              },
+              {
+                "value": 1.0169490823209775,
+                "share": 0.036432
+              },
+              {
+                "value": 0.5815740261037485,
+                "share": 0.035062
+              },
+              {
+                "value": 2.6239613329466396,
+                "share": 0.033045
+              },
+              {
+                "value": 1.0532763467037192,
+                "share": 0.032572
+              },
+              {
+                "value": 4.636047410491565,
+                "share": 0.032124
+              },
+              {
+                "value": 2.2191951902480866,
+                "share": 0.030082
+              },
+              {
+                "value": 1.9263200307065795,
+                "share": 0.028638
+              },
+              {
+                "value": 7.918137151257576,
+                "share": 0.028613
+              },
+              {
+                "value": 2.0587696224456082,
+                "share": 0.028364
+              },
+              {
+                "value": 1.2821256696445724,
+                "share": 0.02814
+              },
+              {
+                "value": 1.269595537957591,
+                "share": 0.02799
+              },
+              {
+                "value": 3.6857935313789856,
+                "share": 0.027293
+              },
+              {
+                "value": 2.7907074189244994,
+                "share": 0.026645
+              },
+              {
+                "value": 1.277688562940694,
+                "share": 0.026546
+              },
+              {
+                "value": 2.527183477372313,
+                "share": 0.026023
+              },
+              {
+                "value": 1.4413467005871121,
+                "share": 0.025624
+              },
+              {
+                "value": 2.9434992098773582,
+                "share": 0.024529
+              },
+              {
+                "value": 2.0349095945689686,
+                "share": 0.024155
+              },
+              {
+                "value": 1.5104030404257822,
+                "share": 0.023956
+              },
+              {
+                "value": 1.3004497038975453,
+                "share": 0.022636
+              },
+              {
+                "value": 3.6042698130357107,
+                "share": 0.022412
+              },
+              {
+                "value": 1.4996762804578794,
+                "share": 0.020768
+              },
+              {
+                "value": 2.5997350952800984,
+                "share": 0.020569
+              },
+              {
+                "value": 2.7269458198727885,
+                "share": 0.018876
+              },
+              {
+                "value": 6.548762447955583,
+                "share": 0.016535
+              },
+              {
+                "value": 2.137847627382922,
+                "share": 0.016386
+              },
+              {
+                "value": 1.7305596686475178,
+                "share": 0.015913
+              },
+              {
+                "value": 0.31245120938646426,
+                "share": 0.015464
+              },
+              {
+                "value": 1.5839404253801388,
+                "share": 0.01407
+              },
+              {
+                "value": 1.7155865762321525,
+                "share": 0.013298
+              },
+              {
+                "value": 6.119079221752601,
+                "share": 0.008342
+              },
+              {
+                "value": 2.2994700169703117,
+                "share": 0.008317
+              },
+              {
+                "value": 0.5511167570304412,
+                "share": 0.007645
+              },
+              {
+                "value": 4.46479960187441,
+                "share": 0.004632
+              },
+              {
+                "value": 1.5939908463978094,
+                "share": 0.002042
+              },
+              {
+                "value": 1.0219640369217553,
+                "share": 0.001544
+              }
+            ]
+          },
+          "low_signal": false
+        },
+        {
+          "name": "events_per_1000_residents",
+          "type": "DOUBLE",
+          "description": "The default normalised companion. Null where the neighborhood has no residents.",
+          "profile": {
+            "null_rate": 0.0,
+            "distinct_count": 2448,
+            "min": 0.013394770681525931,
+            "max": 491.26637554585153,
+            "median": 0.0959140610013428
+          },
+          "low_signal": false
+        },
+        {
+          "name": "events_per_1000_housing_units",
+          "type": "DOUBLE",
+          "description": "The same normalisation against dwellings. Null where the neighborhood has no housing units.",
+          "profile": {
+            "null_rate": 0.0,
+            "distinct_count": 2445,
+            "min": 0.03566079452250196,
+            "max": 1814.516129032258,
+            "median": 0.20420665713702266
+          },
+          "low_signal": false
+        },
+        {
+          "name": "events_per_1000_businesses",
+          "type": "DOUBLE",
+          "description": "The right companion for anything commercial, and the one that most changes the ranking against per-capita.",
+          "profile": {
+            "null_rate": 0.0,
+            "distinct_count": 2438,
+            "min": 0.02236736154603203,
+            "max": 1744.1860465116279,
+            "median": 0.32102728731942215
+          },
+          "low_signal": false
+        },
+        {
+          "name": "events_per_sq_km",
+          "type": "DOUBLE",
+          "description": "Density. Unlike the H3 mart, neighborhood areas genuinely differ.",
+          "profile": {
+            "null_rate": 0.0,
+            "distinct_count": 2448,
+            "min": 0.07466913625556947,
+            "max": 2216.433486380368,
+            "median": 0.9785080138554455
+          },
+          "low_signal": false
+        }
+      ]
+    },
+    {
+      "name": "mart_film_locations",
+      "layer": "mart",
+      "materialisation": "table",
+      "grain": "One row per published film location record, joined to the neighborhood it is actually in, with a count of how many locations each title used.",
+      "row_count": 2214,
+      "depends_on": [],
+      "columns": [
+        {
+          "name": "film_location_id",
+          "type": "VARCHAR",
+          "description": "Socrata row id. The grain of this model.",
+          "profile": {
+            "null_rate": 0.0,
+            "distinct_count": 2214,
+            "examples": [
+              "row-22d3_65j3-yx8j",
+              "row-23az_kpgb.bgun",
+              "row-23vm.if46_sw54",
+              "row-23ya.usm2~3jq2",
+              "row-24bi_cv2p.h5ph"
+            ]
+          },
+          "low_signal": false
+        },
+        {
+          "name": "film_title",
+          "type": "VARCHAR",
+          "description": "Title of the film or show. Repeats, once per location it used.",
+          "profile": {
+            "null_rate": 0.0,
+            "distinct_count": 350,
+            "examples": [
+              "Looking",
+              "The Phone/Jexi",
+              "The Last Black Man in San Francisco",
+              "DEVS",
+              "Chance Season 2"
+            ]
+          },
+          "low_signal": false
+        },
+        {
+          "name": "release_year",
+          "type": "BIGINT",
+          "description": "",
+          "profile": {
+            "null_rate": 0.000452,
+            "distinct_count": 82,
+            "min": 1915,
+            "max": 2025,
+            "median": 2015.0
+          },
+          "low_signal": false
+        },
+        {
+          "name": "production_company",
+          "type": "VARCHAR",
+          "description": "",
+          "profile": {
+            "null_rate": 0.000452,
+            "distinct_count": 223,
+            "examples": [
+              "Mission Street Productions, LLC",
+              "Warner Bros. Pictures",
+              "Paramount Pictures",
+              "TVM Productions",
+              "Turner North Center Productions"
+            ]
+          },
+          "low_signal": false
+        },
+        {
+          "name": "distributor",
+          "type": "VARCHAR",
+          "description": "",
+          "profile": {
+            "null_rate": 0.061879,
+            "distinct_count": 143,
+            "examples": [
+              "Netflix",
+              "Warner Bros. Pictures",
+              "Paramount Pictures",
+              "HBO",
+              "HULU"
+            ]
+          },
+          "low_signal": false
+        },
+        {
+          "name": "director",
+          "type": "VARCHAR",
+          "description": "",
+          "profile": {
+            "null_rate": 0.00271,
+            "distinct_count": 290,
+            "examples": [
+              "Andrew Haigh",
+              "Steven Bochcho",
+              "Peyton Reed",
+              "Jon Lucas, Scott Moore",
+              "Joe Talbot"
+            ]
+          },
+          "low_signal": false
+        },
+        {
+          "name": "writer",
+          "type": "VARCHAR",
+          "description": "",
+          "profile": {
+            "null_rate": 0.003162,
+            "distinct_count": 308,
+            "examples": [
+              "Michael Lannan",
+              "Eric Lodal",
+              "Harry Julian Fink",
+              "Alexandra Cunningham",
+              "Jon Lucas, Scott Moore"
+            ]
+          },
+          "low_signal": false
+        },
+        {
+          "name": "actor_1_name",
+          "type": "VARCHAR",
+          "description": "",
+          "profile": {
+            "null_rate": 0.002258,
+            "distinct_count": 265,
+            "examples": [
+              "Jonathan Groff",
+              "Hugh Laurie",
+              "Clint Eastwood",
+              "Taye Diggs",
+              "Jamie Clayton"
+            ]
+          },
+          "low_signal": false
+        },
+        {
+          "name": "actor_2_name",
+          "type": "VARCHAR",
+          "description": "",
+          "profile": {
+            "null_rate": 0.042457,
+            "distinct_count": 275,
+            "examples": [
+              "Frankie Alvarez",
+              "Gretchen Mol",
+              "Kathleen Robertson",
+              "Frankie J. Alvarez",
+              "Alexandra Shipp"
+            ]
+          },
+          "low_signal": false
+        },
+        {
+          "name": "actor_3_name",
+          "type": "VARCHAR",
+          "description": "",
+          "profile": {
+            "null_rate": 0.21364,
+            "distinct_count": 170,
+            "examples": [
+              "Murray Bartlett",
+              "Ethan Suplee",
+              "Ian Anthony Dale",
+              "Michael Pena",
+              "Danny Glover"
+            ]
+          },
+          "low_signal": false
+        },
+        {
+          "name": "location_description",
+          "type": "VARCHAR",
+          "description": "",
+          "profile": {
+            "null_rate": 0.02439,
+            "distinct_count": 1756,
+            "examples": [
+              "Golden Gate Bridge",
+              "City Hall",
+              "Fairmont Hotel (950 Mason Street, Nob Hill)",
+              "Treasure Island",
+              "Coit Tower"
+            ]
+          },
+          "low_signal": false
+        },
+        {
+          "name": "analysis_neighborhood",
+          "type": "VARCHAR",
+          "description": "The neighborhood this shoot location is in, computed from its coordinates. Null on the rows with no usable coordinate.",
+          "profile": {
+            "null_rate": 0.066847,
+            "distinct_count": 40,
+            "values": [
+              {
+                "value": "Financial District",
+                "share": 0.13505
+              },
+              {
+                "value": "North Beach",
+                "share": 0.091238
+              },
+              {
+                "value": "Nob Hill",
+                "share": 0.074526
+              },
+              {
+                "value": "Chinatown",
+                "share": 0.073622
+              },
+              {
+                "value": "Mission",
+                "share": 0.069106
+              },
+              {
+                "value": "Tenderloin",
+                "share": 0.063234
+              },
+              {
+                "value": "Castro/Upper Market",
+                "share": 0.039747
+              },
+              {
+                "value": "Russian Hill",
+                "share": 0.038844
+              },
+              {
+                "value": "South of Market",
+                "share": 0.036134
+              },
+              {
+                "value": "Potrero Hill",
+                "share": 0.032069
+              },
+              {
+                "value": "Hayes Valley",
+                "share": 0.030262
+              },
+              {
+                "value": "Marina",
+                "share": 0.026197
+              },
+              {
+                "value": "Haight Ashbury",
+                "share": 0.024842
+              },
+              {
+                "value": "Pacific Heights",
+                "share": 0.023035
+              },
+              {
+                "value": "Golden Gate Park",
+                "share": 0.017615
+              },
+              {
+                "value": "Presidio",
+                "share": 0.016712
+              },
+              {
+                "value": "Mission Bay",
+                "share": 0.015808
+              },
+              {
+                "value": "Bayview Hunters Point",
+                "share": 0.015357
+              },
+              {
+                "value": "Treasure Island",
+                "share": 0.014002
+              },
+              {
+                "value": "Outer Richmond",
+                "share": 0.012195
+              },
+              {
+                "value": "West of Twin Peaks",
+                "share": 0.009033
+              },
+              {
+                "value": "Bernal Heights",
+                "share": 0.008582
+              },
+              {
+                "value": "Sunset/Parkside",
+                "share": 0.007678
+              },
+              {
+                "value": "Twin Peaks",
+                "share": 0.007678
+              },
+              {
+                "value": "Inner Richmond",
+                "share": 0.007227
+              },
+              {
+                "value": "Western Addition",
+                "share": 0.006323
+              },
+              {
+                "value": "Noe Valley",
+                "share": 0.004968
+              },
+              {
+                "value": "Presidio Heights",
+                "share": 0.004968
+              },
+              {
+                "value": "Inner Sunset",
+                "share": 0.004065
+              },
+              {
+                "value": "Lone Mountain/USF",
+                "share": 0.004065
+              },
+              {
+                "value": "Excelsior",
+                "share": 0.003613
+              },
+              {
+                "value": "Outer Mission",
+                "share": 0.003162
+              },
+              {
+                "value": "Lincoln Park",
+                "share": 0.00271
+              },
+              {
+                "value": "Japantown",
+                "share": 0.002258
+              },
+              {
+                "value": "Lakeshore",
+                "share": 0.001807
+              },
+              {
+                "value": "McLaren Park",
+                "share": 0.001355
+              },
+              {
+                "value": "Portola",
+                "share": 0.001355
+              },
+              {
+                "value": "Glen Park",
+                "share": 0.000903
+              },
+              {
+                "value": "Oceanview/Merced/Ingleside",
+                "share": 0.000903
+              },
+              {
+                "value": "Seacliff",
+                "share": 0.000903
+              }
+            ]
+          },
+          "low_signal": false
+        },
+        {
+          "name": "supervisor_district_id",
+          "type": "VARCHAR",
+          "description": "",
+          "profile": {
+            "null_rate": 0.065041,
+            "distinct_count": 11,
+            "values": [
+              {
+                "value": "3.0",
+                "share": 0.37579
+              },
+              {
+                "value": "6.0",
+                "share": 0.121951
+              },
+              {
+                "value": "5.0",
+                "share": 0.098916
+              },
+              {
+                "value": "2.0",
+                "share": 0.084011
+              },
+              {
+                "value": "8.0",
+                "share": 0.064589
+              },
+              {
+                "value": "9.0",
+                "share": 0.063686
+              },
+              {
+                "value": "10.0",
+                "share": 0.051942
+              },
+              {
+                "value": "7.0",
+                "share": 0.028004
+              },
+              {
+                "value": "1.0",
+                "share": 0.025745
+              },
+              {
+                "value": "4.0",
+                "share": 0.012195
+              },
+              {
+                "value": "11.0",
+                "share": 0.00813
+              }
+            ]
+          },
+          "low_signal": false
+        },
+        {
+          "name": "latitude",
+          "type": "DOUBLE",
+          "description": "",
+          "profile": {
+            "null_rate": 0.038844,
+            "distinct_count": 1387,
+            "min": 36.8459168,
+            "max": 37.8961157,
+            "median": 37.7885613
+          },
+          "low_signal": false
+        },
+        {
+          "name": "longitude",
+          "type": "DOUBLE",
+          "description": "",
+          "profile": {
+            "null_rate": 0.038844,
+            "distinct_count": 1381,
+            "min": -122.5300777,
+            "max": -121.5357205,
+            "median": -122.41243700000001
+          },
+          "low_signal": false
+        },
+        {
+          "name": "is_usable_coordinate",
+          "type": "BOOLEAN",
+          "description": "",
+          "profile": {
+            "null_rate": 0.0,
+            "true_share": 0.960705,
+            "distinct_count": 2
+          },
+          "low_signal": false
+        },
+        {
+          "name": "h3_r8",
+          "type": "BIGINT",
+          "description": "",
+          "profile": {
+            "null_rate": 0.038844,
+            "distinct_count": 147
+          },
+          "low_signal": false
+        },
+        {
+          "name": "h3_r10",
+          "type": "BIGINT",
+          "description": "",
+          "profile": {
+            "null_rate": 0.038844,
+            "distinct_count": 895
+          },
+          "low_signal": false
+        },
+        {
+          "name": "upstream_analysis_neighborhood",
+          "type": "VARCHAR",
+          "description": "The neighborhood DataSF stamped on the row. Kept beside the computed one because this is the smallest dataset in the warehouse and therefore the cheapest place to eyeball how often the two agree.",
+          "profile": {
+            "null_rate": 0.065041,
+            "distinct_count": 40,
+            "values": [
+              {
+                "value": "Financial District/South Beach",
+                "share": 0.13505
+              },
+              {
+                "value": "North Beach",
+                "share": 0.091238
+              },
+              {
+                "value": "Nob Hill",
+                "share": 0.074526
+              },
+              {
+                "value": "Chinatown",
+                "share": 0.073622
+              },
+              {
+                "value": "Mission",
+                "share": 0.069106
+              },
+              {
+                "value": "Tenderloin",
+                "share": 0.063234
+              },
+              {
+                "value": "Castro/Upper Market",
+                "share": 0.039747
+              },
+              {
+                "value": "Russian Hill",
+                "share": 0.038844
+              },
+              {
+                "value": "South of Market",
+                "share": 0.036134
+              },
+              {
+                "value": "Potrero Hill",
+                "share": 0.032069
+              },
+              {
+                "value": "Hayes Valley",
+                "share": 0.030262
+              },
+              {
+                "value": "Marina",
+                "share": 0.026197
+              },
+              {
+                "value": "Haight Ashbury",
+                "share": 0.024842
+              },
+              {
+                "value": "Pacific Heights",
+                "share": 0.023035
+              },
+              {
+                "value": "Golden Gate Park",
+                "share": 0.017615
+              },
+              {
+                "value": "Mission Bay",
+                "share": 0.017615
+              },
+              {
+                "value": "Presidio",
+                "share": 0.016712
+              },
+              {
+                "value": "Bayview Hunters Point",
+                "share": 0.015357
+              },
+              {
+                "value": "Treasure Island",
+                "share": 0.014002
+              },
+              {
+                "value": "Outer Richmond",
+                "share": 0.012195
+              },
+              {
+                "value": "West of Twin Peaks",
+                "share": 0.009033
+              },
+              {
+                "value": "Bernal Heights",
+                "share": 0.008582
+              },
+              {
+                "value": "Sunset/Parkside",
+                "share": 0.007678
+              },
+              {
+                "value": "Twin Peaks",
+                "share": 0.007678
+              },
+              {
+                "value": "Inner Richmond",
+                "share": 0.007227
+              },
+              {
+                "value": "Western Addition",
+                "share": 0.006323
+              },
+              {
+                "value": "Noe Valley",
+                "share": 0.004968
+              },
+              {
+                "value": "Presidio Heights",
+                "share": 0.004968
+              },
+              {
+                "value": "Inner Sunset",
+                "share": 0.004065
+              },
+              {
+                "value": "Lone Mountain/USF",
+                "share": 0.004065
+              },
+              {
+                "value": "Excelsior",
+                "share": 0.003613
+              },
+              {
+                "value": "Outer Mission",
+                "share": 0.003162
+              },
+              {
+                "value": "Lincoln Park",
+                "share": 0.00271
+              },
+              {
+                "value": "Japantown",
+                "share": 0.002258
+              },
+              {
+                "value": "Lakeshore",
+                "share": 0.001807
+              },
+              {
+                "value": "McLaren Park",
+                "share": 0.001355
+              },
+              {
+                "value": "Portola",
+                "share": 0.001355
+              },
+              {
+                "value": "Glen Park",
+                "share": 0.000903
+              },
+              {
+                "value": "Oceanview/Merced/Ingleside",
+                "share": 0.000903
+              },
+              {
+                "value": "Seacliff",
+                "share": 0.000903
+              }
+            ]
+          },
+          "low_signal": false
+        },
+        {
+          "name": "locations_for_title",
+          "type": "BIGINT",
+          "description": "How many location records this title has. The window function.",
+          "profile": {
+            "null_rate": 0.0,
+            "distinct_count": 33,
+            "values": [
+              {
+                "value": 1,
+                "share": 0.057814
+              },
+              {
+                "value": 7,
+                "share": 0.056911
+              },
+              {
+                "value": 11,
+                "share": 0.054652
+              },
+              {
+                "value": 24,
+                "share": 0.054201
+              },
+              {
+                "value": 16,
+                "share": 0.050587
+              },
+              {
+                "value": 15,
+                "share": 0.047425
+              },
+              {
+                "value": 13,
+                "share": 0.041102
+              },
+              {
+                "value": 3,
+                "share": 0.04065
+              },
+              {
+                "value": 4,
+                "share": 0.039747
+              },
+              {
+                "value": 9,
+                "share": 0.036585
+              },
+              {
+                "value": 5,
+                "share": 0.036134
+              },
+              {
+                "value": 23,
+                "share": 0.031165
+              },
+              {
+                "value": 17,
+                "share": 0.030714
+              },
+              {
+                "value": 21,
+                "share": 0.028455
+              },
+              {
+                "value": 2,
+                "share": 0.028004
+              },
+              {
+                "value": 30,
+                "share": 0.0271
+              },
+              {
+                "value": 29,
+                "share": 0.026197
+              },
+              {
+                "value": 19,
+                "share": 0.025745
+              },
+              {
+                "value": 28,
+                "share": 0.025294
+              },
+              {
+                "value": 18,
+                "share": 0.02439
+              },
+              {
+                "value": 6,
+                "share": 0.02439
+              },
+              {
+                "value": 10,
+                "share": 0.022584
+              },
+              {
+                "value": 25,
+                "share": 0.022584
+              },
+              {
+                "value": 12,
+                "share": 0.02168
+              },
+              {
+                "value": 8,
+                "share": 0.02168
+              },
+              {
+                "value": 14,
+                "share": 0.01897
+              },
+              {
+                "value": 41,
+                "share": 0.018519
+              },
+              {
+                "value": 20,
+                "share": 0.018067
+              },
+              {
+                "value": 39,
+                "share": 0.017615
+              },
+              {
+                "value": 33,
+                "share": 0.014905
+              },
+              {
+                "value": 32,
+                "share": 0.014453
+              },
+              {
+                "value": 26,
+                "share": 0.011743
+              },
+              {
+                "value": 22,
+                "share": 0.009937
+              }
+            ]
+          },
+          "low_signal": false
+        },
+        {
+          "name": "neighborhoods_for_title",
+          "type": "BIGINT",
+          "description": "How many distinct neighborhoods this title was shot in.",
+          "profile": {
+            "null_rate": 0.0,
+            "distinct_count": 18,
+            "values": [
+              {
+                "value": 10,
+                "share": 0.098464
+              },
+              {
+                "value": 6,
+                "share": 0.097561
+              },
+              {
+                "value": 4,
+                "share": 0.092593
+              },
+              {
+                "value": 7,
+                "share": 0.088076
+              },
+              {
+                "value": 8,
+                "share": 0.080397
+              },
+              {
+                "value": 5,
+                "share": 0.076332
+              },
+              {
+                "value": 9,
+                "share": 0.060976
+              },
+              {
+                "value": 14,
+                "share": 0.060524
+              },
+              {
+                "value": 11,
+                "share": 0.057814
+              },
+              {
+                "value": 2,
+                "share": 0.055104
+              },
+              {
+                "value": 3,
+                "share": 0.04607
+              },
+              {
+                "value": 1,
+                "share": 0.042909
+              },
+              {
+                "value": 15,
+                "share": 0.03252
+              },
+              {
+                "value": 0,
+                "share": 0.028004
+              },
+              {
+                "value": 13,
+                "share": 0.026649
+              },
+              {
+                "value": 12,
+                "share": 0.026197
+              },
+              {
+                "value": 16,
+                "share": 0.018519
+              },
+              {
+                "value": 18,
+                "share": 0.011292
+              }
+            ]
+          },
+          "low_signal": false
+        },
+        {
+          "name": "fun_facts",
+          "type": "VARCHAR",
+          "description": "",
+          "profile": {
+            "null_rate": 0.789973,
+            "distinct_count": 188,
+            "examples": [
+              "With 23 miles of ladders and 300,000 rivets in each tower, the Golden Gate Bridge was the world's longest span when i...",
+              "The dome of SF's City Hall is almost a foot taller than that of the US Capitol Building. In 1954, Joe DiMaggio and Ma...",
+              "In 1945 the Fairmont hosted the United Nations Conference on International Organization as delegates arrived to draft...",
+              "Driving shots",
+              "An artificial island, Treasure Island was created for the 1939 Golden Gate International Exposition, and is named aft..."
+            ]
+          },
+          "low_signal": false
+        }
+      ]
+    },
+    {
+      "name": "mart_pipeline_freshness",
+      "layer": "mart",
+      "materialisation": "table",
+      "grain": "One row per registered source.",
+      "row_count": 7,
+      "depends_on": [],
+      "columns": [
+        {
+          "name": "source_name",
+          "type": "VARCHAR",
+          "description": "Registry name of the source, e.g. 311_cases. The grain of this model.",
+          "profile": {
+            "null_rate": 0.0,
+            "distinct_count": 7,
+            "examples": [
+              "311_cases",
+              "analysis_neighborhoods",
+              "building_permits",
+              "business_locations",
+              "census_block_groups"
+            ]
+          },
+          "low_signal": false
+        },
+        {
+          "name": "source_table",
+          "type": "VARCHAR",
+          "description": "Raw table the source lands in, e.g. raw_311_cases.",
+          "profile": {
+            "null_rate": 0.0,
+            "distinct_count": 7,
+            "examples": [
+              "raw_311_cases",
+              "raw_analysis_neighborhoods",
+              "raw_building_permits",
+              "raw_business_locations",
+              "raw_census_block_groups"
+            ]
+          },
+          "low_signal": false
+        },
+        {
+          "name": "staging_model",
+          "type": "VARCHAR",
+          "description": "Staging model built from this source. Also the join key to dbt's test results, which is why it has to match the model name exactly.",
+          "profile": {
+            "null_rate": 0.0,
+            "distinct_count": 7,
+            "examples": [
+              "stg_census__block_groups",
+              "stg_datasf__311_cases",
+              "stg_datasf__analysis_neighborhoods",
+              "stg_datasf__building_permits",
+              "stg_datasf__business_locations"
+            ]
+          },
+          "low_signal": false
+        },
+        {
+          "name": "tier",
+          "type": "VARCHAR",
+          "description": "core, reference or demoted, per ADR-7. Reference sources are the boundary sets: they change every several years, so staleness is not a signal and they carry no SLA, but they are not demoted either because every spatial mart depends on them. Demoted sources carry no SLA and earn no maintenance.",
+          "profile": {
+            "null_rate": 0.0,
+            "distinct_count": 3,
+            "values": [
+              {
+                "value": "core",
+                "share": 0.428571
+              },
+              {
+                "value": "reference",
+                "share": 0.428571
+              },
+              {
+                "value": "demoted",
+                "share": 0.142857
+              }
+            ]
+          },
+          "low_signal": false
+        },
+        {
+          "name": "row_count",
+          "type": "BIGINT",
+          "description": "Rows currently in the raw table, counted directly rather than accumulated.",
+          "profile": {
+            "null_rate": 0.0,
+            "distinct_count": 7,
+            "min": 11,
+            "max": 729403,
+            "median": 2214.0
+          },
+          "low_signal": false
+        },
+        {
+          "name": "row_delta",
+          "type": "BIGINT",
+          "description": "Rows the most recent ingestion run added. 0 is the common healthy case: the run went out, found nothing new, and wrote nothing.",
+          "profile": {
+            "null_rate": 0.0,
+            "distinct_count": 4,
+            "values": [
+              {
+                "value": 0,
+                "share": 0.571429
+              },
+              {
+                "value": 31191,
+                "share": 0.142857
+              },
+              {
+                "value": 364731,
+                "share": 0.142857
+              },
+              {
+                "value": 499,
+                "share": 0.142857
+              }
+            ]
+          },
+          "low_signal": false
+        },
+        {
+          "name": "previous_row_count",
+          "type": "BIGINT",
+          "description": "row_count minus row_delta, i.e. the count before the last run.",
+          "profile": {
+            "null_rate": 0.0,
+            "distinct_count": 7,
+            "min": 11,
+            "max": 364672,
+            "median": 2214.0
+          },
+          "low_signal": false
+        },
+        {
+          "name": "last_load_at",
+          "type": "TIMESTAMP",
+          "description": "When rows last landed in the raw zone. Null if nothing has ever loaded.",
+          "profile": {
+            "null_rate": 0.0,
+            "min": "2026-07-31T06:56:41.226332",
+            "max": "2026-07-31T21:51:06.884731",
+            "newest_complete_month": "2026-06-01",
+            "newest_complete_month_count": 0
+          },
+          "low_signal": false
+        },
+        {
+          "name": "last_ingest_run_id",
+          "type": "VARCHAR",
+          "description": "",
+          "profile": {
+            "null_rate": 0.0,
+            "distinct_count": 7,
+            "examples": [
+              "20260731T065640Z",
+              "20260731T093034Z",
+              "20260731T093037Z",
+              "20260731T093038Z",
+              "20260731T214842Z"
+            ]
+          },
+          "low_signal": false
+        },
+        {
+          "name": "last_run_finished_at",
+          "type": "TIMESTAMP",
+          "description": "When ingestion last ran at all, successful or not. Later than last_load_at whenever recent runs found nothing new.",
+          "profile": {
+            "null_rate": 0.0,
+            "min": "2026-07-31T21:48:53.391891",
+            "max": "2026-07-31T21:51:10.081736",
+            "newest_complete_month": "2026-06-01",
+            "newest_complete_month_count": 0
+          },
+          "low_signal": false
+        },
+        {
+          "name": "last_run_status",
+          "type": "VARCHAR",
+          "description": "success or failed, from the ingestion run manifest.",
+          "profile": {
+            "null_rate": 0.0,
+            "distinct_count": 1,
+            "values": [
+              {
+                "value": "success",
+                "share": 1.0
+              }
+            ]
+          },
+          "low_signal": false
+        },
+        {
+          "name": "last_run_mode",
+          "type": "VARCHAR",
+          "description": "",
+          "profile": {
+            "null_rate": 0.0,
+            "distinct_count": 1,
+            "values": [
+              {
+                "value": "incremental",
+                "share": 1.0
+              }
+            ]
+          },
+          "low_signal": true
+        },
+        {
+          "name": "hours_since_load",
+          "type": "DOUBLE",
+          "description": "Hours since last_load_at, fractional, in UTC on both engines. See x_utc_now in macros/cross_engine.sql for why that needed saying.",
+          "profile": {
+            "null_rate": 0.0,
+            "distinct_count": 7,
+            "min": 172.46583333333334,
+            "max": 187.37277777777777,
+            "median": 184.80638888888888
+          },
+          "low_signal": false
+        },
+        {
+          "name": "hours_since_run_attempt",
+          "type": "DOUBLE",
+          "description": "Hours since ingestion last ran, fractional.",
+          "profile": {
+            "null_rate": 0.0,
+            "distinct_count": 5,
+            "values": [
+              {
+                "value": 172.46527777777777,
+                "share": 0.428571
+              },
+              {
+                "value": 172.46472222222224,
+                "share": 0.142857
+              },
+              {
+                "value": 172.46555555555557,
+                "share": 0.142857
+              },
+              {
+                "value": 172.5025,
+                "share": 0.142857
+              },
+              {
+                "value": 172.50277777777777,
+                "share": 0.142857
+              }
+            ]
+          },
+          "low_signal": false
+        },
+        {
+          "name": "stale_after_hours",
+          "type": "INTEGER",
+          "description": "Freshness SLA in hours. Null means the source has no SLA.",
+          "profile": {
+            "null_rate": 0.571429,
+            "distinct_count": 2,
+            "values": [
+              {
+                "value": 168,
+                "share": 0.285714
+              },
+              {
+                "value": 48,
+                "share": 0.142857
+              }
+            ]
+          },
+          "low_signal": false
+        },
+        {
+          "name": "is_stale",
+          "type": "BOOLEAN",
+          "description": "Whether hours_since_load has passed stale_after_hours. Always false for sources with no SLA, so this never fires on a demoted source.",
+          "profile": {
+            "null_rate": 0.0,
+            "true_share": 0.428571,
+            "distinct_count": 2
+          },
+          "low_signal": false
+        },
+        {
+          "name": "point_count",
+          "type": "BIGINT",
+          "description": "Rows this source contributed to the spatial precompute. Null for a source with no point geometry, which is how a non-spatial source is told apart from a spatial one whose coordinates all failed.",
+          "profile": {
+            "null_rate": 0.428571,
+            "distinct_count": 4,
+            "min": 2214,
+            "max": 364731,
+            "median": 69843.5
+          },
+          "low_signal": false
+        },
+        {
+          "name": "usable_point_count",
+          "type": "DOUBLE",
+          "description": "Of those, how many produced a coordinate inside San Francisco.",
+          "profile": {
+            "null_rate": 0.428571,
+            "distinct_count": 4,
+            "min": 2127.0,
+            "max": 298076.0,
+            "median": 69198.5
+          },
+          "low_signal": false
+        },
+        {
+          "name": "missing_coordinate_count",
+          "type": "DOUBLE",
+          "description": "Rows with no coordinate at all. Expected to be nonzero forever and deliberately not counted against health.",
+          "profile": {
+            "null_rate": 0.428571,
+            "distinct_count": 4,
+            "min": 46.0,
+            "max": 10913.0,
+            "median": 665.0
+          },
+          "low_signal": false
+        },
+        {
+          "name": "out_of_bounds_count",
+          "type": "DOUBLE",
+          "description": "Rows whose coordinate is a real place outside San Francisco. Almost entirely registered businesses located elsewhere, which is correct data, so this does not count against health either.",
+          "profile": {
+            "null_rate": 0.428571,
+            "distinct_count": 3,
+            "values": [
+              {
+                "value": 0.0,
+                "share": 0.285714
+              },
+              {
+                "value": 1.0,
+                "share": 0.142857
+              },
+              {
+                "value": 55742.0,
+                "share": 0.142857
+              }
+            ]
+          },
+          "low_signal": false
+        },
+        {
+          "name": "malformed_coordinate_count",
+          "type": "DOUBLE",
+          "description": "Rows whose coordinate could not be parsed or was not on Earth. Unlike the two above this is a pipeline fault, not a fact about the world, so any value above zero makes is_healthy false. It is the shape an upstream column change takes.",
+          "profile": {
+            "null_rate": 0.428571,
+            "distinct_count": 1,
+            "values": [
+              {
+                "value": 0.0,
+                "share": 0.571429
+              }
+            ]
+          },
+          "low_signal": false
+        },
+        {
+          "name": "coordinate_drop_rate_pct",
+          "type": "DOUBLE",
+          "description": "Percentage of this source's rows that could not be placed on a map, all four reasons combined. Measured 2026-07-31: 311 1.20, permits 0.12, street trees 1.58, film locations 3.93, business locations 18.27. The last is high because the registry records businesses located outside the city, not because it is dirty.",
+          "profile": {
+            "null_rate": 0.428571,
+            "distinct_count": 4,
+            "min": 0.12696660226331768,
+            "max": 18.275112343069274,
+            "median": 2.565985611816836
+          },
+          "low_signal": false
+        },
+        {
+          "name": "tests_total",
+          "type": "BIGINT",
+          "description": "Tests run against this source's staging model in the last completed dbt run.",
+          "profile": {
+            "null_rate": 0.0,
+            "distinct_count": 1,
+            "values": [
+              {
+                "value": 0,
+                "share": 1.0
+              }
+            ]
+          },
+          "low_signal": false
+        },
+        {
+          "name": "tests_passed",
+          "type": "DOUBLE",
+          "description": "Of those, how many passed.",
+          "profile": {
+            "null_rate": 0.0,
+            "distinct_count": 1,
+            "values": [
+              {
+                "value": 0.0,
+                "share": 1.0
+              }
+            ]
+          },
+          "low_signal": false
+        },
+        {
+          "name": "tests_failed",
+          "type": "DOUBLE",
+          "description": "Of those, how many failed.",
+          "profile": {
+            "null_rate": 0.0,
+            "distinct_count": 1,
+            "values": [
+              {
+                "value": 0.0,
+                "share": 1.0
+              }
+            ]
+          },
+          "low_signal": false
+        },
+        {
+          "name": "tests_warned",
+          "type": "DOUBLE",
+          "description": "Of those, how many warned. Warnings are signals, not failures.",
+          "profile": {
+            "null_rate": 0.0,
+            "distinct_count": 1,
+            "values": [
+              {
+                "value": 0.0,
+                "share": 1.0
+              }
+            ]
+          },
+          "low_signal": false
+        },
+        {
+          "name": "tests_errored",
+          "type": "DOUBLE",
+          "description": "Of those, how many errored, meaning the test itself could not run.",
+          "profile": {
+            "null_rate": 0.0,
+            "distinct_count": 1,
+            "values": [
+              {
+                "value": 0.0,
+                "share": 1.0
+              }
+            ]
+          },
+          "low_signal": false
+        },
+        {
+          "name": "last_test_run_at",
+          "type": "TIMESTAMP",
+          "description": "When that dbt run started. Null before the second ever run.",
+          "profile": {
+            "null_rate": 1.0,
+            "min": null,
+            "max": null,
+            "newest_complete_month": null,
+            "newest_complete_month_count": null
+          },
+          "low_signal": false
+        },
+        {
+          "name": "is_healthy",
+          "type": "BOOLEAN",
+          "description": "False if the last ingestion run failed, if any test failed or errored, if any coordinate was malformed, or if the source is past its SLA. True otherwise. The single column to read when checking in.",
+          "profile": {
+            "null_rate": 0.0,
+            "true_share": 0.571429,
+            "distinct_count": 2
+          },
+          "low_signal": false
+        }
+      ]
+    }
+  ],
+  "joins": [
+    {
+      "from": "mart_activity_by_h3.analysis_neighborhood",
+      "to": "dim_neighborhood.analysis_neighborhood",
+      "on": "mart_activity_by_h3.analysis_neighborhood = dim_neighborhood.analysis_neighborhood",
+      "cardinality": "many to one",
+      "safe": true,
+      "why": "",
+      "declared_by": "relationships test"
+    },
+    {
+      "from": "mart_activity_by_neighborhood.analysis_neighborhood",
+      "to": "dim_neighborhood.analysis_neighborhood",
+      "on": "mart_activity_by_neighborhood.analysis_neighborhood = dim_neighborhood.analysis_neighborhood",
+      "cardinality": "many to one",
+      "safe": true,
+      "why": "",
+      "declared_by": "relationships test"
+    },
+    {
+      "from": "mart_film_locations.analysis_neighborhood",
+      "to": "dim_neighborhood.analysis_neighborhood",
+      "on": "mart_film_locations.analysis_neighborhood = dim_neighborhood.analysis_neighborhood",
+      "cardinality": "many to one",
+      "safe": true,
+      "why": "",
+      "declared_by": "relationships test"
+    },
+    {
+      "from": "mart_film_locations.upstream_analysis_neighborhood",
+      "to": "dim_neighborhood.analysis_neighborhood",
+      "on": "mart_film_locations.upstream_analysis_neighborhood = dim_neighborhood.analysis_neighborhood",
+      "cardinality": "many to one",
+      "safe": false,
+      "why": "The dirty join, and the worked example of the class. This is the neighborhood DataSF stamped on the row, not the one computed here from the coordinates. It will mostly match, which is what makes it dangerous: the join succeeds and answers a different question. Join on analysis_neighborhood instead.\n",
+      "declared_by": "prose.yml, join.film-upstream-neighborhood-is-dirty"
+    },
+    {
+      "from": "mart_activity_by_h3.supervisor_district_id",
+      "to": "dim_supervisor_district.supervisor_district_id",
+      "on": "mart_activity_by_h3.supervisor_district_id = dim_supervisor_district.supervisor_district_id",
+      "cardinality": "many to one",
+      "safe": true,
+      "why": "Join on the string id rather than on the integer district number: the dimension carries both for exactly this reason, so neither side needs a cast. The label is subject to the cell-membership disclosure.\n",
+      "declared_by": "prose.yml, join.h3-mart-to-district-dim"
+    }
+  ],
+  "freshness": {
+    "basis": "published/manifest.json. published_at is when this export was written, which is the age of the files you are reading. The per-source rows are mart_pipeline_freshness as it stood in the build this export was written from: last_load_at is when rows landed in the raw zone, not when this export was published, and the two have been days apart. Neither number is the other's substitute.",
+    "sources": [
+      {
+        "source": "311_cases",
+        "tier": "core",
+        "row_count": 134457,
+        "last_load_at": "2026-07-31T21:48:52.532492",
+        "last_run_finished_at": "2026-07-31T21:48:53.391891",
+        "stale_after_hours": 48,
+        "is_stale": true
+      },
+      {
+        "source": "analysis_neighborhoods",
+        "tier": "reference",
+        "row_count": 41,
+        "last_load_at": "2026-07-31T09:30:36.846363",
+        "last_run_finished_at": "2026-07-31T21:51:08.327049",
+        "stale_after_hours": null,
+        "is_stale": false
+      },
+      {
+        "source": "building_permits",
+        "tier": "core",
+        "row_count": 36611,
+        "last_load_at": "2026-07-31T21:48:54.086437",
+        "last_run_finished_at": "2026-07-31T21:48:54.125785",
+        "stale_after_hours": 168,
+        "is_stale": true
+      },
+      {
+        "source": "business_locations",
+        "tier": "core",
+        "row_count": 729403,
+        "last_load_at": "2026-07-31T21:51:06.884731",
+        "last_run_finished_at": "2026-07-31T21:51:07.189818",
+        "stale_after_hours": 168,
+        "is_stale": true
+      },
+      {
+        "source": "census_block_groups",
+        "tier": "reference",
+        "row_count": 681,
+        "last_load_at": "2026-07-31T09:30:40.288231",
+        "last_run_finished_at": "2026-07-31T21:51:08.935482",
+        "stale_after_hours": null,
+        "is_stale": false
+      },
+      {
+        "source": "film_locations",
+        "tier": "demoted",
+        "row_count": 2214,
+        "last_load_at": "2026-07-31T06:56:41.226332",
+        "last_run_finished_at": "2026-07-31T21:51:10.081736",
+        "stale_after_hours": null,
+        "is_stale": false
+      },
+      {
+        "source": "supervisor_districts",
+        "tier": "reference",
+        "row_count": 11,
+        "last_load_at": "2026-07-31T09:30:38.067363",
+        "last_run_finished_at": "2026-07-31T21:51:08.925510",
+        "stale_after_hours": null,
+        "is_stale": false
+      }
+    ],
+    "published_at": "2026-08-08T02:22:01.313683+00:00",
+    "manifest_version": 2
+  },
+  "traps": [
+    {
+      "id": "trap.category-means-something-different-per-dataset",
+      "applies_to": [
+        "duckdb",
+        "published",
+        "bigquery"
+      ],
+      "state": "Group by dataset whenever you group by category, or filter to one dataset first. Never sum a category across datasets.\n",
+      "why": "category is each dataset's own category dimension: service type for 311, permit type for permits, licence description for businesses. The column has one name and three vocabularies, so a group by category alone silently pools three unrelated taxonomies.\n",
+      "evidence": [
+        {
+          "kind": "column",
+          "ref": "mart_activity_by_h3.category"
+        },
+        {
+          "kind": "column",
+          "ref": "mart_activity_by_neighborhood.category"
+        },
+        {
+          "kind": "column",
+          "ref": "mart_activity_by_neighborhood.dataset"
+        }
+      ]
+    },
+    {
+      "id": "trap.h3-cells-are-bigints",
+      "applies_to": [
+        "duckdb",
+        "published",
+        "bigquery"
+      ],
+      "state": "H3 cells are BIGINTs here, not the 15-character hexadecimal strings the H3 documentation uses. Compare and join them as integers, and do not expect an h3 function to exist in the warehouse.\n",
+      "why": "Neither engine computes H3; both read precomputed BIGINTs from the derived zone (ADR-5). BigQuery has no H3 function at all, so there is nothing to dispatch to, and a cell id rendered as a string will match nothing.\n",
+      "evidence": [
+        {
+          "kind": "adr",
+          "ref": "adr-5"
+        },
+        {
+          "kind": "column",
+          "ref": "mart_activity_by_h3.h3_cell"
+        },
+        {
+          "kind": "column",
+          "ref": "mart_activity_by_h3.h3_resolution"
+        }
+      ]
+    },
+    {
+      "id": "trap.null-neighborhood-is-an-answer",
+      "applies_to": [
+        "duckdb",
+        "published",
+        "bigquery"
+      ],
+      "state": "A null analysis_neighborhood means the row is outside every neighborhood, which is a correct answer and not a missing value. It is water, just past the city line, or a row with no usable coordinate, and disclose.coordinate-drop-rates says how many of the last kind there are per source.\n",
+      "why": "Treating it as missing invites an inner join that drops the rows silently, and the drop is not uniform: it falls on the bay, the edges of the city and the registered businesses located elsewhere.\n",
+      "evidence": [
+        {
+          "kind": "column",
+          "ref": "mart_activity_by_h3.analysis_neighborhood"
+        },
+        {
+          "kind": "column",
+          "ref": "mart_film_locations.analysis_neighborhood"
+        }
+      ]
+    }
+  ],
+  "refusals": {
+    "no_ground_truth": "Every dataset here is an administrative record of an interaction with the city: a service request, a permit application, a business tax registration, a film permit. Not one of them is a survey, a census or a measurement of a condition. THIS WAREHOUSE CONTAINS NO GROUND-TRUTH MEASURE OF THE UNDERLYING STATE OF ANYTHING. A question about what is happening in the city, as opposed to what was reported to the city, is out of scope whether or not it appears in the list below.",
+    "census_exception": "The exception is census_block_groups, which is a census, of population and housing units, in April 2020. It is a denominator and never a subject, and the disclosures say what it costs.",
+    "closed_world_rule": "If answering a question requires a column that is not in this pack, a join that is not in the join map, or a dataset not listed in the identity block, refuse and name what is missing. Do not infer a column from a table name, and do not assume a column exists because it usually does.",
+    "entries": [
+      {
+        "id": "refuse.no-city-spending-data",
+        "class": "absent",
+        "applies_to": [
+          "duckdb",
+          "published",
+          "bigquery"
+        ],
+        "question_shapes": [
+          "how much does the city spend on street cleaning",
+          "which department has the biggest budget",
+          "what does it cost to respond to a 311 request",
+          "is spending going where the complaints are"
+        ],
+        "rule": "Do not answer questions about city spending, budgets or department costs. There is no budget data in this warehouse.\n",
+        "why": "city_budget was ingested once and cut by ADR-10. The join anyone wants, spending against 311 demand, needs a crosswalk between budget department codes and the agencies 311 routes work to, two independently maintained taxonomies with no reason to agree.\n",
+        "evidence": [
+          {
+            "kind": "adr",
+            "ref": "adr-10"
+          },
+          {
+            "kind": "column",
+            "ref": "mart_activity_by_neighborhood.category"
+          }
+        ],
+        "instead": {
+          "answer": "How many requests were reported, by category, neighborhood and month. That is a count of demand on the city, and it says nothing about what any of it cost.\n"
+        }
+      },
+      {
+        "id": "refuse.no-crime-data",
+        "class": "absent",
+        "applies_to": [
+          "duckdb",
+          "published",
+          "bigquery"
+        ],
+        "question_shapes": [
+          "where is crime highest in San Francisco",
+          "how many arrests were there in the Mission",
+          "which police district has the most incidents"
+        ],
+        "rule": "Do not answer questions about crime, police incidents or arrests. That data has never been in this warehouse. Do not substitute 311 volume for it; see refuse.311-is-not-a-safety-measure.\n",
+        "why": "No crime dataset is in the registry, and the closed-world rule applies: there is no column to compute one from.\n",
+        "evidence": [
+          {
+            "kind": "adr",
+            "ref": "adr-10"
+          },
+          {
+            "kind": "model",
+            "ref": "mart_activity_by_neighborhood"
+          }
+        ],
+        "instead": {
+          "answer": "311 service requests by category and neighborhood, which is what residents reported to the city, labelled as reports.\n"
+        }
+      },
+      {
+        "id": "refuse.no-housing-market-data",
+        "class": "absent",
+        "applies_to": [
+          "duckdb",
+          "published",
+          "bigquery"
+        ],
+        "question_shapes": [
+          "what are rents in the Mission",
+          "how many evictions happened last year",
+          "how many people are homeless in San Francisco",
+          "are housing prices rising"
+        ],
+        "rule": "Do not answer questions about housing prices, rents, evictions or homelessness counts. None of it is here.\n",
+        "why": "Never in the registry. The only housing measure in this warehouse is the 2020 Census count of housing units, which is a stock of dwellings and not a market.\n",
+        "evidence": [
+          {
+            "kind": "column",
+            "ref": "dim_neighborhood.housing_units"
+          },
+          {
+            "kind": "adr",
+            "ref": "adr-10"
+          }
+        ],
+        "instead": {
+          "answer": "Housing units per neighborhood from the 2020 Census, and building permit filings by type over time, both labelled for what they are.\n"
+        }
+      },
+      {
+        "id": "refuse.no-transit-or-collision-data",
+        "class": "absent",
+        "applies_to": [
+          "duckdb",
+          "published",
+          "bigquery"
+        ],
+        "question_shapes": [
+          "which intersections have the most collisions",
+          "how many people ride Muni",
+          "where is traffic worst"
+        ],
+        "rule": "Do not answer questions about transit, traffic or collisions. None of it is here.\n",
+        "why": "Never in the registry.",
+        "evidence": [
+          {
+            "kind": "adr",
+            "ref": "adr-10"
+          },
+          {
+            "kind": "model",
+            "ref": "mart_activity_by_neighborhood"
+          }
+        ],
+        "instead": {
+          "answer": "311 street and sidewalk categories, which record what was reported about the street rather than what happened on it.\n"
+        }
+      },
+      {
+        "id": "refuse.no-street-trees",
+        "class": "absent",
+        "applies_to": [
+          "duckdb",
+          "published",
+          "bigquery"
+        ],
+        "question_shapes": [
+          "how many street trees are there",
+          "which neighborhood has the most tree canopy",
+          "where were trees planted last year"
+        ],
+        "rule": "Do not answer questions about street trees. The dataset was cut.",
+        "why": "street_trees was ingested and then cut by ADR-10, along with city_budget, when the project narrowed to seven datasets that are all spatial.\n",
+        "evidence": [
+          {
+            "kind": "adr",
+            "ref": "adr-10"
+          }
+        ],
+        "instead": {
+          "answer": "311 has a Tree Maintenance service category, which is requests about trees and not an inventory of them.\n"
+        }
+      },
+      {
+        "id": "refuse.no-distance-or-routing",
+        "class": "absent",
+        "applies_to": [
+          "duckdb",
+          "published",
+          "bigquery"
+        ],
+        "question_shapes": [
+          "how many permits are within 500 metres of this address",
+          "what is the nearest neighborhood to this point",
+          "how far is it from here to there",
+          "draw a buffer around this location"
+        ],
+        "rule": "Do not answer questions requiring distance, travel time, routing, buffers or nearest-neighbour search. There is no geometry engine in this warehouse to ask, on either engine.\n",
+        "why": "No geometry at query time (ADR-6, and ADR-2 said it first). Boundary membership is a precomputed column and cell coverage is an integer join. No model carries a geometry type, no ST_ function exists here, and no spatial extension is loaded.\n",
+        "evidence": [
+          {
+            "kind": "adr",
+            "ref": "adr-6"
+          },
+          {
+            "kind": "adr",
+            "ref": "adr-2"
+          },
+          {
+            "kind": "column",
+            "ref": "mart_activity_by_h3.h3_cell"
+          }
+        ],
+        "instead": {
+          "answer": "Exact membership questions, which are answerable: which neighborhood or supervisor district a row is in, since that is a precomputed column rather than a computation. An H3 cell at resolution 8 is about 460 metres across, so \"in the same cell\" is the nearest available thing to \"nearby\" and should be named as such rather than converted to metres.\n"
+        }
+      },
+      {
+        "id": "refuse.no-parcel-or-street-mile-rates",
+        "class": "absent",
+        "applies_to": [
+          "duckdb",
+          "published",
+          "bigquery"
+        ],
+        "question_shapes": [
+          "how many 311 cases per parcel",
+          "complaints per street mile",
+          "requests per lane kilometre"
+        ],
+        "rule": "Do not answer questions normalised by parcels or street mileage. Neither dataset is in scope, and this is a recorded gap rather than an oversight.\n",
+        "why": "The plan that commissioned the dimension tables asked for rates per parcel and per street mile. Neither dataset was brought into scope, so what is here instead is residents, housing units, land area and registered businesses. ADR-7 records the gap.\n",
+        "evidence": [
+          {
+            "kind": "adr",
+            "ref": "adr-7"
+          },
+          {
+            "kind": "model",
+            "ref": "dim_neighborhood"
+          }
+        ],
+        "instead": {
+          "answer": "The four denominators that do exist on dim_neighborhood: population, housing units, registered businesses and land area. Say which one the rate divides by.\n"
+        }
+      },
+      {
+        "id": "refuse.no-311-or-permits-before-2024",
+        "class": "absent",
+        "applies_to": [
+          "duckdb",
+          "published",
+          "bigquery"
+        ],
+        "question_shapes": [
+          "how did 311 volume change between 2019 and 2024",
+          "what did permit filings look like a decade ago",
+          "show me the ten year trend"
+        ],
+        "rule": "Do not answer questions about 311 cases or building permits before the backfill boundary in the dataset registry. Those rows were never ingested, so a query returns nothing rather than zero, and an empty result is not evidence of a quiet year.\n",
+        "why": "The registry sets a start_date per source and the two large event datasets start at the same boundary. Widening it is an ingestion run, not a query.\n",
+        "evidence": [
+          {
+            "kind": "registry",
+            "ref": "311_cases.start_date",
+            "equals": "2024-01-01T00:00:00.000Z"
+          },
+          {
+            "kind": "registry",
+            "ref": "building_permits.start_date",
+            "equals": "2024-01-01T00:00:00.000Z"
+          },
+          {
+            "kind": "model",
+            "ref": "mart_pipeline_freshness"
+          }
+        ],
+        "instead": {
+          "answer": "A window starting at the registry's start_date, stated in the answer. business_locations backfills fully and can be read further back, with the caveat in refuse.business-history-is-a-current-state-snapshot.\n"
+        }
+      },
+      {
+        "id": "refuse.export-has-no-row-level-records",
+        "class": "absent",
+        "applies_to": [
+          "published"
+        ],
+        "question_shapes": [
+          "list the 311 cases in the Mission last week",
+          "show me the individual permits filed on this street",
+          "which addresses have the most complaints",
+          "how many distinct permits were filed, not records",
+          "how many businesses are registered, counting certificates"
+        ],
+        "rule": "Do not answer questions that need one row per case, permit or business registration. This export carries monthly aggregates and two dimension tables. The only per-record model in it is mart_film_locations, which is one row per shoot location.\n",
+        "why": "The export is six marts written as one Parquet file each. 311 cases, building permits and business registrations reach it only as counts per neighborhood or per H3 cell, per dataset, category and month, so there is no case number, no permit number, no certificate number and no address to group by, filter on or count distinct.\n",
+        "evidence": [
+          {
+            "kind": "adr",
+            "ref": "adr-12"
+          },
+          {
+            "kind": "column",
+            "ref": "mart_activity_by_neighborhood.event_count"
+          },
+          {
+            "kind": "column",
+            "ref": "mart_activity_by_neighborhood.event_month"
+          },
+          {
+            "kind": "model",
+            "ref": "mart_film_locations"
+          }
+        ],
+        "instead": {
+          "answer": "Counts by neighborhood or cell, dataset, category and month, with the rate beside the count. If the question genuinely needs a record, say that this export cannot answer it and that the warehouse the export is written from can.\n"
+        }
+      },
+      {
+        "id": "refuse.export-has-no-staging-or-intermediate-models",
+        "class": "absent",
+        "applies_to": [
+          "published"
+        ],
+        "question_shapes": [
+          "join this to the staging model",
+          "recompute the monthly counts on the issue date instead",
+          "deduplicate the underlying rows yourself",
+          "group the raw events by something other than these columns"
+        ],
+        "rule": "Do not write a query against a staging or intermediate model. None of them is in this export, and the aggregates here cannot be recomputed on a different basis from what is in the files.\n",
+        "why": "The warehouse has a staging view per source and one intermediate event spine, and the marts are built from them with the grain, the date basis and the geography already chosen. This export is the marts. A different choice of any of the three is a rebuild of the warehouse rather than a different query here.\n",
+        "evidence": [
+          {
+            "kind": "adr",
+            "ref": "adr-8"
+          },
+          {
+            "kind": "adr",
+            "ref": "adr-12"
+          },
+          {
+            "kind": "column",
+            "ref": "mart_activity_by_neighborhood.dataset"
+          }
+        ],
+        "instead": {
+          "answer": "Answer from the marts on the basis they were built with, and state that basis in the answer: counts per month by dataset and category, dated the way the mart dates them. If a different basis is required, say the export cannot provide it.\n"
+        }
+      },
+      {
+        "id": "refuse.export-has-no-h3-bridge",
+        "class": "absent",
+        "applies_to": [
+          "published"
+        ],
+        "question_shapes": [
+          "which cells fall in this neighborhood",
+          "relabel these cells by supervisor district",
+          "spread population across the cells of a district",
+          "which cells does this boundary cover"
+        ],
+        "rule": "Do not attempt to relabel an H3 cell or to allocate a measure across cells. The cell-to-boundary bridge is not in this export, and the labels on mart_activity_by_h3 are the only ones available.\n",
+        "why": "In the warehouse a bridge table maps every cell to the boundaries it touches, with three flags for labelling, interior membership and allocation. This export carries the result of that join and not the join: analysis_neighborhood and supervisor_district_id on the H3 mart are the labelling flag already applied, and cell_population is the allocation already done. There is no flag here to choose differently with.\n",
+        "evidence": [
+          {
+            "kind": "column",
+            "ref": "mart_activity_by_h3.analysis_neighborhood"
+          },
+          {
+            "kind": "column",
+            "ref": "mart_activity_by_h3.supervisor_district_id"
+          },
+          {
+            "kind": "column",
+            "ref": "mart_activity_by_h3.cell_population"
+          },
+          {
+            "kind": "adr",
+            "ref": "adr-5"
+          }
+        ],
+        "instead": {
+          "answer": "Use the labels the H3 mart carries, subject to disclose.h3-mart-neighborhood-labels-are-approximate, and prefer mart_activity_by_neighborhood when both marts can answer the question.\n"
+        }
+      },
+      {
+        "id": "refuse.311-measures-reporting-not-incidence",
+        "class": "mismeasured",
+        "applies_to": [
+          "duckdb",
+          "published",
+          "bigquery"
+        ],
+        "question_shapes": [
+          "which neighborhood has the most problems",
+          "where are the worst conditions in the city",
+          "which part of San Francisco is dirtiest",
+          "where is graffiti worst",
+          "which neighborhood is most neglected"
+        ],
+        "rule": "Do not answer questions about where conditions are worst using 311 volume. Report what was reported, and say so in the answer.\n",
+        "why": "311 counts reports, not conditions, and reporting propensity varies with who lives somewhere, whether they know the service exists, language, housing tenure, and whether one prolific reporter is active in a block. This warehouse holds no independent measure of incidence to calibrate against, so the direction and size of that bias can be named here and not estimated.\n",
+        "evidence": [
+          {
+            "kind": "adr",
+            "ref": "adr-10"
+          },
+          {
+            "kind": "model",
+            "ref": "mart_activity_by_neighborhood"
+          },
+          {
+            "kind": "measurement",
+            "ref": "the size of the reporting bias",
+            "measured": false
+          }
+        ],
+        "instead": {
+          "answer": "Which neighborhoods file the most 311 reports of a given category per resident or per business, labelled as reports rather than as conditions.\n",
+          "example": "ex.export-reports-per-capita-by-neighborhood"
+        }
+      },
+      {
+        "id": "refuse.311-is-not-a-safety-measure",
+        "class": "mismeasured",
+        "applies_to": [
+          "duckdb",
+          "published",
+          "bigquery"
+        ],
+        "question_shapes": [
+          "which neighborhood is most dangerous",
+          "where is it least safe to live",
+          "rank neighborhoods by safety"
+        ],
+        "rule": "Refuse this twice and say both halves. There is no crime data in this warehouse, and 311 volume is not a proxy for it. Do not answer a safety question from any column here.\n",
+        "why": "This fails on two independent grounds, and a pack that states only the first invites the substitution the second exists to prevent: with no crime data available, a model looking for the nearest number reaches for 311 volume, which measures who reports rather than what happens.\n",
+        "evidence": [
+          {
+            "kind": "adr",
+            "ref": "adr-10"
+          },
+          {
+            "kind": "model",
+            "ref": "mart_activity_by_neighborhood"
+          }
+        ],
+        "instead": {
+          "answer": "Say that neither crime data nor any measure of conditions is present, and offer 311 reports by category per capita as a description of what residents reported, with the label attached.\n",
+          "example": "ex.export-reports-per-capita-by-neighborhood"
+        }
+      },
+      {
+        "id": "refuse.newest-month-is-partial",
+        "class": "mismeasured",
+        "applies_to": [
+          "duckdb",
+          "published",
+          "bigquery"
+        ],
+        "question_shapes": [
+          "is 311 volume falling this month",
+          "what is the trend over the last year",
+          "how many permits were filed this month"
+        ],
+        "rule": "Never end a monthly series at the current month. End it at the last complete month, and read the cutoff from the freshness block rather than from the calendar.\n",
+        "why": "Records arrive and are revised after the event, so the most recent month in any series is incomplete and a trend line ending at today always slopes down. This project has not measured the arrival lag, so the size of the shortfall is unknown rather than small.\n",
+        "evidence": [
+          {
+            "kind": "column",
+            "ref": "mart_pipeline_freshness.last_load_at"
+          },
+          {
+            "kind": "column",
+            "ref": "mart_activity_by_neighborhood.event_month"
+          },
+          {
+            "kind": "measurement",
+            "ref": "the arrival lag",
+            "measured": false
+          }
+        ],
+        "instead": {
+          "answer": "End the series at the last complete month. Every date column in this pack carries its newest complete month and the row count in it, which is the cutoff to use.\n"
+        }
+      },
+      {
+        "id": "refuse.no-cross-dataset-series-before-2024",
+        "class": "mismeasured",
+        "applies_to": [
+          "duckdb",
+          "published",
+          "bigquery"
+        ],
+        "question_shapes": [
+          "plot all activity by month since 2015",
+          "compare permits and business openings over the last decade",
+          "show total events per month across every dataset"
+        ],
+        "rule": "Do not present a cross-dataset monthly series spanning the registry's backfill boundary. Either start the window at the boundary or hold the dataset constant.\n",
+        "why": "311_cases and building_permits start at the boundary in the registry and business_locations backfills fully, so a combined series across it shows one dataset before that date and three after. The step is an artefact of the backfill window rather than anything that happened in the city.\n",
+        "evidence": [
+          {
+            "kind": "registry",
+            "ref": "311_cases.start_date",
+            "equals": "2024-01-01T00:00:00.000Z"
+          },
+          {
+            "kind": "registry",
+            "ref": "business_locations.start_date",
+            "equals": "1970-01-01T00:00:00.000Z"
+          },
+          {
+            "kind": "column",
+            "ref": "mart_activity_by_neighborhood.dataset"
+          }
+        ],
+        "instead": {
+          "answer": "Start the window at the registry's start_date for the latest-starting dataset in the query, or filter to one dataset and say which.\n"
+        }
+      },
+      {
+        "id": "refuse.export-counts-permit-records-at-filing",
+        "class": "mismeasured",
+        "applies_to": [
+          "published"
+        ],
+        "question_shapes": [
+          "how much construction is happening in the Mission",
+          "is building activity going up",
+          "how many permits were issued last year",
+          "how many permits were filed in this neighborhood"
+        ],
+        "rule": "Do not answer construction or permit-count questions from this export. The building_permits rows here count permit records dated at filing, and the export holds no permit number to deduplicate them and no issue date to date them by. Answer about records filed, labelled as such, or refuse.\n",
+        "why": "A permit is filed as several records, since revisions and addenda file separately under one permit number, so a count of records is not a count of permits. Filing is also not issuing and neither is building: a filed permit may never be issued and an issued one may never be built. In the warehouse both of those are answerable with a different query. Here neither is, because the deduplicating column and the issue date are upstream of this export.\n",
+        "evidence": [
+          {
+            "kind": "adr",
+            "ref": "adr-12"
+          },
+          {
+            "kind": "column",
+            "ref": "mart_activity_by_neighborhood.dataset"
+          },
+          {
+            "kind": "column",
+            "ref": "mart_activity_by_neighborhood.category"
+          },
+          {
+            "kind": "column",
+            "ref": "mart_activity_by_neighborhood.event_count"
+          }
+        ],
+        "instead": {
+          "answer": "Permit records filed per month by category, which is the permit type, labelled as records filed rather than as permits or as construction. Say that this export cannot count distinct permits.\n"
+        }
+      },
+      {
+        "id": "refuse.export-counts-registrations-not-businesses",
+        "class": "mismeasured",
+        "applies_to": [
+          "published"
+        ],
+        "question_shapes": [
+          "how many businesses are in the Mission",
+          "which neighborhood has the most restaurants",
+          "how many businesses opened last year",
+          "show business openings since 1900",
+          "was the city more commercial before the war"
+        ],
+        "rule": "Do not read the business_locations rows of the activity marts as a count of businesses, and do not plot them as a historical series. Use the business counts on the dimension tables for a number of businesses, and say the early months are survivorship rather than history.\n",
+        "why": "Those rows count registry records dated by when each location opened, and one business accumulates records by moving or changing hands. The export has no certificate number to count distinct with. The same column is why the series runs back to the nineteenth century: it is the set of locations the registry holds today, dated backwards, so the far end is whatever the city still keeps rather than what existed at the time.\n",
+        "evidence": [
+          {
+            "kind": "column",
+            "ref": "mart_activity_by_neighborhood.event_month"
+          },
+          {
+            "kind": "column",
+            "ref": "dim_neighborhood.business_count"
+          },
+          {
+            "kind": "column",
+            "ref": "dim_neighborhood.active_business_count"
+          },
+          {
+            "kind": "measurement",
+            "ref": "coordinates outside San Francisco, 18.27 percent of business registry rows",
+            "measured": "2026-07-31",
+            "about": "mart_pipeline_freshness"
+          }
+        ],
+        "instead": {
+          "answer": "dim_neighborhood.business_count and active_business_count for how many businesses, which differ by more than half, so state which one a rate divides by. For a series, restrict the window to recent years and say the registry is a current-state snapshot.\n"
+        }
+      },
+      {
+        "id": "refuse.rank-by-raw-count",
+        "class": "misnormalised",
+        "applies_to": [
+          "duckdb",
+          "published",
+          "bigquery"
+        ],
+        "question_shapes": [
+          "which neighborhood has the most 311 cases",
+          "rank neighborhoods by number of reports",
+          "where is the most activity",
+          "which cell has the highest count"
+        ],
+        "rule": "Do not rank neighborhoods or cells by event_count. Rank by a rate, name the denominator, and note that the denominators disagree with each other on purpose.\n",
+        "why": "A raw count per area is mostly a map of where people live, so the ranking rediscovers the census. Per 1000 residents and per 1000 businesses return different lists, and that disagreement is information: the Financial District has almost no residents and enormous daytime activity, so its per-capita rate is close to meaningless and its per-business rate is not. This is not the pack's opinion; CLAUDE.md requires every count mart to expose a normalised companion for the same reason.\n",
+        "evidence": [
+          {
+            "kind": "column",
+            "ref": "mart_activity_by_neighborhood.event_count"
+          },
+          {
+            "kind": "column",
+            "ref": "mart_activity_by_neighborhood.events_per_1000_residents"
+          },
+          {
+            "kind": "column",
+            "ref": "mart_activity_by_neighborhood.events_per_1000_businesses"
+          },
+          {
+            "kind": "doc",
+            "ref": "CLAUDE.md"
+          }
+        ],
+        "instead": {
+          "answer": "Rank by a rate, name the denominator in the answer, and where the question is commercial prefer per 1000 businesses.\n",
+          "example": "ex.export-reports-per-capita-by-neighborhood"
+        }
+      },
+      {
+        "id": "refuse.events-per-sq-km-on-the-h3-mart",
+        "class": "misnormalised",
+        "applies_to": [
+          "duckdb",
+          "published",
+          "bigquery"
+        ],
+        "question_shapes": [
+          "which cells are densest in events per square kilometre",
+          "does the density agree with the count",
+          "show both the count and the density per cell"
+        ],
+        "rule": "Do not present mart_activity_by_h3.events_per_sq_km as a second measure that agrees with the count. It is the count times a constant.\n",
+        "why": "Every cell at a fixed resolution has the same area, so events_per_sq_km ranks identically to event_count by construction. It exists to be comparable with the neighborhood mart, where areas genuinely differ, and for no other reason.\n",
+        "evidence": [
+          {
+            "kind": "column",
+            "ref": "mart_activity_by_h3.events_per_sq_km"
+          },
+          {
+            "kind": "column",
+            "ref": "mart_activity_by_h3.cell_area_sq_km"
+          },
+          {
+            "kind": "column",
+            "ref": "mart_activity_by_neighborhood.events_per_sq_km"
+          }
+        ],
+        "instead": {
+          "answer": "Rank cells by events_per_1000_residents, which is the normalisation that varies per cell, and use events_per_sq_km only when comparing a cell against a neighborhood.\n",
+          "example": "ex.export-h3-cells-ranked-by-rate"
+        }
+      },
+      {
+        "id": "refuse.per-capita-divides-by-april-2020",
+        "class": "misnormalised",
+        "applies_to": [
+          "duckdb",
+          "published",
+          "bigquery"
+        ],
+        "question_shapes": [
+          "has the rate per resident changed since 2024",
+          "which neighborhood grew fastest",
+          "are complaints per capita rising"
+        ],
+        "rule": "State the denominator's vintage in any answer that uses a per-capita rate, and never attribute a change in such a rate to population change.\n",
+        "why": "Population is the 2020 Decennial count, because the ACS API now requires a key and ADR-1 keeps credentials off the ingestion path. Every per-capita rate here divides recent events by an April 2020 denominator, so neighborhoods that have grown or shrunk since then are systematically off and no change in a rate over time can be attributed to population.\n",
+        "evidence": [
+          {
+            "kind": "adr",
+            "ref": "adr-1"
+          },
+          {
+            "kind": "column",
+            "ref": "dim_neighborhood.population"
+          },
+          {
+            "kind": "column",
+            "ref": "mart_activity_by_neighborhood.events_per_1000_residents"
+          }
+        ],
+        "instead": {
+          "answer": "Give the rate with the denominator labelled as the April 2020 Census count, and prefer per 1000 businesses where the question is commercial.\n",
+          "example": "ex.export-rate-with-denominator-vintage"
+        }
+      },
+      {
+        "id": "refuse.null-rate-is-not-a-low-rate",
+        "class": "misnormalised",
+        "applies_to": [
+          "duckdb",
+          "published",
+          "bigquery"
+        ],
+        "question_shapes": [
+          "which area has the lowest complaint rate",
+          "where are the quietest cells",
+          "which neighborhood has the fewest reports per resident"
+        ],
+        "rule": "Never answer a lowest-rate question without excluding null rates explicitly and saying how many were excluded.\n",
+        "why": "events_per_1000_residents is null, not zero, where the denominator is zero. That is correct and common: the bay, the Presidio and the Financial District all have real activity and close to nobody living in them. An area with no residents does not have an infinite complaint rate; it has a question that does not apply.\n",
+        "evidence": [
+          {
+            "kind": "column",
+            "ref": "mart_activity_by_h3.events_per_1000_residents"
+          },
+          {
+            "kind": "column",
+            "ref": "mart_activity_by_h3.cell_population"
+          }
+        ],
+        "instead": {
+          "answer": "Exclude the nulls in the query, report how many rows that removed, and say that those areas have no denominator rather than a low rate.\n",
+          "example": "ex.export-lowest-rate-with-exclusions-counted"
+        }
+      }
+    ]
+  },
+  "disclosures": [
+    {
+      "id": "disclose.h3-mart-neighborhood-labels-are-approximate",
+      "applies_to": [
+        "duckdb",
+        "published",
+        "bigquery"
+      ],
+      "when": "Any answer that filters, groups or sums mart_activity_by_h3 by analysis_neighborhood or by supervisor_district_id.\n",
+      "state": "Cell-based neighborhood labels are approximate. At resolution 8 they agree with exact point-in-polygon membership for 72.6 percent of sampled points for neighborhoods and 83.6 percent for supervisor districts, so this is not the same query as the neighborhood mart. When both marts can answer a question, use mart_activity_by_neighborhood.\n",
+      "why": "Point-level membership is exact: ADR-6 moved refinement from query time to precompute time, so the neighborhood on a point staging model and the mart built from it are exact answers, and a singular test fails on a single disagreement. The H3 mart is different. It labels each cell with the boundary that owns the cell, at a resolution where one hexagon is about 460 metres across, and the disagreement near edges is not noise: it correlates with geography, so every neighborhood comparison built that way inherits a bias.\n",
+      "numbers": [
+        {
+          "boundary_set": "analysis_neighborhood",
+          "r8": "72.6%",
+          "r10": "94.7%"
+        },
+        {
+          "boundary_set": "supervisor_district",
+          "r8": "83.6%",
+          "r10": "96.8%"
+        }
+      ],
+      "evidence": [
+        {
+          "kind": "adr",
+          "ref": "adr-6"
+        },
+        {
+          "kind": "model",
+          "ref": "mart_activity_by_h3"
+        },
+        {
+          "kind": "model",
+          "ref": "mart_activity_by_neighborhood"
+        },
+        {
+          "kind": "measurement",
+          "ref": "cell membership against exact point-in-polygon, 10,000 sampled points per boundary set",
+          "measured": "2026-07-31"
+        }
+      ]
+    },
+    {
+      "id": "disclose.the-two-marts-have-different-totals",
+      "applies_to": [
+        "duckdb",
+        "published",
+        "bigquery"
+      ],
+      "when": "Any answer that gives a total from mart_activity_by_neighborhood, or that compares a total from it against one from the H3 mart or from the event spine the two marts are built from.\n",
+      "state": "State which universe the total is over. mart_activity_by_neighborhood excludes events outside every neighborhood rather than bucketing them into an Unknown row, so its total is lower than the underlying event spine's and is exactly the sum of its neighborhoods.\n",
+      "why": "Two marts over the same events differ for two unrelated reasons: this one, and the cell-labelling error in the disclosure above. Reporting a difference without separating them attributes an exclusion rule to a measurement error.\n",
+      "evidence": [
+        {
+          "kind": "model",
+          "ref": "mart_activity_by_neighborhood"
+        },
+        {
+          "kind": "model",
+          "ref": "mart_activity_by_h3"
+        },
+        {
+          "kind": "column",
+          "ref": "mart_activity_by_h3.analysis_neighborhood"
+        }
+      ]
+    },
+    {
+      "id": "disclose.coordinate-drop-rates",
+      "applies_to": [
+        "duckdb",
+        "published",
+        "bigquery"
+      ],
+      "when": "Any answer that totals or ranks by geography, for any dataset.\n",
+      "state": "Totals by geography are short by the rows that could not be placed on a map. Measured as the share of each source: 311 1.20 percent, building permits 0.12, film locations 3.93, business locations 18.27. The last is high because the registry records businesses located outside San Francisco, which is correct data rather than dirty data.\n",
+      "why": "Rows with no usable coordinate are kept with null geography upstream, so they exist in the source and vanish from any grouping by geography. A grouped total is therefore not the source's row count, and the gap is large enough on one dataset to change an answer.\n",
+      "evidence": [
+        {
+          "kind": "column",
+          "ref": "mart_pipeline_freshness.coordinate_drop_rate_pct"
+        },
+        {
+          "kind": "column",
+          "ref": "mart_pipeline_freshness.point_count"
+        },
+        {
+          "kind": "measurement",
+          "ref": "coordinate drop rate per source",
+          "measured": "2026-07-31",
+          "about": "mart_pipeline_freshness"
+        }
+      ]
+    },
+    {
+      "id": "disclose.export-cell-population-is-interpolated",
+      "applies_to": [
+        "published"
+      ],
+      "when": "Any answer using mart_activity_by_h3.cell_population, or a per-capita rate computed from it.\n",
+      "state": "A cell's population is interpolated twice and is not a census count: residents are assumed spread evenly within a census block group, and the share falling in each H3 cell is allocated from there. Treat it as an estimate good to about a percent in aggregate and not as a population of that hexagon, and never report it for a single cell as though it were measured.\n",
+      "why": "The Census publishes population by block group. Block groups do not nest inside neighborhoods or inside hexagons, so this project spreads block group population over the cells each one covers rather than clipping polygons. The neighborhood denominators in dim_neighborhood are the same arithmetic summed back up, which is why a rate from the neighborhood mart is the more defensible of the two.\n",
+      "evidence": [
+        {
+          "kind": "column",
+          "ref": "mart_activity_by_h3.cell_population"
+        },
+        {
+          "kind": "column",
+          "ref": "mart_activity_by_h3.events_per_1000_residents"
+        },
+        {
+          "kind": "column",
+          "ref": "dim_neighborhood.population"
+        },
+        {
+          "kind": "adr",
+          "ref": "adr-6"
+        }
+      ]
+    },
+    {
+      "id": "disclose.areas-are-spherical-and-two-are-enormous",
+      "applies_to": [
+        "duckdb",
+        "published",
+        "bigquery"
+      ],
+      "when": "Any answer using area_sq_km, a density, or a comparison of how dense two boundaries are.\n",
+      "state": "Areas are spherical, so they are off by the Earth's flattening, about 0.3 percent, which is far below the uncertainty in what a boundary means. Two boundaries are legitimately enormous and will dominate any density ranking: Supervisorial District 4 reaches the Farallon Islands 43 km offshore and covers 261 square kilometres, and one census block group is 248 square kilometres of ocean.\n",
+      "why": "Areas come from ingestion/geometry.py by spherical excess. The flattening error is negligible and the two outliers are not: \"which district is least dense\" is answerable, and the answer is District 4 for a reason that has nothing to do with how many people live there.\n",
+      "evidence": [
+        {
+          "kind": "column",
+          "ref": "dim_supervisor_district.area_sq_km"
+        },
+        {
+          "kind": "column",
+          "ref": "dim_neighborhood.area_sq_km"
+        },
+        {
+          "kind": "doc",
+          "ref": "ingestion/geometry.py"
+        },
+        {
+          "kind": "measurement",
+          "ref": "spherical area error, about 0.3 percent",
+          "measured": "2026-07-31",
+          "about": "dim_neighborhood"
+        }
+      ]
+    },
+    {
+      "id": "disclose.freshness-tests-are-one-run-behind",
+      "applies_to": [
+        "duckdb",
+        "published",
+        "bigquery"
+      ],
+      "when": "Any answer about test results or pipeline health read from mart_pipeline_freshness.\n",
+      "state": "The test columns describe the previous completed dbt run, not the run that built the table, so any answer about test results from this mart is one run stale.\n",
+      "why": "dbt writes run results after models finish, so a run cannot report its own outcome. On a first ever build the test columns are all zero. This cannot be fixed by reordering.\n",
+      "evidence": [
+        {
+          "kind": "column",
+          "ref": "mart_pipeline_freshness.tests_total"
+        },
+        {
+          "kind": "column",
+          "ref": "mart_pipeline_freshness.last_test_run_at"
+        },
+        {
+          "kind": "doc",
+          "ref": "dbt/macros/audit_run_results.sql"
+        }
+      ]
+    }
+  ],
+  "examples": [
+    {
+      "id": "ex.export-reports-per-capita-by-neighborhood",
+      "question": "Which neighborhoods report the most street cleaning per resident, and does the answer hold when the denominator changes?\n",
+      "sql": "-- Reports per resident, not reports, and the second denominator beside the\n-- first because they disagree on purpose. The export needs no join for this:\n-- mart_activity_by_neighborhood carries its own denominators.\nselect\n    analysis_neighborhood,\n    sum(event_count) as reports,\n    max(population) as residents_april_2020,\n    max(business_count) as businesses,\n    round(1000.0 * sum(event_count) / max(population), 1) as reports_per_1000_residents,\n    round(1000.0 * sum(event_count) / max(business_count), 1) as reports_per_1000_businesses\nfrom mart_activity_by_neighborhood\nwhere dataset = '311_cases'\n    and category = 'Street and Sidewalk Cleaning'\n    and population > 0\n    and business_count > 0\ngroup by analysis_neighborhood\norder by reports_per_1000_residents desc\nlimit 15",
+      "demonstrates": [
+        "refuse.rank-by-raw-count",
+        "refuse.311-measures-reporting-not-incidence",
+        "refuse.311-is-not-a-safety-measure"
+      ],
+      "required": true,
+      "verified": {
+        "target": "published",
+        "at": "2026-08-08T03:10:01+00:00",
+        "rows": 15,
+        "sql_sha256": "0437e724da7d696dd7a322dd7b4d45f465ef49a2193be3fac79a54fa5eced7cd"
+      }
+    },
+    {
+      "id": "ex.export-h3-cells-ranked-by-rate",
+      "question": "Which hexagons are noisier than their population explains?\n",
+      "sql": "-- The refusal made checkable in one result set. Ranking cells by\n-- events_per_sq_km returns the count's order exactly, because every cell at a\n-- fixed resolution has the same area; the per-resident rate does not.\nwith per_cell as (\n    select\n        h3_cell,\n        analysis_neighborhood,\n        sum(event_count) as events,\n        max(cell_area_sq_km) as cell_area_sq_km,\n        max(cell_population) as cell_population\n    from mart_activity_by_h3\n    where dataset = '311_cases'\n        and cell_population > 0\n    group by h3_cell, analysis_neighborhood\n)\nselect\n    h3_cell,\n    analysis_neighborhood,\n    events,\n    rank() over (order by events desc) as rank_by_count,\n    rank() over (order by events / cell_area_sq_km desc) as rank_by_events_per_sq_km,\n    round(1000.0 * events / cell_population, 1) as events_per_1000_residents,\n    rank() over (order by events / cell_population desc) as rank_by_rate\nfrom per_cell\norder by events_per_1000_residents desc\nlimit 12",
+      "demonstrates": [
+        "refuse.events-per-sq-km-on-the-h3-mart"
+      ],
+      "required": true,
+      "verified": {
+        "target": "published",
+        "at": "2026-08-08T03:10:01+00:00",
+        "rows": 12,
+        "sql_sha256": "96b99d0667233c6fc8373ff72abec031aa10bd0b988c44447fe9b06c59a3a94b"
+      }
+    },
+    {
+      "id": "ex.export-rate-with-denominator-vintage",
+      "question": "What is the 311 rate per resident by neighborhood, with the denominator's vintage stated?\n",
+      "sql": "-- The vintage is a column, and so is the window it divides, because the two do\n-- not match: April 2020 residents under events from 2024 onward. Anything\n-- reading this result can see the gap without being told about it separately.\nselect\n    analysis_neighborhood,\n    'April 2020 Decennial Census' as denominator_vintage,\n    max(population) as residents,\n    min(event_month) as first_event_month,\n    max(event_month) as last_event_month,\n    sum(event_count) as events,\n    round(1000.0 * sum(event_count) / max(population), 1) as events_per_1000_residents\nfrom mart_activity_by_neighborhood\nwhere dataset = '311_cases'\n    and population > 0\ngroup by analysis_neighborhood\norder by events_per_1000_residents desc\nlimit 12",
+      "demonstrates": [
+        "refuse.per-capita-divides-by-april-2020"
+      ],
+      "required": true,
+      "verified": {
+        "target": "published",
+        "at": "2026-08-08T03:10:01+00:00",
+        "rows": 12,
+        "sql_sha256": "d67e2f29f7a9600435bccbb428c08de5b503641d7052d050906f871b8309cfd7"
+      }
+    },
+    {
+      "id": "ex.export-lowest-rate-with-exclusions-counted",
+      "question": "Which hexagons have the lowest 311 rate per resident, and how many were excluded for having no residents?\n",
+      "sql": "-- A lowest-rate answer is only honest alongside the number of areas the\n-- question does not apply to, so that count rides in every row rather than in a\n-- caveat. Cells with no residents are excluded and counted, never read as zero.\nwith per_cell as (\n    select\n        h3_cell,\n        analysis_neighborhood,\n        sum(event_count) as events,\n        max(cell_population) as cell_population\n    from mart_activity_by_h3\n    where dataset = '311_cases'\n    group by h3_cell, analysis_neighborhood\n),\ncounted as (\n    select\n        count(*) as cells_total,\n        count(*) filter (where coalesce(cell_population, 0) = 0) as cells_excluded_no_residents\n    from per_cell\n)\nselect\n    p.h3_cell,\n    p.analysis_neighborhood,\n    p.events,\n    round(p.cell_population, 1) as cell_population,\n    round(1000.0 * p.events / p.cell_population, 1) as events_per_1000_residents,\n    c.cells_excluded_no_residents,\n    c.cells_total\nfrom per_cell as p\ncross join counted as c\nwhere p.cell_population > 0\norder by events_per_1000_residents asc, p.h3_cell\nlimit 10",
+      "demonstrates": [
+        "refuse.null-rate-is-not-a-low-rate"
+      ],
+      "required": true,
+      "verified": {
+        "target": "published",
+        "at": "2026-08-08T03:10:01+00:00",
+        "rows": 10,
+        "sql_sha256": "326a6e803ca0e284accf2f92631d099d6bc30f970018836735a2cf9224e4eb85"
+      }
+    }
+  ],
+  "integrity": {
+    "self_refusal": "Before trusting this pack, compare its integrity block against the target itself: the schema hash of every model you intend to query, and the dbt invocation it was built from. If they disagree, this pack describes something the target does not contain, and the correct response is to refuse every question rather than to answer from a stale description.",
+    "dbt": {
+      "invocation_id": "c0e3245a-5fb9-4e20-a081-21a7058289d0",
+      "manifest_generated_at": "2026-08-08T03:09:39.146747Z",
+      "dbt_version": "1.12.0",
+      "adapter_type": "duckdb",
+      "project_id": "b2ad435d37afeb27fc9880d6d2ae6e55"
+    },
+    "models": {
+      "dim_neighborhood": {
+        "schema_hash": "a45c3b61db7d3719",
+        "row_count": 41
+      },
+      "dim_supervisor_district": {
+        "schema_hash": "ca53a22ebf03c6d9",
+        "row_count": 11
+      },
+      "mart_activity_by_h3": {
+        "schema_hash": "0e29db73e198cd99",
+        "row_count": 140163
+      },
+      "mart_activity_by_neighborhood": {
+        "schema_hash": "c206f557c69a5990",
+        "row_count": 40157
+      },
+      "mart_film_locations": {
+        "schema_hash": "c65a9053b2458bb4",
+        "row_count": 2214
+      },
+      "mart_pipeline_freshness": {
+        "schema_hash": "2bf00211bd04d5a1",
+        "row_count": 7
+      }
+    },
+    "published_manifest_version": 2,
+    "published_generated_at": "2026-08-08T02:22:01.313683+00:00",
+    "published_manifest_schema_hashes": {
+      "dim_neighborhood": "d6ab3c72cd7f141e",
+      "dim_supervisor_district": "58c1e954a3a26872",
+      "mart_activity_by_h3": "0e29db73e198cd99",
+      "mart_activity_by_neighborhood": "c206f557c69a5990",
+      "mart_film_locations": "c65a9053b2458bb4",
+      "mart_pipeline_freshness": "6552dcb2fdafb99d"
+    },
+    "schema_hash_basis": "schema_hash is over the Parquet as read, which is what you opened. published_manifest_schema_hashes are publish/export.py's, over the warehouse tables the export was written from, copied from published/manifest.json unmodified. Compare the second against the manifest in the bucket and the first against the files.",
+    "schema_hash_disagreements": [
+      "dim_neighborhood",
+      "dim_supervisor_district",
+      "mart_pipeline_freshness"
+    ],
+    "schema_hash_disagreements_because": "HUGEINT has no Parquet type, so DuckDB writes those columns as DOUBLE and the two hashes differ for a schema that is otherwise identical. A count read from this export is a float. Expected, and not a sign that the export is corrupt."
+  }
+}

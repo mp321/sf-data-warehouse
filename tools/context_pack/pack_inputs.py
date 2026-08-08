@@ -26,6 +26,7 @@ in a way nothing downstream could detect.
 """
 
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -40,7 +41,6 @@ sys.path.insert(0, str(REPO_ROOT / "ingestion"))
 from dataset_registry import load_registry  # noqa: E402  (path set above)
 
 MANIFEST_PATH = REPO_ROOT / "dbt" / "target" / "manifest.json"
-PUBLISHED_MANIFEST_PATH = REPO_ROOT / "published" / "manifest.json"
 DECISIONS_DIR = REPO_ROOT / "docs" / "decisions"
 
 LAYERS = ("staging", "intermediate", "marts")
@@ -273,8 +273,24 @@ def registry_field(sources: dict, ref: str):
     return sources[source_name][field], None
 
 
+def published_root() -> Path:
+    """The export a published pack describes: `$PUBLISH_DIR`, else `published/`.
+
+    The same variable `publish/export.py` writes through, rather than a second
+    convention, so the pack reads the export that was just written. A relative
+    value is resolved against the repo root and not the working directory,
+    because `make ci-build` sets it to a path under `data/` and the generator is
+    run from wherever the caller happens to be.
+    """
+    value = os.environ.get("PUBLISH_DIR")
+    if not value:
+        return REPO_ROOT / "published"
+    path = Path(value)
+    return path if path.is_absolute() else REPO_ROOT / path
+
+
 def published_manifest(path: Path | None = None) -> dict | None:
-    manifest_path = path or PUBLISHED_MANIFEST_PATH
+    manifest_path = path or published_root() / "manifest.json"
     if not manifest_path.exists():
         return None
     return json.loads(manifest_path.read_text())

@@ -112,8 +112,20 @@ def spec_version() -> str:
     return match.group(1)
 
 
-def build_identity_block(prose: dict, sources: dict, published: dict | None) -> dict:
+def build_identity_block(target, prose: dict, sources: dict, published: dict | None) -> dict:
     identity = prose.get("identity") or {}
+    description = pack_render._flat(identity.get("description", ""))
+    if target.name == "published":
+        # The prose sentence describes the warehouse, which is the one thing it
+        # is allowed to describe (spec 4.1: one sentence, written once). In a
+        # published pack it would otherwise open by naming staging views the
+        # reader does not have, so the target's own sentence is appended here,
+        # derived from the model set rather than written a second time.
+        description += (
+            f" This pack describes the published export of that warehouse and not the warehouse: "
+            f"{len(target.model_names)} marts, one Parquet file each, and nothing else. Anything "
+            "the export does not carry is a refusal here even where the warehouse can answer it."
+        )
     licence = (published or {}).get("license")
     if not licence:
         from export import LICENSE  # noqa: PLC0415  (pack_target put publish/ on sys.path)
@@ -121,7 +133,7 @@ def build_identity_block(prose: dict, sources: dict, published: dict | None) -> 
         licence = LICENSE
     return {
         "name": "sf-data-warehouse",
-        "description": pack_render._flat(identity.get("description", "")),
+        "description": description,
         "publisher": "DataSF and the US Census Bureau, modelled here",
         "jurisdiction": "San Francisco, California",
         "licence": licence,
@@ -282,17 +294,43 @@ def build_joins_block(derived: list[dict], prose_joins: list[dict], target, uniq
     return entries
 
 
-def build_freshness_block(target) -> dict:
-    """Section 4.5. mart_pipeline_freshness projected, not a second calculation."""
+def build_freshness_block(target, published: dict | None) -> dict:
+    """Section 4.5. mart_pipeline_freshness projected, not a second calculation.
+
+    **The published target answers a different question and says so** (spec 4.5,
+    PLAN-8 step 2). Its headline freshness is the publish time from
+    `published/manifest.json`, because that is the age of the artifact the
+    consumer is holding, and the gap between it and the build has been days. The
+    per-source rows below it are still projected from `mart_pipeline_freshness`,
+    which the export happens to carry, but they date the raw zone as it stood in
+    the build the export was written from and not the export. Giving one of those
+    two numbers without the other is how a reader concludes the export is as
+    fresh as the pipeline that produced it.
+    """
     rows = target.execute(
         "select source_name, tier, row_count, last_load_at, last_run_finished_at, "
         "stale_after_hours, is_stale from main.mart_pipeline_freshness order by source_name"
     )
-    return {
-        "basis": (
+    if target.name == "published":
+        if not published:
+            raise GenerationError(
+                "The published target has no manifest.json, so the pack has no publish time to "
+                "report as its freshness (spec 4.5)."
+            )
+        basis = (
+            "published/manifest.json. published_at is when this export was written, which is the "
+            "age of the files you are reading. The per-source rows are mart_pipeline_freshness as "
+            "it stood in the build this export was written from: last_load_at is when rows landed "
+            "in the raw zone, not when this export was published, and the two have been days "
+            "apart. Neither number is the other's substitute."
+        )
+    else:
+        basis = (
             "mart_pipeline_freshness, projected. last_load_at is when rows last landed in the "
             "raw zone, which is the build's own view of its inputs and not a publish time."
-        ),
+        )
+    block = {
+        "basis": basis,
         "sources": [
             {
                 "source": source,
@@ -306,6 +344,10 @@ def build_freshness_block(target) -> dict:
             for source, tier, row_count, last_load_at, last_run, sla, is_stale in rows
         ],
     }
+    if target.name == "published":
+        block["published_at"] = published["generated_at"]
+        block["manifest_version"] = published["manifest_version"]
+    return block
 
 
 def build_examples_block(target, candidates: list[dict], required_ids: set[str]) -> list[dict]:
@@ -372,6 +414,54 @@ def build_integrity_block(target, manifest: dict, prose: dict, published: dict |
     if target.name == "published" and published:
         block["published_manifest_version"] = published["manifest_version"]
         block["published_generated_at"] = published["generated_at"]
+        block.update(_published_manifest_hashes(target, block["models"], published))
+    return block
+
+
+def _published_manifest_hashes(target, models: dict, published: dict) -> dict:
+    """Both hashes, and the fact that three of six disagree (spec section 8).
+
+    Section 8 has the published pack carry the per-dataset `schema_hash` from
+    `published/manifest.json`, "which is the authority on the export and not
+    something the pack recomputes". Both halves of that are worth stating exactly,
+    because they are not the same hash.
+
+    `publish/export.py` computes its hash against the warehouse table it is about
+    to write. The pack computes its own against the Parquet that was written.
+    Measured 2026-08-07 on the six marts: three agree and three do not, because
+    HUGEINT has no Parquet type and DuckDB writes those columns as DOUBLE. So a
+    count column that is an exact integer in the warehouse is a float in the
+    export, and neither hash is wrong: one describes what was exported and the
+    other describes what a consumer opens.
+
+    This does not fail generation. The difference is a property of the format
+    rather than of this export, so failing here would mean no published pack can
+    ever be generated, and the honest thing is to carry both numbers and say
+    which is which. What a consumer compares against the bucket is the manifest
+    hash; what they compare against the file they just opened is the pack's.
+    """
+    from_manifest = {entry["dataset"]: entry["schema_hash"] for entry in published["datasets"]}
+    disagreeing = sorted(
+        name
+        for name, entry in models.items()
+        if name in from_manifest and from_manifest[name] != entry["schema_hash"]
+    )
+    block = {
+        "published_manifest_schema_hashes": {name: from_manifest.get(name) for name in models},
+        "schema_hash_basis": (
+            "schema_hash is over the Parquet as read, which is what you opened. "
+            "published_manifest_schema_hashes are publish/export.py's, over the warehouse tables "
+            "the export was written from, copied from published/manifest.json unmodified. Compare "
+            "the second against the manifest in the bucket and the first against the files."
+        ),
+    }
+    if disagreeing:
+        block["schema_hash_disagreements"] = disagreeing
+        block["schema_hash_disagreements_because"] = (
+            "HUGEINT has no Parquet type, so DuckDB writes those columns as DOUBLE and the two "
+            "hashes differ for a schema that is otherwise identical. A count read from this "
+            "export is a float. Expected, and not a sign that the export is corrupt."
+        )
     return block
 
 
@@ -402,6 +492,9 @@ def build_pack(target_name: str, duckdb_path: Path | None = None) -> tuple[dict,
         derived_joins = pack_inputs.declared_joins(manifest)
         pack_prose.check_join_duplication(selected["joins"], derived_joins)
         pack_prose.check_class_three_examples(selected["refusals"], selected["examples"])
+        selected["refusals"] = pack_prose.point_at_this_target_examples(
+            selected["refusals"], selected["examples"]
+        )
 
         required_ids = {
             entry["id"] for entry in selected["refusals"] if entry["class"] == "misnormalised"
@@ -412,13 +505,13 @@ def build_pack(target_name: str, duckdb_path: Path | None = None) -> tuple[dict,
             "target": target.name,
             "generated_at": _now(),
             "prose_revision": prose_revision,
-            "identity": build_identity_block(prose, sources, published),
+            "identity": build_identity_block(target, prose, sources, published),
             "build": build_build_block(target, manifest, sources, variables),
             "models": build_models_block(target, all_models, warnings),
             "joins": build_joins_block(
                 derived_joins, selected["joins"], target, pack_inputs.unique_columns(manifest)
             ),
-            "freshness": build_freshness_block(target),
+            "freshness": build_freshness_block(target, published),
             "traps": selected["traps"],
             "refusals": {
                 "no_ground_truth": pack_render._flat(prose["preamble"]["no_ground_truth"]),

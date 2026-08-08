@@ -50,6 +50,15 @@ survey.
 - `published/` exists locally with all six marts and a `manifest_version` 2
   manifest.
 
+**Steps 1 to 4 done 2026-08-07, and the published pack exists.** Both artifacts
+are in the working tree, CI checks the second one beside the first, and the four
+examples were written over the export, executed and read. Steps 5 and 6 are
+open, so this plan is not closed. What the audit below got wrong is worth
+keeping: the prose was target-aware and its `published` claims had never been
+checked, because a claim is only checked when the target it names is generated.
+Twelve of the entries claiming `published` could not resolve against the six
+marts, and fixing them was most of step 3 rather than a preliminary to it.
+
 ## Steps
 
 1. **A connection factory for the published target** in `pack_target.py`. An
@@ -101,14 +110,23 @@ survey.
 
 ## Done when
 
-- [ ] `make context-pack TARGET=published` writes both artifacts and they are
-      committed.
-- [ ] The published pack refuses a question the duckdb pack answers, and the
-      refusal names the export rather than the data.
-- [ ] Every example in it was executed against the Parquet and read by a human.
-- [ ] `make context-pack-check TARGET=published` is in CI beside the duckdb one.
-- [ ] A dev note says whether the three-pack argument survived a second pack, in
-      those words. That is the question this plan exists to answer.
+- [x] `make context-pack TARGET=published` writes both artifacts and they are
+      committed. Written 2026-08-07; committing is the human's call, so they are
+      in the working tree.
+- [x] The published pack refuses a question the duckdb pack answers, and the
+      refusal names the export rather than the data. Five of them do:
+      `refuse.export-has-no-row-level-records`,
+      `refuse.export-has-no-staging-or-intermediate-models`,
+      `refuse.export-has-no-h3-bridge`,
+      `refuse.export-counts-permit-records-at-filing` and
+      `refuse.export-counts-registrations-not-businesses`.
+- [x] Every example in it was executed against the Parquet and read by a human.
+      Four, one per class 3 refusal, none of them the duckdb query.
+- [x] `make context-pack-check TARGET=published` is in CI beside the duckdb one,
+      against the export `make ci-build` writes from fixtures. Measured: all six
+      hashes from the fixture export are identical to the real export's.
+- [x] A dev note says whether the three-pack argument survived a second pack, in
+      those words. `docs/dev-notes/2026-08-07.md`, third session.
 
 ## Open questions
 
@@ -117,6 +135,16 @@ survey.
   `make context-pack-check` stop being one command each. A `TARGET=` variable
   keeps one code path; a target per pack is more discoverable in `make help`.
   Decide when the second pack exists rather than now.
+  **Answered 2026-08-07, with the second pack built: one target and a `TARGET=`
+  variable, defaulting to duckdb.** The deciding argument is not the code path,
+  which is one line either way. It is that the difference between the two
+  commands is which artifact has to exist first, `make build` against
+  `make publish`, and `generate.py` already refuses each with the sentence that
+  names the missing one. What a target per pack would have duplicated is the
+  comment above them, which is the thing that must not drift: it is the one
+  place that says why generating after `make check` produces a pack whose
+  invocation id is a fixture run's. The cost is real and is accepted: a variable
+  does not appear in `make help`, so the help text for both targets names it.
 - **Is the bigquery pack worth generating at all?** It needs credentials, has no
   schema hash, and ADR-13 already records that it will be stale more often than
   not. The honest alternative is to build the published pack, then decide

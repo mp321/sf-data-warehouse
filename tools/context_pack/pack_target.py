@@ -9,19 +9,32 @@ warehouse". This module is where that indirection lives.
     published   the 6 marts in PUBLISHED_MARTS, read as Parquet. No credentials.
     bigquery    all 19 models, from BigQuery. Credentials, and by hand.
 
-**Only `duckdb` can be opened today.** PLAN-6 step 2 built the generator against
-the target that needs no credentials, because that is the one CI can gate on,
-and the other two are declared here rather than implemented so that the model
-set, the freshness source and the schema-hash policy of each are written down in
-one place where the prose validator can already see them. `open_target` raises
-for both with a pointer rather than pretending. An unimplemented target that
-fails loudly is a smaller lie than one that silently emits a DuckDB pack under
-another name.
+**`bigquery` cannot be opened.** It is declared here rather than implemented so
+that its model set, freshness source and schema-hash policy are written down in
+the one place the prose validator can already see them. `open_target` raises for
+it with a pointer rather than pretending: an unimplemented target that fails
+loudly is a smaller lie than one that silently emits a DuckDB pack under another
+name.
+
+**`published` is an in-memory DuckDB with one view per mart** over
+`$PUBLISH_DIR/<mart>/**/*.parquet` (PLAN-8 step 1). Everything else the generator
+asks of a target - columns, row counts, schema hashes, example queries - then
+works through the same `Target` as it does for the warehouse. The views are read
+with `hive_partitioning`, so a mart that goes back to being partitioned by month
+(ADR-12 keeps the mechanism) reads as one relation with its partition column
+present rather than as a directory the glob misses.
 
 **The schema hash is `publish/export.py`'s, imported and not reimplemented.**
 PLAN-6 says reuse it, and the spec says the same in section 2. It renders DuckDB
 type names, which is why it carries across `duckdb` and `published` and why the
 `bigquery` target declares it absent with a reason instead.
+
+**It does not follow that a mart hashes the same in both.** Measured 2026-08-07:
+three of the six differ, because HUGEINT has no Parquet type and DuckDB writes
+those columns as DOUBLE. So the hash a published pack carries is the hash of the
+files a consumer reads, and the one in `published/manifest.json` is the hash of
+the warehouse table the export was written from. The generator records both and
+says which is which; neither is wrong and they answer different questions.
 """
 
 import os
@@ -31,6 +44,7 @@ from pathlib import Path
 
 import duckdb
 
+import pack_inputs
 from pack_inputs import REPO_ROOT
 
 sys.path.insert(0, str(REPO_ROOT / "publish"))
@@ -54,14 +68,17 @@ TARGETS = {
         "freshness_from": "mart_pipeline_freshness",
         "schema_hash": True,
         "needs_credentials": False,
-        "generated_by": "CI, every pull request",
+        # By hand and never in CI, which is ADR-13 and is the opposite of what
+        # this field said until 2026-08-07. CI checks a committed pack against
+        # the fixture warehouse and generates nothing.
+        "generated_by": "by hand, after `make build`",
     },
     "published": {
         "models": "published_marts",
         "freshness_from": "published/manifest.json",
         "schema_hash": True,
         "needs_credentials": False,
-        "generated_by": "CI, every pull request",
+        "generated_by": "by hand, after `make publish`",
     },
     "bigquery": {
         # No schema hash on purpose: publish/export.py renders DuckDB type
@@ -159,31 +176,74 @@ def model_set(target_name: str, all_models: dict) -> list[str]:
     raise TargetError(f"Unknown model rule {rule!r} for target {target_name!r}")
 
 
-@contextmanager
-def open_target(target_name: str, all_models: dict, duckdb_path: Path | None = None):
-    if target_name not in TARGETS:
-        raise TargetError(f"Unknown target {target_name!r}. One of: {', '.join(TARGET_NAMES)}")
-    if target_name != "duckdb":
-        raise TargetError(
-            f"The {target_name} target is declared in tools/context_pack/pack_target.py and not "
-            "yet implemented. PLAN-6 step 2 built the generator against duckdb, the target that "
-            "needs no credentials and that CI can therefore gate on. What is missing for "
-            f"{target_name} is a connection factory here and its entries in prose.yml; "
-            "everything else in the generator is already target-agnostic."
-        )
-
+def _open_warehouse(duckdb_path: Path | None):
     path = duckdb_path or Path(os.environ.get("DUCKDB_PATH", REPO_ROOT / "data" / "sf.duckdb"))
     if not Path(path).exists():
         raise TargetError(
             f"No warehouse at {path}. Run `make build` first, or point DUCKDB_PATH at one."
         )
-    connection = duckdb.connect(str(path), read_only=True)
+    return duckdb.connect(str(path), read_only=True)
+
+
+def _open_export(model_names: list[str]):
+    """One in-memory view per mart over the export's Parquet. PLAN-8 step 1.
+
+    A view rather than a table because nothing here writes: the pack profiles
+    the files a consumer reads, and materialising them would be a copy that can
+    disagree with what is on disk.
+
+    The manifest is required rather than optional. An export directory without
+    one is not an export (ADR-8 makes the manifest the thing that lands last),
+    and a pack generated from a half-written one would describe files no
+    consumer is meant to be reading yet.
+    """
+    root = pack_inputs.published_root()
+    if not (root / "manifest.json").exists():
+        raise TargetError(
+            f"No export at {root}: no manifest.json. Run `make publish` first, or point "
+            "PUBLISH_DIR at an export. The published pack describes an export and cannot be "
+            "generated from the warehouse the export came from."
+        )
+    connection = duckdb.connect(":memory:")
+    for name in model_names:
+        files = sorted((root / name).rglob("*.parquet"))
+        if not files:
+            connection.close()
+            raise TargetError(
+                f"The export at {root} has no Parquet for {name}, which PUBLISHED_MARTS says it "
+                "exports. Re-run `make publish`: a pack over a partial export would describe a "
+                "model set no consumer has."
+            )
+        glob = str(root / name / "**" / "*.parquet").replace("'", "''")
+        connection.execute(
+            f"create view {name} as select * from read_parquet('{glob}', hive_partitioning = true)"
+        )
+    return connection
+
+
+@contextmanager
+def open_target(target_name: str, all_models: dict, duckdb_path: Path | None = None):
+    if target_name not in TARGETS:
+        raise TargetError(f"Unknown target {target_name!r}. One of: {', '.join(TARGET_NAMES)}")
+    if target_name == "bigquery":
+        raise TargetError(
+            "The bigquery target is declared in tools/context_pack/pack_target.py and not yet "
+            "implemented. It is the one target that needs credentials, so it is the one CI "
+            "cannot gate on, and ADR-13 records that it has no schema hash either. What is "
+            "missing is a connection factory here and its own verified examples; everything "
+            "else in the generator is target-agnostic. PLAN-8 step 6."
+        )
+
+    model_names = model_set(target_name, all_models)
+    connection = (
+        _open_export(model_names) if target_name == "published" else _open_warehouse(duckdb_path)
+    )
     try:
         yield Target(
             name=target_name,
             connection=connection,
             schema="main",
-            model_names=model_set(target_name, all_models),
+            model_names=model_names,
         )
     finally:
         connection.close()
