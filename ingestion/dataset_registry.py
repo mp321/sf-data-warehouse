@@ -46,6 +46,7 @@ REQUIRED_FIELDS = (
     "staging_model",
     "tier",
     "kind",
+    "refresh",
     "grain_key",
     "geometry",
     "start_date",
@@ -53,6 +54,14 @@ REQUIRED_FIELDS = (
 )
 
 KINDS = ("point", "polygon")
+
+# Whether a partition of this dataset can ever be superseded. Required rather
+# than defaulted, and required in the unsafe direction: a new dataset with no
+# `refresh` fails to load rather than silently becoming prunable, because the
+# cost of the two mistakes is not symmetric. Calling a snapshot a delta wastes
+# storage; calling a delta a snapshot offers rows for deletion that nothing can
+# bring back. PLAN-9 and ADR-14.
+REFRESH_KINDS = ("snapshot", "delta")
 
 # Bounding box for validating point coordinates, in degrees. Deliberately
 # loose: it is a rejection filter for null-island rows, coordinates that
@@ -104,6 +113,11 @@ def load_registry(path: Path | str | None = None) -> dict:
                 f"registry entry {entry['name']} has kind {entry['kind']!r}; "
                 f"expected one of {', '.join(KINDS)}"
             )
+        if entry["refresh"] not in REFRESH_KINDS:
+            raise RuntimeError(
+                f"registry entry {entry['name']} has refresh {entry['refresh']!r}; "
+                f"expected one of {', '.join(REFRESH_KINDS)}"
+            )
         if entry["name"] in registry:
             raise RuntimeError(f"registry entry {entry['name']} is listed twice in {path}")
 
@@ -127,3 +141,14 @@ def point_datasets() -> dict:
 def polygon_datasets() -> dict:
     """Registry entries that carry a polygon per row."""
     return {name: cfg for name, cfg in DATASETS.items() if cfg["kind"] == "polygon"}
+
+
+def snapshot_datasets() -> dict:
+    """Registry entries a partition of which can ever be superseded.
+
+    The one caller is `prune_raw.py`, and this is the whole of the filter it
+    applies before it starts proving anything: a dataset that is not here is
+    not looked at, not reported on as prunable, and not reachable by any flag.
+    Membership is necessary and nowhere near sufficient. See ADR-14.
+    """
+    return {name: cfg for name, cfg in DATASETS.items() if cfg["refresh"] == "snapshot"}

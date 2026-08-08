@@ -1,10 +1,16 @@
 ---
-status: draft
+status: done
 date: 2026-08-07
-related: [adr-4-raw-zone-layout, adr-9-cloud-raw-zone, adr-8-published-exports, adr-12-published-export-layout, plan-7-pipeline-assurance]
+related: [adr-4-raw-zone-layout, adr-9-cloud-raw-zone, adr-8-published-exports, adr-12-published-export-layout, adr-14-raw-zone-retention, plan-7-pipeline-assurance]
 ---
 
 # PLAN-9. Bound what the buckets accumulate
+
+**Status: closed 2026-08-07, all eight steps, recorded in ADR-14 and in the dev
+note for the same day.** The bucket went from 563.5 MB over 3,128 objects to
+249.6 MB over 196. Both open questions are answered in ADR-14. One measurement
+in this plan was wrong and is corrected below: the object count was 236 and not
+329.
 
 Two prefixes grow without limit and neither has an owner. The raw zone grows
 because it is append-only by decision, and the published prefix grows because
@@ -16,6 +22,12 @@ bounded.
 **Measured 2026-08-07, on the real bucket.** The raw prefix is 511.9 MB across
 329 objects. The zone went remote on 2026-08-01, so that is six or seven days,
 depending on how many of the runs in that window were manual dispatches.
+
+> **Corrected on execution, same day.** 511,937,211 bytes is exact. The object
+> count is **236**, not 329, by
+> `gcloud storage ls --recursive gs://$GCS_BUCKET/raw/**`. The bytes are what
+> the argument rests on and they were right; the count was not, and it is the
+> number a reader would have checked first.
 
 | growth | headroom against a 5 GB free allowance |
 |---|---|
@@ -113,6 +125,20 @@ history, and the loss would surface months later as a hole in a monthly series.
    `make rebuild` and an upload with `--destination`. Verify 7 objects and
    `manifest_version` 2. Deletes are free operations, so removing the 2,280
    costs nothing against the tier.
+
+   **Done 2026-08-07, and the mechanism was substituted for step 6's.** The end
+   state this step names is exactly what `--prune` produces, so it was run as
+   `make publish PUBLISH_DEST=gs://.../published PUBLISH_PRUNE=1` rather than as
+   a `gcloud storage rm` followed by an upload. Two reasons, and the first is the
+   one that matters: `rm --recursive` then upload leaves a window in which the
+   destination holds no export at all, which is the state ADR-8's manifest
+   ordering exists to prevent, where prune-after-upload never has one. The
+   second is that it exercises the flag step 6 had just added against the exact
+   condition it was written for, instead of leaving it unrun. Result: 2,880
+   objects removed, 7 remain, `manifest_version` 2, 18.6 MB to 3.2 MB. The
+   orphans were 2,879 objects of the pre-ADR-12 month-partitioned layout plus
+   `mart_budget_by_department_year`, a mart ADR-10 cut, which nothing had
+   noticed was still being served.
 8. **The ADR.** ADR-4 says the raw zone is append-only, files added and never
    edited or deleted, with `--full-refresh` as the single exception. This plan
    creates a second exception, so it needs an ADR that amends ADR-4 rather than
@@ -139,19 +165,32 @@ history, and the loss would surface months later as a hole in a monthly series.
 
 ## Done when
 
-- [ ] The bucket's raw prefix is measured per dataset and per partition, and the
-      growth rate is a number rather than a range.
-- [ ] The registry declares each dataset snapshot or delta, and a test fails if
-      a new dataset omits it.
-- [ ] A prune exists that refuses to delete a partition it cannot prove is
-      superseded, and removes the run manifests with it.
-- [ ] Prune then `make rebuild` leaves every model's row count unchanged, and
-      `make context-pack-check` still passes.
-- [ ] `publish/export.py --prune` removes orphans after the manifest lands, and
+- [x] The bucket's raw prefix is measured per dataset and per partition, and the
+      growth rate is a number rather than a range. Done 2026-08-07.
+      `raw_business_locations` is 397.1 MB of the 511.9, in seven daily
+      partitions of about 49.6 MB, and every one of the six days after the
+      backfill wrote a fresh full copy. The other six datasets are 114.8 MB
+      between them, of which 55.5 MB is `city_budget` and `street_trees`, which
+      ADR-10 cut and nothing has deleted.
+- [x] The registry declares each dataset snapshot or delta, and a test fails if
+      a new dataset omits it. Done: `refresh` in `vars.pipeline_sources`,
+      required by `dataset_registry.load_registry`, three tests in
+      `tests/test_dataset_registry.py`.
+- [x] A prune exists that refuses to delete a partition it cannot prove is
+      superseded, and removes the run manifests with it. Done:
+      `ingestion/prune_raw.py`, `make prune-raw` and `make prune-raw-apply`, 14
+      tests in `tests/test_prune_raw.py`, four of which are refusals.
+- [x] Prune then `make rebuild` leaves every model's row count unchanged, and
+      `make context-pack-check` still passes. Done on the real bucket: 54
+      objects and 297.8 MB removed, 2,188,619 raw rows of
+      `raw_business_locations` gone, **0 of 19 model row counts moved**,
+      `dbt build` `PASS=172 ERROR=0`, `make check-runs` still clean, and
+      `context-pack-check` agrees with the live target.
+- [x] `publish/export.py --prune` removes orphans after the manifest lands, and
       the published prefix in the bucket holds 7 objects at
-      `manifest_version` 2.
-- [ ] An ADR amends ADR-4's append-only rule and records why the exception is
-      safe for one kind of dataset and unsafe for the other.
+      `manifest_version` 2. Done: 2,880 objects removed, 18.6 MB to 3.2 MB.
+- [x] An ADR amends ADR-4's append-only rule and records why the exception is
+      safe for one kind of dataset and unsafe for the other. ADR-14.
 
 ## Open questions
 
@@ -160,8 +199,37 @@ history, and the loss would surface months later as a hole in a monthly series.
   of `ingest.yml` would keep the zone bounded without anyone remembering, and
   would also mean a scheduled job deletes data, which is a different risk
   appetite. Decide with the ADR.
+  **Answered in ADR-14: by hand, `make prune-raw` then `make prune-raw-apply`.**
+  The prune's whole design is that a human reads a refusal, and a refusal
+  nobody reads is a tool that either wedges a scheduled job or gets its exit
+  code ignored. The cost is named rather than argued away: the zone is now
+  bounded by someone remembering, and that is what reopens this.
 - **Does `check_runs.py` get a third state?** Step 4 offers two answers and the
   cheaper one may be the wrong one. A run whose rows were deliberately removed
   is a fact about the zone, and a check that cannot express it is a check that
   will be silenced later. PLAN-7 step 1 made the same call the other way and its
   reasoning is worth re-reading first.
+  **Answered in ADR-14: no third state. The prune deletes the manifests with
+  the partitions**, and `check_runs.py` is unchanged. Re-reading PLAN-7 step 1
+  is what settled it, and against the cheap answer's favour rather than for it:
+  that call kept `check_runs.py` out of `check_derived.py` because the reader
+  and the moment were different, and here they are the same. The deciding cost
+  is that a third state needs a marker, and the only places to put one are
+  inside a manifest, which means editing a file in the zone and is a larger
+  break of ADR-4 than deleting a superseded snapshot, or in a new record type
+  that becomes a second thing to keep in step. What is genuinely lost is
+  recorded in ADR-14's Costs: `mart_pipeline_freshness` now sees 8 runs of
+  `business_locations` where 14 happened. The manifests of runs that wrote
+  nothing are kept, and those are the ones nothing else can reconstruct.
+
+## What this plan did not do
+
+- **`raw_city_budget` and `raw_street_trees`, 55.5 MB.** ADR-10 cut both
+  datasets and nothing deleted their trees, so they are 25.9 percent of the
+  pruned raw prefix and no model reads a row of either. `make check-runs`
+  already warns about both. They are not prunable by this tool and should not
+  be: they are not in the registry, so it has no `refresh` and no `grain_key`
+  to prove anything with, and deleting a whole dataset is a different act from
+  deleting a superseded partition of a live one. It wants one line of an ADR or
+  a dev note saying the scope decision extends to the zone, and then a
+  `gcloud storage rm --recursive` on two prefixes.

@@ -31,11 +31,30 @@ path, row count, byte size, a schema hash, and when it was generated. The
 schema hash is what lets a consumer notice that a column changed type without
 diffing data, and it is what the context pack in PLAN-6 will hang off.
 
+**The uploader copies and never deletes, and `--prune` is the opt-in that does.**
+Until PLAN-9 step 6 there was nothing to remove an object a later export stopped
+writing, so the bucket held the 2,280 objects of the pre-ADR-12 month-partitioned
+layout alongside the 7 of the current one: 18.6 MB where the export is 3.0 MB,
+and a consumer that globbed the old paths still found a whole stale export
+sitting there. `--prune` deletes objects under the destination prefix that the
+export it just finished did not write. Three constraints, and each one is a rule
+this project already had rather than a new one:
+
+  - it runs AFTER the manifest lands, so ADR-8's ordering survives. Until the
+    manifest arrives a consumer sees the previous export, coherent; after it
+    arrives the new one is complete, and only then does anything get removed.
+  - it prints every object it removes, because a flag that deletes remote data
+    and reports a count is one nobody can audit afterwards.
+  - it is off by default, and it refuses a destination with no prefix. A bare
+    `gs://bucket` would make "everything the export did not write" mean the raw
+    and derived zones.
+
 Usage:
     python publish/export.py --all
     python publish/export.py --all --output-dir published
     python publish/export.py --all --destination r2://my-bucket/sf
     python publish/export.py --all --destination gs://my-bucket/sf
+    python publish/export.py --all --destination gs://my-bucket/sf --prune
     python publish/export.py --list
 
 Required environment variables: none for a local export.
@@ -241,8 +260,19 @@ def write_manifest(entries: list[dict], root: Path) -> Path:
 # ---------------------------------------------------------------------------
 
 
-def upload(root: Path, destination: str) -> None:
-    """Copy a finished local export to R2 or GCS.
+def _blob_name(root: Path, item: Path, prefix: str) -> str:
+    """The object key one exported file lands at. One definition, three callers.
+
+    The prune compares what is in the bucket against what was just written, so
+    the two sides have to agree about this exactly. Computing it twice is how a
+    prune deletes the export it just uploaded.
+    """
+    relative = item.relative_to(root).as_posix()
+    return f"{prefix.rstrip('/')}/{relative}" if prefix else relative
+
+
+def upload(root: Path, destination: str, prune: bool = False) -> None:
+    """Copy a finished local export to R2 or GCS, and optionally remove orphans.
 
     Deliberately a second step over a completed local directory rather than a
     streaming write. An interrupted upload then costs a retry rather than
@@ -253,15 +283,29 @@ def upload(root: Path, destination: str) -> None:
     consumer reading the bucket sees the previous manifest and the previous
     view of the data, which is stale but coherent. A manifest that arrives
     before the files it describes is worse than one that arrives after.
+
+    The prune runs after all of that, and the ordering is ADR-8's rather than a
+    preference. Deleting before the manifest lands would put the destination
+    into a state no consumer should ever see: a manifest describing files that
+    have been removed. Deleting after it lands means the worst any consumer
+    sees is the complete new export plus some objects nothing references.
     """
     scheme, _, remainder = destination.partition("://")
     if not remainder:
         sys.exit(f"Malformed destination {destination!r}. Expected r2://bucket/prefix or gs://...")
     bucket, _, prefix = remainder.partition("/")
 
+    if prune and not prefix.strip("/"):
+        sys.exit(
+            f"--prune refuses {destination!r}: it has no prefix. Prune means 'delete what this "
+            "export did not write under this prefix', and with no prefix that is every object "
+            "in the bucket, which here would be the raw and derived zones. Give it a prefix."
+        )
+
     files = sorted(item for item in root.rglob("*") if item.is_file())
     manifest = root / MANIFEST_NAME
     ordered = [item for item in files if item != manifest] + [manifest]
+    written = {_blob_name(root, item, prefix) for item in ordered}
 
     if scheme == "gs":
         _upload_gcs(root, ordered, bucket, prefix)
@@ -271,6 +315,17 @@ def upload(root: Path, destination: str) -> None:
         sys.exit(f"Unknown destination scheme {scheme!r}. Supported: r2, gs.")
     print(f"Uploaded {len(ordered)} files to {destination}")
 
+    if not prune:
+        return
+    orphans = _list_remote(scheme, bucket, prefix) - written
+    if not orphans:
+        print(f"Prune: nothing under {destination} that this export did not write.")
+        return
+    for key in sorted(orphans):
+        print(f"  removing {scheme}://{bucket}/{key}")
+    _delete_remote(scheme, bucket, sorted(orphans))
+    print(f"Pruned {len(orphans)} object(s) from {destination}")
+
 
 def _upload_gcs(root: Path, files: list[Path], bucket_name: str, prefix: str) -> None:
     from google.cloud import storage  # noqa: PLC0415  (import cost only on this path)
@@ -278,15 +333,61 @@ def _upload_gcs(root: Path, files: list[Path], bucket_name: str, prefix: str) ->
     client = storage.Client()
     bucket = client.bucket(bucket_name)
     for item in files:
-        blob_name = (
-            f"{prefix.rstrip('/')}/{item.relative_to(root)}"
-            if prefix
-            else str(item.relative_to(root))
+        bucket.blob(_blob_name(root, item, prefix)).upload_from_filename(item)
+
+
+def _list_remote(scheme: str, bucket_name: str, prefix: str) -> set[str]:
+    """Every object key currently under the destination prefix."""
+    if scheme == "gs":
+        from google.cloud import storage  # noqa: PLC0415
+
+        client = storage.Client()
+        under = f"{prefix.rstrip('/')}/"
+        return {blob.name for blob in client.list_blobs(bucket_name, prefix=under)}
+
+    client = _r2_client()
+    keys: set[str] = set()
+    token = None
+    while True:
+        page = client.list_objects_v2(
+            Bucket=bucket_name,
+            Prefix=f"{prefix.rstrip('/')}/",
+            **({"ContinuationToken": token} if token else {}),
         )
-        bucket.blob(blob_name).upload_from_filename(item)
+        keys.update(item["Key"] for item in page.get("Contents", []))
+        token = page.get("NextContinuationToken")
+        if not token:
+            return keys
 
 
-def _upload_r2(root: Path, files: list[Path], bucket_name: str, prefix: str) -> None:
+def _delete_remote(scheme: str, bucket_name: str, keys: list[str]) -> None:
+    """Remove the objects named. Deletes are free operations on both providers."""
+    if scheme == "gs":
+        from google.cloud import storage  # noqa: PLC0415
+
+        client = storage.Client()
+        bucket = client.bucket(bucket_name)
+        for key in keys:
+            bucket.blob(key).delete()
+        return
+
+    client = _r2_client()
+    # S3 caps a batch delete at 1000 keys, and the pre-ADR-12 layout was 2,280
+    # objects, so this is a real bound rather than a theoretical one.
+    for start in range(0, len(keys), 1000):
+        client.delete_objects(
+            Bucket=bucket_name,
+            Delete={"Objects": [{"Key": key} for key in keys[start : start + 1000]]},
+        )
+
+
+def _r2_client():
+    """One authenticated R2 client, for the upload path and the prune path.
+
+    Factored out when `--prune` needed to list and delete as well as upload
+    (PLAN-9 step 6). boto3 stays an optional import: the local export does not
+    need it and this project does not depend on it.
+    """
     try:
         import boto3  # noqa: PLC0415
     except ImportError:
@@ -304,20 +405,19 @@ def _upload_r2(root: Path, files: list[Path], bucket_name: str, prefix: str) -> 
             "R2_SECRET_ACCESS_KEY. See .env.example."
         )
 
-    client = boto3.client(
+    return boto3.client(
         "s3",
         endpoint_url=f"https://{account}.r2.cloudflarestorage.com",
         aws_access_key_id=key_id,
         aws_secret_access_key=secret,
         region_name="auto",
     )
+
+
+def _upload_r2(root: Path, files: list[Path], bucket_name: str, prefix: str) -> None:
+    client = _r2_client()
     for item in files:
-        key = (
-            f"{prefix.rstrip('/')}/{item.relative_to(root)}"
-            if prefix
-            else str(item.relative_to(root))
-        )
-        client.upload_file(str(item), bucket_name, key)
+        client.upload_file(str(item), bucket_name, _blob_name(root, item, prefix))
 
 
 def main() -> None:
@@ -337,6 +437,14 @@ def main() -> None:
         "--destination",
         default=None,
         help="also upload to r2://bucket/prefix or gs://bucket/prefix",
+    )
+    parser.add_argument(
+        "--prune",
+        action="store_true",
+        help="after the manifest lands, delete objects under the destination prefix that "
+        "this export did not write. Off by default: a flag that deletes remote data is "
+        "not a default. Named in ADR-8's revisit clause as the thing to run when "
+        "MANIFEST_VERSION changes.",
     )
     parser.add_argument(
         "--duckdb-path",
@@ -383,8 +491,14 @@ def main() -> None:
     print(f"\nWrote {manifest}")
 
     if args.destination:
-        upload(root, args.destination)
+        upload(root, args.destination, prune=args.prune)
     else:
+        if args.prune:
+            sys.exit(
+                "--prune needs --destination. It removes objects a remote destination holds "
+                "and the export did not write; the local export already rewrites each mart "
+                "directory wholesale, so there is nothing under published/ for it to do."
+            )
         print("Local export only. Pass --destination r2://bucket/prefix or gs://... to upload.")
 
 

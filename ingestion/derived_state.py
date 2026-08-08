@@ -292,9 +292,14 @@ def _table_plan(recorded: dict, current: dict) -> list[str] | None:
     """Which partitions of one table this run must read. None means all of them.
 
     A partition that is recorded and now absent, or whose row or file count went
-    down, means the zone was replaced rather than appended to, which only a
-    local `ingest.py --full-refresh` can do (ADR-4). Nothing about the previous
-    run's output survives that, so the table is read whole.
+    down, means the zone was replaced or reduced rather than appended to. Two
+    things can do that and they are the only two: a local
+    `ingest.py --full-refresh` (ADR-4) and `prune_raw.py --apply`, which deletes
+    a partition a later one provably supersedes (ADR-14). Nothing about the
+    previous run's output survives either, so the table is read whole. A prune
+    therefore costs one full recompute of that dataset's derived rows, which is
+    seconds, and it is what keeps `check_derived.py` from reporting STALE
+    against a raw zone that legitimately shrank.
     """
     for partition, before in recorded.items():
         now = current.get(partition)

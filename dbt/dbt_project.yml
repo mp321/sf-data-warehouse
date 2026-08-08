@@ -83,6 +83,24 @@ vars:
   #   start_date        how far back the first load reaches, using Socrata's
   #                     system field :updated_at. Override per run with
   #                     --since. Quoted, so YAML keeps it a string.
+  #   refresh           snapshot or delta, and it is the only field here that
+  #                     decides whether the zone may delete anything. A
+  #                     snapshot source is a current-state registry: upstream
+  #                     republishes it wholesale, so one run's partition can
+  #                     hold the whole dataset and a later complete copy makes
+  #                     an earlier one unreachable through staging, which
+  #                     deduplicates by grain_key to the newest
+  #                     _socrata_updated_at. A delta source is an event log:
+  #                     a partition holds only the rows that changed since the
+  #                     watermark, so deleting one deletes rows and no later
+  #                     partition can bring them back. See PLAN-9 and ADR-14.
+  #                     THIS IS PERMISSION TO ASK THE QUESTION, NOT THE ANSWER.
+  #                     `snapshot` does not assert that any given partition is
+  #                     complete, only that completeness is possible for this
+  #                     source; ingestion/prune_raw.py proves it per partition
+  #                     by checking that a later one holds every grain_key,
+  #                     and refuses when it cannot. `delta` is checked by
+  #                     nothing because nothing may touch it.
   #   kind              point or polygon. This is what ingestion/spatial.py
   #                     dispatches on, and it is the difference between a
   #                     dataset that gets H3 cells and one that gets a
@@ -121,6 +139,7 @@ vars:
       stale_after_hours: 48
       socrata_id: vw6y-z8j6
       start_date: "2024-01-01T00:00:00.000Z"
+      refresh: delta
       kind: point
       grain_key: service_request_id
       geometry: {latitude: lat, longitude: long}
@@ -134,6 +153,7 @@ vars:
       stale_after_hours: 168
       socrata_id: i98e-djp9
       start_date: "2024-01-01T00:00:00.000Z"
+      refresh: delta
       kind: point
       grain_key: record_id
       geometry: {geojson_point: location}
@@ -147,6 +167,7 @@ vars:
       stale_after_hours: 168
       socrata_id: g8m3-pdis
       start_date: "1970-01-01T00:00:00.000Z"
+      refresh: snapshot
       kind: point
       grain_key: uniqueid
       geometry: {geojson_point: location}
@@ -165,6 +186,7 @@ vars:
       stale_after_hours: null
       socrata_id: ajp5-b2md
       start_date: "1970-01-01T00:00:00.000Z"
+      refresh: snapshot
       kind: polygon
       grain_key: nhood
       geometry:
@@ -184,6 +206,7 @@ vars:
       stale_after_hours: null
       socrata_id: f2zs-jevy
       start_date: "1970-01-01T00:00:00.000Z"
+      refresh: snapshot
       kind: polygon
       grain_key: sup_dist_num
       geometry:
@@ -204,6 +227,7 @@ vars:
       stale_after_hours: null
       api: tigerweb
       start_date: "1970-01-01T00:00:00.000Z"
+      refresh: snapshot
       kind: polygon
       grain_key: geoid
       geometry:
@@ -229,6 +253,7 @@ vars:
       stale_after_hours: null
       socrata_id: yitu-d5am
       start_date: "1970-01-01T00:00:00.000Z"
+      refresh: snapshot
       kind: point
       grain_key: _socrata_id
       geometry: {latitude: latitude, longitude: longitude}

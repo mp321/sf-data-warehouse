@@ -145,6 +145,42 @@ def glob(pattern: str) -> list[str]:
     return [f"gs://{hit}" for hit in filesystem().glob(_object_path(pattern))]
 
 
+def list_objects(prefix: "str | Path") -> dict[str, int]:
+    """Every object under a gs:// prefix, as {uri: byte size}.
+
+    `find` and not `glob`, so this is the whole subtree rather than one level,
+    and so it returns sizes in the same listing rather than a stat per object.
+    A prefix that names nothing comes back empty rather than raising: on object
+    storage "the directory does not exist" and "it is empty" are the same
+    state, and every caller here treats them the same way.
+    """
+    listing = filesystem().find(_object_path(prefix), detail=True)
+    return {
+        f"gs://{name}": int(info.get("size") or 0)
+        for name, info in listing.items()
+        if info.get("type") != "directory"
+    }
+
+
+def remove(uris: "list[str]") -> None:
+    """Delete objects. The only deleting operation in this project.
+
+    It is here rather than in a zone module for the same reason every other
+    bucket call is: one place knows what a gs:// URI is and how it is
+    authenticated. It is deliberately not wrapped in anything that decides
+    *what* to delete. The decision is the caller's and is the expensive half:
+    `prune_raw.py` proves a partition is superseded before it gets here, and
+    `publish/export.py --prune` compares against an export it just wrote.
+
+    Deletes are Class B operations on GCS and free at this scale, so nothing
+    here batches for cost. Missing objects are not an error: a delete that
+    raced another delete has still reached the state the caller asked for.
+    """
+    if not uris:
+        return
+    filesystem().rm([_object_path(uri) for uri in uris])
+
+
 def open_write(uri: "str | Path"):
     """Binary handle for one object, for writers that stream rather than buffer.
 

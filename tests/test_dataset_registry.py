@@ -129,6 +129,52 @@ def test_tiers_and_freshness_slas_agree(registry):
             )
 
 
+def test_every_entry_declares_a_refresh_kind(registry):
+    """`refresh` is what decides whether the zone may delete a partition.
+
+    A new dataset that omits it must fail here rather than default to
+    anything, and `load_registry` treats it as required for that reason: the
+    two mistakes do not cost the same. A snapshot mislabelled delta wastes
+    storage. A delta mislabelled snapshot offers rows for deletion that no
+    later partition can bring back, which is the failure PLAN-9 exists to
+    avoid and ADR-14 records.
+    """
+    for name, cfg in registry.items():
+        assert cfg.get("refresh") in dataset_registry.REFRESH_KINDS, (
+            f"{name} has refresh {cfg.get('refresh')!r}, expected one of "
+            f"{dataset_registry.REFRESH_KINDS}. See PLAN-9 and ADR-14: this field decides "
+            "whether ingestion/prune_raw.py may ever consider a partition of this dataset."
+        )
+
+
+def test_a_missing_refresh_kind_fails_to_load(tmp_path):
+    """The unsafe default is the one that must not exist.
+
+    `snapshot_datasets()` is what the prune filters on, so an entry that
+    loaded with no `refresh` would have to fall on one side of it. Neither
+    side is acceptable as a silent answer, so it does not load.
+    """
+    entry = dict(dataset_registry.DATASETS["311_cases"])
+    entry.pop("refresh")
+    broken = tmp_path / "dbt_project.yml"
+    broken.write_text(yaml.safe_dump({"vars": {"pipeline_sources": [entry]}}))
+    with pytest.raises(RuntimeError, match="refresh"):
+        dataset_registry.load_registry(broken)
+
+
+def test_snapshot_datasets_excludes_every_delta_source(registry):
+    """The prune's filter is the registry's answer and not a second list."""
+    snapshots = dataset_registry.snapshot_datasets()
+    for name, cfg in registry.items():
+        assert (name in snapshots) == (cfg["refresh"] == "snapshot"), (
+            f"{name} is refresh {cfg['refresh']} and snapshot_datasets() disagrees"
+        )
+    assert "311_cases" not in snapshots and "building_permits" not in snapshots, (
+        "the two delta sources must never be reachable by the prune: a partition of either "
+        "holds only the rows that changed since the watermark, so deleting one deletes rows"
+    )
+
+
 def test_transport_fields_match_the_api(registry):
     for name, cfg in registry.items():
         if cfg.get("api") == "tigerweb":

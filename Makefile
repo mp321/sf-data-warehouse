@@ -160,6 +160,28 @@ check-derived: ## Check data/derived against data/raw and the code. Nonzero if n
 check-runs: ## Check the raw zone's run manifests against the Parquet they describe.
 	@$(PY) ingestion/check_runs.py --strict
 
+# The one thing in this project that deletes part of the record, and the second
+# exception to ADR-4's append-only rule after `ingest.py --full-refresh`.
+# ADR-14 is the argument; PLAN-9 is why it was needed. It only ever considers
+# datasets the registry marks `refresh: snapshot`, it proves per partition that
+# a surviving later one holds every grain_key at values no older, and it exits 3
+# rather than deleting anything it cannot prove.
+#
+# BY HAND AND NOT ON A SCHEDULE, which is PLAN-9's first open question answered
+# in ADR-14. It is the same way `make publish` is operated and for a stronger
+# reason: a cron that deletes data is a different risk appetite from a cron that
+# writes some.
+#
+# Two targets rather than a flag, because the safe one has to be the one that is
+# easy to type. `make prune-raw` reports and deletes nothing. `make prune-raw-apply`
+# deletes. Point them at the bucket the way everything else here is pointed at
+# it: `set -a; source .env; set +a`.
+prune-raw: ## Report which raw partitions a later one supersedes. Deletes nothing.
+	$(PY) ingestion/prune_raw.py $(PRUNE_ARGS)
+
+prune-raw-apply: ## (destructive) Delete the raw partitions prune-raw proved superseded.
+	$(PY) ingestion/prune_raw.py --apply $(PRUNE_ARGS)
+
 # ---------------------------------------------------------------------------
 # Load: both zones -> warehouse. Idempotent, so re-running is always safe.
 # ---------------------------------------------------------------------------
@@ -220,13 +242,24 @@ parity-check: ## (creds) Compare staging models row for row across both engines
 # now 7 objects and 3.0 MB. The partitioning mechanism stays for the day a mart
 # has enough rows per partition to want it; see PUBLISHED_MARTS in
 # publish/export.py.
+#
+# THE UPLOADER COPIES AND NEVER DELETES, which is why the bucket held the 2,280
+# objects of the pre-ADR-12 partitioned layout beside the 7 of the current one,
+# plus a mart ADR-10 cut. PUBLISH_PRUNE=1 removes what the export did not write,
+# after the manifest lands so ADR-8's ordering survives, printing every object.
+# It is off by default and only meaningful with PUBLISH_DEST:
+#   make publish PUBLISH_DEST=gs://my-bucket/sf PUBLISH_PRUNE=1
+# Run it when MANIFEST_VERSION changes or a mart leaves PUBLISHED_MARTS, which
+# are the two ways an orphan gets created. PLAN-9 step 6.
 # ---------------------------------------------------------------------------
 
 PUBLISH_DEST ?=
+PUBLISH_PRUNE ?=
 
 publish: ## Export marts to published/ as one Parquet file each with a manifest
 	$(PY) publish/export.py --all \
-		$(if $(PUBLISH_DEST),--destination $(PUBLISH_DEST),)
+		$(if $(PUBLISH_DEST),--destination $(PUBLISH_DEST),) \
+		$(if $(PUBLISH_PRUNE),--prune,)
 
 # ---------------------------------------------------------------------------
 # The context pack: what a model must know about this warehouse, and what it
