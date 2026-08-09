@@ -9,12 +9,15 @@ warehouse". This module is where that indirection lives.
     published   the 6 marts in PUBLISHED_MARTS, read as Parquet. No credentials.
     bigquery    all 19 models, from BigQuery. Credentials, and by hand.
 
-**`bigquery` cannot be opened.** It is declared here rather than implemented so
-that its model set, freshness source and schema-hash policy are written down in
-the one place the prose validator can already see them. `open_target` raises for
-it with a pointer rather than pretending: an unimplemented target that fails
-loudly is a smaller lie than one that silently emits a DuckDB pack under another
-name.
+**`bigquery` cannot be opened, and as of ADR-15 that is a decision and not a
+gap.** It is declared here rather than implemented so that its model set,
+freshness source and schema-hash policy are written down in the one place the
+prose validator can already see them. `open_target` raises for it with the reason
+rather than pretending: a target that fails loudly is a smaller lie than one that
+silently emits a DuckDB pack under another name. Do not implement it without
+reading ADR-15 first, whose argument is that a pack with duckdb's model set and
+no schema hash is the duckdb pack with different type names and nothing able to
+prove it current.
 
 **`published` is an in-memory DuckDB with one view per mart** over
 `$PUBLISH_DIR/<mart>/**/*.parquet` (PLAN-8 step 1). Everything else the generator
@@ -227,11 +230,13 @@ def open_target(target_name: str, all_models: dict, duckdb_path: Path | None = N
         raise TargetError(f"Unknown target {target_name!r}. One of: {', '.join(TARGET_NAMES)}")
     if target_name == "bigquery":
         raise TargetError(
-            "The bigquery target is declared in tools/context_pack/pack_target.py and not yet "
-            "implemented. It is the one target that needs credentials, so it is the one CI "
-            "cannot gate on, and ADR-13 records that it has no schema hash either. What is "
-            "missing is a connection factory here and its own verified examples; everything "
-            "else in the generator is target-agnostic. PLAN-8 step 6."
+            "The bigquery target is declared in tools/context_pack/pack_target.py and is not "
+            "generated, which is ADR-15 and is a decision rather than an unfinished step. Its "
+            "model set is `all`, the same as duckdb's, so the pack would carry the same prose "
+            "word for word and differ only in type names, row counts and freshness, which are "
+            "exactly the parts no schema hash can gate. `make parity-columns` and "
+            "scripts/parity-check.py answer the cross-engine question instead. Reversing it "
+            "means a connection factory here and six examples re-executed against BigQuery."
         )
 
     model_names = model_set(target_name, all_models)

@@ -1,0 +1,117 @@
+name: retention
+
+# The unattended half of the prune, and it deletes nothing (ADR-17).
+#
+# ADR-14 answered PLAN-9's "where does the prune run" as one question and it is
+# two: where the proof runs, and where the deletion runs. The proof is a
+# read-only query over two partitions per candidate. The deletion is not, and
+# every word of ADR-14's case against a cron that deletes data still holds, so
+# `--apply` is absent from this file and belongs in a human's shell.
+#
+# What this exists to catch is the cost ADR-14 named and accepted: "the zone is
+# now bounded by someone remembering". It was not a bound. Between the prune of
+# 2026-08-07 and 2026-08-09 the daily ingest wrote two more full copies of
+# `business_locations` and the raw zone went 214.1 MB to 323.4 MB with nobody
+# watching. A red X is the smallest thing that turns remembering into being
+# told.
+#
+# THIS IS NOT A LIFECYCLE RULE and must not become one. ADR-14 rejected deleting
+# by object age because it knows nothing about which partitions are snapshots,
+# and pointing one at this zone destroys 311 and building permit history. That
+# refusal is not reopened by putting the *proof* on a schedule; it is the reason
+# only the proof is here.
+
+on:
+  schedule:
+    # 11:29 UTC Mondays. After the 09:17 daily ingest so it weighs the day's
+    # growth, and after dbt.yml's 10:23 so two credentialed jobs are not
+    # queueing against each other. Odd minute for the reason ingest.yml gives.
+    - cron: "29 11 * * 1"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  headroom:
+    runs-on: ubuntu-latest
+    env:
+      # Read only. DERIVED_ZONE_URI is deliberately absent: nothing here reads
+      # the derived zone, which is a pure function of this one and is rebuilt
+      # rather than retained.
+      RAW_ZONE_URI: gs://${{ secrets.GCS_BUCKET }}/raw
+      # 1 GB against a 5 GB always-free allowance, and the number is chosen so
+      # that a breach means one thing only.
+      #
+      # With the prune being run the zone sits near a floor of about 170 MB and
+      # grows at the delta rate of 4.86 MB/day, so delta growth alone needs over
+      # 170 days to reach this. Without it the snapshot churn is about 50 MB/day
+      # and reaches it in roughly 15. So this cannot fire because the project
+      # grew; it fires because the apply stopped being run, which is the only
+      # thing it is trying to say. It still leaves about 70 days of runway to
+      # the allowance at the neglected rate, which is three more Mondays.
+      MAX_RAW_BYTES: "1000000000"
+    steps:
+      - uses: actions/checkout@v4
+
+      # Same two checks as ingest.yml and after the same failures: an unset
+      # secret interpolates to `gs:///raw` and a pasted `gs://` prefix to
+      # `gs://gs://bucket/raw`, and both name a path rather than a secret in
+      # whatever error comes next.
+      - name: Check GCS_BUCKET is set
+        run: |
+          case "$RAW_ZONE_URI" in
+            gs://gs:*)
+              echo "::error::GCS_BUCKET includes the gs:// prefix. Set it to the bucket name alone, for example my-bucket, not gs://my-bucket."
+              exit 1
+              ;;
+            gs:///*)
+              echo "::error::GCS_BUCKET is empty or unset. Settings > Secrets and variables > Actions, and set it to the bucket name alone, with no gs:// prefix and no trailing slash."
+              exit 1
+              ;;
+          esac
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Write service account key
+        env:
+          GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
+        run: |
+          printf '%s' "$GCP_SA_KEY" > "$RUNNER_TEMP/sa.json"
+          if [ ! -s "$RUNNER_TEMP/sa.json" ]; then
+            echo "::error::GCP_SA_KEY is empty or unset. Settings > Secrets and variables > Actions, and paste the whole of keys/sa.json including the braces."
+            exit 1
+          fi
+          if ! grep -q '"type": *"service_account"' "$RUNNER_TEMP/sa.json"; then
+            echo "::error::GCP_SA_KEY is not a service account key. Paste the entire keys/sa.json file, not a fragment of it."
+            exit 1
+          fi
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/sa.json" >> "$GITHUB_ENV"
+
+      # Exit 3 and exit 4 mean different things and want different responses,
+      # so the failure message says which rather than leaving the reader to
+      # open the log. 3 is a snapshot dataset that failed its proof, which
+      # ADR-14 answers with "stop pruning until it is understood". 4 is the
+      # zone over the threshold, which a human answers with the apply.
+      - name: Prove what is superseded and weigh the zone
+        run: |
+          set +e
+          python ingestion/prune_raw.py --max-bytes "$MAX_RAW_BYTES"
+          status=$?
+          set -e
+          case "$status" in
+            0) echo "Raw zone is under $MAX_RAW_BYTES bytes and every partition outside the keep window is proven." ;;
+            3) echo "::error::A snapshot dataset failed its supersession proof. Do not prune. Read the log, then ADR-14's revisit clause: this usually means the upstream stopped republishing wholesale and \`refresh\` has become a lie." ;;
+            4) echo "::error::The raw zone is over $MAX_RAW_BYTES bytes. Nothing was deleted. Run \`set -a; source .env; set +a\` then \`make prune-raw\` to read the plan and \`make prune-raw-apply\` to act on it." ;;
+            *) echo "::error::prune_raw.py exited $status, which is neither of its two verdicts. This is a fault in the check rather than in the zone." ;;
+          esac
+          exit $status
+
+      - name: Remove service account key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/sa.json"

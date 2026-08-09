@@ -12,8 +12,15 @@ rather than mocking one, because the thing under test is a query over the zone
 layout, and a mock of that layout would be a second copy of the assumption
 being checked. It costs about a tenth of a second.
 
-The end-to-end proof against the real bucket is in the dev note for
-2026-08-07. This covers the decisions behind it.
+The last block is the headroom check (ADR-17), and it is the opposite kind of
+test: it asserts that the half of this tool which runs unattended in
+`.github/workflows/retention.yml` reports and never deletes, whatever verdict it
+reaches. The one to read is the precedence test. Over budget and unproven can
+hold at once and they ask for opposite things, so the exit code has to be the
+more serious of the two.
+
+The end-to-end proof against the real bucket is in the dev notes for 2026-08-07
+and 2026-08-09. This covers the decisions behind it.
 """
 
 import json
@@ -267,3 +274,87 @@ def test_the_manifest_of_a_pruned_run_is_gone_from_the_zone_json(zone):
         for path in (zone / TABLE / raw_zone.RUNS_DIRNAME).glob("*.json")
     )
     assert remaining == ["20260802T090000Z", "20260803T090000Z"]
+
+
+# ---------------------------------------------------------------------------
+# The headroom check, which is the half that runs unattended (ADR-17)
+# ---------------------------------------------------------------------------
+
+
+def test_a_zone_under_the_threshold_passes_and_still_deletes_nothing(zone):
+    assert prune_raw.run(zone, keep=2, only=[DATASET], apply=False, max_bytes=10**9) == 0
+    assert (zone / TABLE / f"{raw_zone.PARTITION_KEY}={OLD}").exists()
+
+
+def test_a_zone_over_the_threshold_fails_and_still_deletes_nothing(zone, capsys):
+    """The whole point of the scheduled half: it reports and never deletes.
+
+    A threshold of one byte is over by construction, which is the cheap way to
+    assert the exit code without building a zone of a particular size.
+    """
+    code = prune_raw.run(zone, keep=2, only=[DATASET], apply=False, max_bytes=1)
+    assert code == prune_raw.OVER_BUDGET_EXIT
+    assert (zone / TABLE / f"{raw_zone.PARTITION_KEY}={OLD}").exists()
+    assert "prune-raw-apply" in capsys.readouterr().out
+
+
+def test_an_unproven_partition_outranks_being_over_budget(tmp_path, capsys):
+    """Both conditions at once, and the more serious one is the exit code.
+
+    Over budget asks the reader to run the apply. Unproven says a snapshot
+    dataset failed its proof, which ADR-14 reads as `refresh` having become a
+    lie and answers with "stop pruning until it is understood". Returning 4
+    here would invite the action 3 forbids.
+    """
+    snapshot(tmp_path, OLD, ["a", "b"])
+    snapshot(tmp_path, MID, ["a"])
+    snapshot(tmp_path, NEW, ["a"])
+
+    code = prune_raw.run(tmp_path, keep=2, only=[DATASET], apply=False, max_bytes=1)
+    assert code == prune_raw.UNPROVEN_EXIT
+    assert "NOT superseded" in capsys.readouterr().out
+
+
+def test_the_headroom_line_says_what_an_apply_would_leave(zone, capsys):
+    """Report mode subtracts the plan, because that is the actionable number.
+
+    The zone is over the threshold now; the question the reader has is whether
+    running the apply would fix it, and that is the difference between two
+    numbers on the same line rather than an arithmetic exercise.
+    """
+    prune_raw.run(zone, keep=2, only=[DATASET], apply=False, max_bytes=1)
+    out = capsys.readouterr().out
+    total, _ = prune_raw.zone_bytes(zone)
+    assert f"zone      {total / 1e6:.1f} MB" in out
+    assert "after a full apply of this plan" in out
+
+
+def test_apply_weighs_the_zone_it_leaves_behind(zone, capsys):
+    """With --apply the deletes have happened, so nothing is left to subtract.
+
+    Reporting the pre-delete total here would fail a threshold the run had just
+    brought the zone under, which is the one way this check could cry wolf at
+    the exact moment someone did the right thing.
+    """
+    prune_raw.run(zone, keep=2, only=[DATASET], apply=True, max_bytes=10**9)
+    out = capsys.readouterr().out
+    total, _ = prune_raw.zone_bytes(zone)
+    assert f"zone      {total / 1e6:.1f} MB" in out
+    assert f"after a full apply of this plan, {total / 1e6:.1f} MB" in out
+
+
+def test_zone_bytes_counts_datasets_the_registry_does_not_describe(zone):
+    """The bill does not care whether the registry knows about a prefix.
+
+    A dataset ADR-10 cut is invisible to every other part of this tool and is
+    still storage; `raw_city_budget` and `raw_street_trees` were 55.5 MB of the
+    real zone on exactly that basis. `check_runs.py` is what names them.
+    """
+    before, objects_before = prune_raw.zone_bytes(zone)
+    stray = zone / "raw_city_budget" / f"{raw_zone.PARTITION_KEY}={OLD}"
+    stray.mkdir(parents=True)
+    (stray / "part-0000.parquet").write_bytes(b"x" * 4096)
+
+    after, objects_after = prune_raw.zone_bytes(zone)
+    assert after == before + 4096
+    assert objects_after == objects_before + 1

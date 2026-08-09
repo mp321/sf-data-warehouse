@@ -13,8 +13,8 @@ anything else in here.
 | PLAN-4 cloud-first-storage | done | Parquet raw zone in GCS, BigQuery on external tables and proven row for row against DuckDB, the CI cache step gone. Closed 2026-08-03 when `ingest.yml` went green on a runner against the bucket. Its residue is now homed: assurance items in PLAN-7, the publish object count in PLAN-5 step 12, the `dbt_dev` expiry question closed by measurement. |
 | PLAN-5 narrow-and-polish | done | Cut two datasets and one H3 resolution, one registry, pytest on the geometry code. Closed 2026-08-05 by step 13, the obsolescence sweep, which found the stale documents were USER-NOTES.md and SETUP.md rather than anything in the code. Recorded in ADR-10 (scope), ADR-11 (the derived zone's code stamp) and ADR-12 (the published layout). One Done-when box was resolved by judgement rather than met; the plan says which and why. |
 | PLAN-6 context-pack | done | The versioned context artifact with explicit refusal boundaries. Last, deliberately. Step 1 done 2026-08-05: `docs/specs/context-pack.md`, written before the generator, which answers the plan's open question as one pack per target. Steps 2 and 3 done 2026-08-06: `tools/context_pack/` generates the DuckDB pack and the four rules the spec says must fail the build fail it. Closed 2026-08-07 by step 4 and ADR-13: CI checks the committed pack against the fixture warehouse and generates nothing, because the only warehouse a credential-free runner can build has seven-row tables. Both open questions are settled in the ADR, and the second one amended the spec: the traps block is in the compact markdown, because a trap is a disclosure with no condition. Closed with one target of three; the other two are PLAN-8. |
-| PLAN-9 raw-zone-retention | done | Bound what the two buckets accumulate. Closed 2026-08-07, all eight steps, recorded in ADR-14. The bucket went from 563.5 MB over 3,128 objects to 249.6 MB over 196: 297.8 MB of superseded `business_locations` snapshots off the raw prefix, and 2,880 objects of the pre-ADR-12 layout off the published one. The acceptance test is the whole safety argument and it held: 0 of 19 model row counts moved after deleting 2.19 million raw rows. Both open questions answered in the ADR, and the object count in the plan's own measurement was wrong (236, not 329), corrected in place. |
-| **PLAN-8 remaining-context-packs** | **active** | The `published` and `bigquery` packs. PLAN-6's residue, homed rather than carried. The published one is the point: the export is six marts and no staging models, so it is the first test of whether one prose file with `applies_to` beats three hand-kept documents. Starts with the audit already done, on the plan. |
+| PLAN-9 raw-zone-retention | done | Bound what the two buckets accumulate. Closed 2026-08-07, all eight steps, recorded in ADR-14. The bucket went from 563.5 MB over 3,128 objects to 249.6 MB over 196: 297.8 MB of superseded `business_locations` snapshots off the raw prefix, and 2,880 objects of the pre-ADR-12 layout off the published one. The acceptance test is the whole safety argument and it held: 0 of 19 model row counts moved after deleting 2.19 million raw rows. Both open questions answered in the ADR, and the object count in the plan's own measurement was wrong (236, not 329), corrected in place. **Its two loose ends closed 2026-08-09** as ADR-16, the two datasets ADR-10 cut deleted from the zone, and ADR-17, the proof on a schedule and the deletion still by hand. |
+| PLAN-8 remaining-context-packs | done | The `published` and `bigquery` packs. PLAN-6's residue, homed rather than carried. Closed 2026-08-07 at two packs rather than three: the published pack earned its cost, because the export is six marts against nineteen models and twelve prose entries could not resolve against it, and ADR-15 struck the bigquery one for the opposite reason, that its model set is duckdb's word for word. Both open questions answered, the second only once the second pack existed. |
 | PLAN-7 pipeline-assurance | done | Reconcile run manifests against the data; assert the BigQuery column sets against DuckDB's. PLAN-4 residue that had been carried forward three times. Closed 2026-08-05, both steps the same day. Step 2 was overtaken on the way: the column-set disagreement it was written to detect turned `make build-bigquery` red first, so `parity-check.py --columns` was built against a live defect. Step 1 is `ingestion/check_runs.py` and `make check-runs`, and it answered its own open question against the precedent: a separate file from `check_derived.py`, because the reader and the moment it runs are both different. |
 
 | ADR | Status |
@@ -32,7 +32,10 @@ anything else in here.
 | ADR-11 derived zone code stamp | active |
 | ADR-12 published export layout | active |
 | ADR-13 context pack format | active |
-| ADR-14 raw zone retention | active, amends ADR-4 |
+| ADR-14 raw zone retention | active, amends ADR-4, amended by ADR-16 and ADR-17 |
+| ADR-15 bigquery pack declared, not generated | active, amends the context-pack spec |
+| ADR-16 cut datasets leave the zone | active, amends ADR-4 |
+| ADR-17 scheduled retention proof | active, amends ADR-14 |
 
 **Amended rather than superseded, and the distinction is load bearing.** ADR-10
 changed one line of ADR-5, the H3 resolution list, and ADR-11 changed what a
@@ -45,17 +48,27 @@ superseding convention exists to prevent. If a future ADR changes only part of
 another, say so in the new ADR, add a note at the top of the old one pointing at
 it, and leave the old one active.
 
-**ADR-14 is the first amendment to an already-superseded ADR, and that is why it
-does not add a note at the top of the one it amends.** It adds a second
-exception to ADR-4's append-only rule. ADR-4 is `superseded` by ADR-9, which
+**ADR-14 and ADR-16 amend an already-superseded ADR, and that is why neither
+adds a note at the top of the one it amends.** They add the second and third
+exceptions to ADR-4's append-only rule. ADR-4 is `superseded` by ADR-9, which
 supersedes it on two points and says in its own first paragraph that ADR-4 is
 otherwise still the description of the zone, and the append-only rule is one of
 the things ADR-9 explicitly carries forward. So the live rule lives in two
-documents and the amendment is recorded in the third. Read ADR-4, ADR-9 and
-ADR-14 as one conversation about what the raw zone is; the convention above,
+documents and the amendments are recorded in two more. Read ADR-4, ADR-9, ADR-14
+and ADR-16 as one conversation about what the raw zone is; the convention above,
 where the amended ADR carries a pointer, was written for an `active` one and
 editing an accepted ADR to add a pointer is the thing the immutability rule
 forbids.
+
+**ADR-17 is the ordinary case of that convention and shows what it costs.** It
+amends ADR-14, which is `active`, so ADR-14 carries a note at the top and its
+decision text is untouched: the note says which line moved and why, and the
+sentence it moved, "By hand, not on a schedule", still reads as written
+underneath. The three exceptions to append-only are now spread over four
+documents plus a note, which is the price of immutability and is worth paying
+once. It is also the signal to watch: a fifth document amending the same rule
+would mean the rule wants restating in one place under a new ADR that supersedes
+the lot, rather than another amendment.
 
 **Everything in `docs/` is one of the four kinds below.** The two files that
 were not, the 2026-07-31 outside review and `handoff-prompt.md`, were deleted on

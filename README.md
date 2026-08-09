@@ -156,6 +156,19 @@ than a small one that does not.
   daily publish would use 210 operations a month. It is manual now because
   nobody has decided to schedule it. Note the published paths changed, which
   breaks a consumer of that one upload; `MANIFEST_VERSION` is 2.
+- **The raw zone is append-only and is pruned anyway, which needs a proof.**
+  The city republishes `business_locations` wholesale every few days, so the
+  daily ingest writes another full 49.7 MB copy into a zone that never deleted,
+  and the 5 GB free allowance was the one thing in this project with a date
+  attached. `make prune-raw` deletes a partition only when a surviving later one
+  provably holds every key it holds at values no older, and exits rather than
+  guessing (ADR-14). Snapshot datasets are prunable and delta ones never are,
+  because deleting a partition of 311 or building permits deletes rows an API
+  serving current state cannot give back. **A bucket lifecycle rule is the
+  obvious answer here and is the wrong one**, for exactly that reason. The proof
+  runs weekly in CI and the deletion stays a human's command (ADR-17); the two
+  datasets ADR-10 cut were removed from the zone by hand, which is a different
+  act with a different proof (ADR-16).
 - **The derived zone knows what built it.** `_manifest.json` carries a hash over
   the source of every module that computes the zone, so `make check-derived`
   can say "this zone was built by code that no longer exists" rather than only
@@ -185,7 +198,9 @@ docs/plans/         forward-looking intent
 docs/dev-notes/     append-only session log, including what broke
 tests/              pytest over the geometry code and the dataset registry;
                     fixtures/ is committed JSON so CI runs with no network
-.github/workflows/  ci.yml (every PR), ingest.yml (daily), dbt.yml (weekly)
+.github/workflows/  ci.yml (every PR), ingest.yml (daily), dbt.yml (weekly),
+                    retention.yml (weekly): proves what the raw zone can spare
+                    and fails when it is over 1 GB. It never deletes anything.
 CLAUDE.md           canonical context. Authoritative on architecture.
 SETUP.md            step-by-step reproduction guide
 ```
@@ -205,13 +220,14 @@ external-table column sets against the zone.
 
 What is open:
 
-- **The context pack (PLAN-6), and it is most of the way there.** A
-  model-agnostic artifact that lets any capable LLM query this warehouse
-  correctly and tells it what it must refuse to answer.
-  `docs/specs/context-pack.md` is the contract and was written before the
-  generator; `make context-pack` produces the DuckDB pack, with 20 refusals
-  sorted into three classes, 6 mandatory disclosures and 6 examples that are
-  executed at generation time or the build fails. What is left is CI, the
-  packs for the other two targets, and the ADR that closes the plan.
+- ~~The context pack (PLAN-6 and PLAN-8).~~ **Done.** A model-agnostic artifact
+  that lets any capable LLM query this warehouse correctly and tells it what it
+  must refuse to answer. `docs/specs/context-pack.md` is the contract and was
+  written before the generator. `make context-pack` produces the DuckDB pack, 20
+  refusals in three classes, 6 mandatory disclosures and 6 examples executed at
+  generation time or the build fails; `make context-pack TARGET=published`
+  produces the export's, which is a different document and not a shorter one. CI
+  checks both against fixtures and generates neither (ADR-13). There is no
+  BigQuery pack and ADR-15 says why.
 - Per-boundary-set H3 resolution. The measurements in ADR-6 show block groups
   want a finer one and supervisor districts would be fine with a coarser one.

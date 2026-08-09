@@ -1,7 +1,7 @@
 ---
-status: active
+status: done
 date: 2026-08-07
-related: [plan-6-context-pack, adr-13-context-pack-format, adr-8-published-exports, adr-12-published-export-layout, adr-1-warehouse-targets]
+related: [plan-6-context-pack, adr-13-context-pack-format, adr-15-bigquery-pack-declared-not-generated, adr-8-published-exports, adr-12-published-export-layout, adr-1-warehouse-targets]
 ---
 
 # PLAN-8. The other two context packs
@@ -52,8 +52,9 @@ survey.
 
 **Steps 1 to 4 done 2026-08-07, and the published pack exists.** Both artifacts
 are in the working tree, CI checks the second one beside the first, and the four
-examples were written over the export, executed and read. Steps 5 and 6 are
-open, so this plan is not closed. What the audit below got wrong is worth
+examples were written over the export, executed and read. Step 5 followed later
+the same day and step 6 was struck by ADR-15, which closes this plan at two packs
+rather than three. What the audit below got wrong is worth
 keeping: the prose was target-aware and its `published` claims had never been
 checked, because a claim is only checked when the target it names is generated.
 Twelve of the entries claiming `published` could not resolve against the six
@@ -88,10 +89,13 @@ marts, and fixing them was most of step 3 rather than a preliminary to it.
    directory rather than the real export. The one worth writing first is that a
    refusal citing a staging model is not rendered into the published pack, since
    that is the assertion the whole three-pack argument rests on.
-6. **The bigquery pack**, by hand, beside `make build-bigquery`. Needs
-   credentials, has no schema hash by design, and carries a staleness guard
-   instead (spec section 2 and 8). Last, and it may reasonably never be run
-   often.
+   **Done 2026-08-07.** Eleven tests over a tmp-directory export, plus six
+   existing ones parameterised over both targets rather than duplicated: 210
+   pytest against 194.
+6. ~~**The bigquery pack**, by hand, beside `make build-bigquery`.~~ **Struck
+   2026-08-07 by ADR-15**, which answers the second open question below rather
+   than deferring it: the target stays declared in `pack_target.py` and the
+   artifact is not generated.
 
 ## Constraints
 
@@ -127,6 +131,9 @@ marts, and fixing them was most of step 3 rather than a preliminary to it.
       hashes from the fixture export are identical to the real export's.
 - [x] A dev note says whether the three-pack argument survived a second pack, in
       those words. `docs/dev-notes/2026-08-07.md`, third session.
+- [x] The published target has tests, and the first of them is the one this plan
+      names. `tests/test_context_pack.py`, 210 pytest against 194.
+- [x] The bigquery question is decided rather than carried. ADR-15, no.
 
 ## Open questions
 
@@ -149,3 +156,16 @@ marts, and fixing them was most of step 3 rather than a preliminary to it.
   schema hash, and ADR-13 already records that it will be stale more often than
   not. The honest alternative is to build the published pack, then decide
   whether a pack nobody can gate is a pack worth committing.
+  **Answered 2026-08-07, no, and written down as ADR-15.** The evidence the
+  second pack provided is what decided it, and it decided it against the plan's
+  own expectation. The published pack was worth its cost because its model set is
+  six marts against nineteen models: twelve entries could not resolve, six exist
+  only because the substitute differs, four examples could not be inherited.
+  **The bigquery target's model set is `all`, identical to duckdb's**, so every
+  entry that resolves there resolves here and the two packs would carry the same
+  20 refusals, 6 disclosures, 4 traps and 13 joins word for word. What differs is
+  type names, row counts, freshness and six examples that must be re-executed
+  with credentials, and those are exactly the parts no schema hash can gate. So
+  the third artifact is the first one nothing could prove current, and
+  `make parity-columns` answers the cross-engine question a pack would only have
+  asserted. The target stays declared; step 6 is struck rather than deferred.

@@ -304,10 +304,17 @@ def check(raw_root: Path | str | None) -> int:
 
     for line in drifted:
         print(f"  WARNING: {line}")
+    # This warning is load bearing and must not be softened into silence
+    # (ADR-16). It is the only thing in the project that notices a dataset an
+    # ADR has cut whose Parquet is still being paid for: `city_budget` and
+    # `street_trees` sat in the bucket for five days after ADR-10, 55.5 MB, with
+    # this line printing on every run. The answer is a scope deletion by hand,
+    # not a prune, because `prune_raw.py` has no `refresh` or `grain_key` for a
+    # dataset the registry does not describe and exits on the name.
     for table in unregistered:
         print(
             f"  WARNING: {table} is in the zone and not in the registry, so nothing reads it. "
-            "Reconciled anyway."
+            "Reconciled anyway. Delete the prefix by hand if the cut is final; see ADR-16."
         )
 
     if miscounted:

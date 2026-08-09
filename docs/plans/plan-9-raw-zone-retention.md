@@ -233,3 +233,26 @@ history, and the loss would surface months later as a hole in a monthly series.
   deleting a superseded partition of a live one. It wants one line of an ADR or
   a dev note saying the scope decision extends to the zone, and then a
   `gcloud storage rm --recursive` on two prefixes.
+
+  **Done 2026-08-09 as ADR-16**, which took the ADR rather than the dev note,
+  because this turned out to be a third exception to ADR-4's append-only rule
+  and not an execution detail of ADR-10. The paragraph above is right that the
+  prune is the wrong tool and understates why: the superset proof is not merely
+  unavailable for a cut dataset, it is false by construction, since nothing
+  survives to hold the keys. 55,465,016 bytes and 42 objects removed, raw prefix
+  323,379,850 to 267,914,834, and `make check-runs` runs clean with no warnings
+  for the first time since ADR-10.
+
+## What closed this plan's residue
+
+Both loose ends were operational rather than design, and both are settled on
+2026-08-09 with the bucket in hand.
+
+- **The two cut datasets: ADR-16**, above.
+- **Whether the prune gets a schedule: ADR-17**, which amends ADR-14 by
+  splitting the question it answered as one. The proof runs weekly in
+  `.github/workflows/retention.yml` and fails when the raw zone exceeds 1 GB;
+  the deletion stays `make prune-raw-apply` by hand. ADR-14's refusal of a cron
+  that deletes data was re-argued and kept. What decided it was this plan's own
+  arithmetic arriving: two days after ADR-14, with nobody running the prune, the
+  zone was 323.4 MB and 99.3 MB of it was already provably superseded.

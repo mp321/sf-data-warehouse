@@ -1,10 +1,21 @@
 ---
 status: active
 date: 2026-08-07
-related: [adr-4-raw-zone-layout, adr-9-cloud-raw-zone, adr-8-published-exports, adr-12-published-export-layout, plan-9-raw-zone-retention, plan-7-pipeline-assurance]
+related: [adr-4-raw-zone-layout, adr-9-cloud-raw-zone, adr-8-published-exports, adr-12-published-export-layout, adr-16-cut-datasets-leave-the-zone, adr-17-scheduled-retention-proof, plan-9-raw-zone-retention, plan-7-pipeline-assurance]
 ---
 
 # ADR-14. A superseded snapshot partition may be deleted, and a delta partition never may
+
+> **Amended twice on 2026-08-09, and neither amendment reverses anything below.**
+> ADR-17 splits "By hand, not on a schedule": the *proof* now runs weekly in
+> `.github/workflows/retention.yml` and the *deletion* is still a human's
+> command. That is this ADR's own revisit clause firing two days later, on the
+> cost it named: with nobody running the prune, the zone went 214.1 MB to
+> 323.4 MB. The case against a cron that deletes data is untouched and was
+> re-refused. ADR-16 adds a third exception to ADR-4's append-only rule for a
+> dataset the registry no longer names, which this tool refuses by design and
+> should keep refusing: the superset proof below is false by construction when
+> nothing survives to hold the keys.
 
 Amends ADR-4 rather than superseding it, in the sense `docs/README.md` gives
 that word. ADR-4 says the Parquet raw zone is append-only: files are added,

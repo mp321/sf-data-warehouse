@@ -25,6 +25,16 @@ document makes every committed pack stale until it is regenerated. That is the
 mechanism working: `make context-pack-check` exits 3 until someone re-reads the
 contract against the artifact.
 
+**Amended again 2026-08-07 by ADR-15, in section 2 only**: the `bigquery` row of
+the table now says the pack is not generated, and the bullet under it says why.
+The three targets and the one-pack-per-target rule are unchanged. Note that this
+amendment lands on the same date as the one above, so `spec_version` does not
+move and no committed pack goes stale. Nothing here changes what either
+generated pack contains, so nothing needed to; but a date-granular version cannot
+tell that case from an amendment that should have invalidated them, which is the
+cost of using the date and is worth knowing before amending twice in one day
+again.
+
 **The refusal boundaries are the reason this artifact exists.** Everything else
 here is a schema dump with provenance, and a schema dump is a README. Sections 5
 and 6 are the part that is not, and they are the part to read if you read one
@@ -62,7 +72,7 @@ write a join to a table that is not there.
 |---|---|---|---|---|---|---|
 | `duckdb` | all 19 | last `make build` | the DuckDB file | none | by hand, after `make build` | yes, section 8 |
 | `published` | the 6 marts in `PUBLISHED_MARTS` | `published/manifest.json` | DuckDB over `published/*.parquet` | none | by hand, after `make publish` | yes, once it exists |
-| `bigquery` | all 19 | last `make build-bigquery` | BigQuery | yes | by hand | no, it has no schema hash |
+| `bigquery` | all 19 | last `make build-bigquery` | BigQuery | yes | not generated, ADR-15 | no, it has no schema hash |
 
 **Generation is by hand and the check is CI's**, which is the 2026-08-07
 amendment and is argued in ADR-13. A pack generated in CI would be generated
@@ -83,9 +93,17 @@ What follows from that:
   That is what keeps PLAN-6 step 4 honest: those two can be checked against a
   warehouse a fork built from fixtures, with no secrets and no bucket. Amended
   2026-08-07: they are checked there, not generated there. See section 8.
-- **The BigQuery pack is the one that will rot.** It needs credentials and is
-  produced by hand beside `make build-bigquery`. The spec does not pretend
-  otherwise; it gives that pack a staleness guard instead. See section 8.
+- **The BigQuery pack is the one that will rot, and as of 2026-08-07 it is not
+  produced at all.** Amended by ADR-15, which does not reopen the three targets
+  above: a pack still describes exactly one target and `bigquery` is still
+  declared in `pack_target.py` with its model set, freshness source and
+  schema-hash policy, so `applies_to: [bigquery]` stays meaningful. What changed
+  is that nobody generates the artifact. Its model set is `all`, identical to
+  `duckdb`'s, so its prose would be the duckdb pack's word for word and the only
+  differences, type names, row counts, freshness and re-executed examples, are
+  the parts the missing schema hash means nothing can gate. `make parity-columns`
+  is what answers the cross-engine question instead. The staleness guard in
+  section 8 stands as written for the day one is produced.
 - **Three artifacts is three chances for the prose to drift, and the mitigation
   is structural.** The traps, refusals and disclosures have one copy, in one
   YAML (section 7). Every entry declares which targets it applies to, and the

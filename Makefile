@@ -167,15 +167,26 @@ check-runs: ## Check the raw zone's run manifests against the Parquet they descr
 # a surviving later one holds every grain_key at values no older, and it exits 3
 # rather than deleting anything it cannot prove.
 #
-# BY HAND AND NOT ON A SCHEDULE, which is PLAN-9's first open question answered
-# in ADR-14. It is the same way `make publish` is operated and for a stronger
-# reason: a cron that deletes data is a different risk appetite from a cron that
-# writes some.
+# THE DELETION IS BY HAND AND NOT ON A SCHEDULE, which is PLAN-9's first open
+# question answered in ADR-14. It is the same way `make publish` is operated and
+# for a stronger reason: a cron that deletes data is a different risk appetite
+# from a cron that writes some.
+#
+# THE PROOF IS ON A SCHEDULE, which is ADR-17 splitting that question in two
+# after the hand tool went unrun for two days and the zone grew 109 MB.
+# `.github/workflows/retention.yml` runs the report weekly with `--max-bytes`
+# and fails when the raw zone is over 1 GB. It deletes nothing and contains no
+# `--apply`, which is the whole distinction. Run the same check here with
+# `make prune-raw PRUNE_ARGS="--max-bytes 1e9"`.
 #
 # Two targets rather than a flag, because the safe one has to be the one that is
 # easy to type. `make prune-raw` reports and deletes nothing. `make prune-raw-apply`
 # deletes. Point them at the bucket the way everything else here is pointed at
 # it: `set -a; source .env; set +a`.
+#
+# Neither touches a dataset the registry does not name: `prune_raw.py` exits on
+# an unknown name, and removing a dataset an ADR has cut is a scope deletion
+# rather than a prune (ADR-16), done once by hand with `gcloud storage rm`.
 prune-raw: ## Report which raw partitions a later one supersedes. Deletes nothing.
 	$(PY) ingestion/prune_raw.py $(PRUNE_ARGS)
 
@@ -277,8 +288,9 @@ publish: ## Export marts to published/ as one Parquet file each with a manifest
 #
 # The published pack reads $PUBLISH_DIR rather than the warehouse, so it needs
 # `make publish` and not `make build`. Neither needs credentials, which is what
-# lets CI check both; bigquery is declared in pack_target.py, needs credentials,
-# has no schema hash, and is PLAN-8 step 6.
+# lets CI check both; bigquery is declared in pack_target.py and deliberately
+# not generated, which is ADR-15. TARGET=bigquery therefore fails with the
+# reason, and there is no third pack to write or check.
 #
 # Both artifacts are COMMITTED, unlike everything else this repo generates.
 # That is the point of PLAN-6 step 4: a model change that moves the pack shows

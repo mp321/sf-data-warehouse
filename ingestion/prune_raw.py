@@ -73,9 +73,21 @@ Usage:
     python ingestion/prune_raw.py --apply            # delete what it can prove
     python ingestion/prune_raw.py --keep 3           # retain more partitions
     python ingestion/prune_raw.py business_locations # one dataset
+    python ingestion/prune_raw.py --max-bytes 1e9    # ... and fail if the zone is over
 Optional environment variables:
     RAW_ZONE_DIR      root of the raw zone, beating RAW_ZONE_URI
     RAW_ZONE_URI      gs:// prefix of the raw zone
+
+**`--max-bytes` is the half of this that runs unattended, and it deletes
+nothing** (ADR-17). ADR-14 answered "where does the prune run" as one question
+and it is two: where the proof runs and where the deletion runs. The proof is
+read-only, so `.github/workflows/retention.yml` runs it weekly and fails when
+the zone is past the threshold; the deletion stays `--apply` by hand, because
+every word of ADR-14's case against a cron that deletes data still holds. What
+changed is the evidence that the hand tool alone was not a bound: between the
+prune of 2026-08-07 and 2026-08-09 the daily cron wrote two more full copies of
+`business_locations` and the zone went 214.1 MB to 323.4 MB with nobody
+watching.
 """
 
 import argparse
@@ -90,7 +102,15 @@ import remote
 # Exit codes. Distinct from 1 and from each other so a Makefile or a human can
 # tell "this zone holds an old partition nothing supersedes" apart from "this
 # script broke". The numbering follows check_derived.py and check_runs.py.
+#
+# UNPROVEN beats OVER_BUDGET when both hold, because they ask for opposite
+# things from the reader. Over budget says "run the apply"; unproven says a
+# snapshot dataset failed its proof, which ADR-14's revisit clause reads as
+# `refresh` having become a lie, and the response to that is to stop pruning
+# until it is understood. Reporting the cheaper one as the headline would
+# invite exactly the action the expensive one forbids.
 UNPROVEN_EXIT = 3
+OVER_BUDGET_EXIT = 4
 
 # Partitions retained per dataset regardless of what can be proven, newest
 # first. Two rather than one because a rollback is worth about 50 MB: the
@@ -317,7 +337,59 @@ def _local_size(path) -> dict[str, int]:
     return {str(item): item.stat().st_size} if item.exists() else {}
 
 
-def run(raw_root, keep: int, only: list[str], apply: bool) -> int:
+def zone_bytes(root) -> tuple[int, int]:
+    """The whole raw zone as (bytes, objects), for the headroom check.
+
+    Everything under the root and not only what this run considered, because
+    the number the threshold is about is the storage bill: delta partitions,
+    run manifests and anything in the zone that the registry does not describe
+    all count against the same 5 GB allowance. `check_runs.py` is what names
+    the last of those; this only has to weigh it.
+    """
+    if remote.is_remote(root):
+        listing = remote.list_objects(root)
+    else:
+        listing = {str(p): p.stat().st_size for p in Path(root).rglob("*") if p.is_file()}
+    return sum(listing.values()), len(listing)
+
+
+def headroom(root, removable: int, limit: int) -> bool:
+    """Report the zone against `limit` and say whether it breaches it.
+
+    Two numbers rather than one, because the threshold cannot tell the two
+    conditions apart on its own and they want opposite responses. Over the
+    limit with a prune available means nobody has run the apply, which is the
+    condition this check exists for and which `--apply` fixes. Over it with
+    nothing prunable means the zone is genuinely that large, the prune is not
+    the lever, and the next move is ADR-14's revisit clause rather than a
+    command.
+    """
+    total, objects = zone_bytes(root)
+    after = total - removable
+    print(
+        f"\nheadroom\n  zone      {total / 1e6:.1f} MB over {objects} object(s)\n"
+        f"  threshold {limit / 1e6:.1f} MB\n"
+        f"  after a full apply of this plan, {after / 1e6:.1f} MB"
+    )
+    if total <= limit:
+        return False
+    if removable:
+        print(
+            f"\nERROR: the raw zone is {(total - limit) / 1e6:.1f} MB over the threshold and "
+            f"{removable / 1e6:.1f} MB of it is provably superseded.\nRun "
+            "`make prune-raw-apply` against this zone. Nothing here deleted anything."
+        )
+    else:
+        print(
+            f"\nERROR: the raw zone is {(total - limit) / 1e6:.1f} MB over the threshold and "
+            "nothing in it is prunable.\nThe prune is not the lever here: the zone is that "
+            "large in partitions that are retained, delta, or not in the registry at all. "
+            "See ADR-14's revisit clause."
+        )
+    return True
+
+
+def run(raw_root, keep: int, only: list[str], apply: bool, max_bytes: int | None = None) -> int:
     root = raw_root if raw_root is not None else raw_zone.raw_root()
     is_remote = remote.is_remote(root)
     snapshots = selected(only)
@@ -369,6 +441,13 @@ def run(raw_root, keep: int, only: list[str], apply: bool) -> int:
     )
     print(f"  delta sources are not considered: {', '.join(deltas)}")
 
+    # After the deletes, so `--apply --max-bytes` weighs the zone it is leaving
+    # behind rather than the one it found. In report mode nothing has moved, so
+    # `removable` is what an apply would take off the number just printed.
+    over_budget = (
+        headroom(root, 0 if apply else removed_bytes, max_bytes) if max_bytes is not None else False
+    )
+
     if unproven:
         print("\nERROR: partitions older than the keep window that nothing supersedes:")
         for entry in unproven:
@@ -388,7 +467,7 @@ def run(raw_root, keep: int, only: list[str], apply: bool) -> int:
 
     if not apply:
         print("\n  Nothing was deleted. Re-run with --apply.")
-    return 0
+    return OVER_BUDGET_EXIT if over_budget else 0
 
 
 def main() -> None:
@@ -413,6 +492,14 @@ def main() -> None:
         help=f"partitions to retain per dataset regardless of proof (default: {DEFAULT_KEEP})",
     )
     parser.add_argument(
+        "--max-bytes",
+        type=lambda value: int(float(value)),
+        default=None,
+        help="fail with exit 4 if the whole raw zone exceeds this many bytes. Deletes "
+        "nothing either way; this is the unattended half (ADR-17). Off unless given, "
+        "because the threshold is a property of one bucket's allowance and not of the tool.",
+    )
+    parser.add_argument(
         "--raw-root",
         type=remote.zone_root,
         default=None,
@@ -423,7 +510,10 @@ def main() -> None:
     if args.keep < 1:
         parser.error("--keep must be at least 1: the newest partition is never a candidate")
 
-    sys.exit(run(args.raw_root, args.keep, args.datasets, args.apply))
+    if args.max_bytes is not None and args.max_bytes < 1:
+        parser.error("--max-bytes must be positive: a zone cannot hold fewer than no bytes")
+
+    sys.exit(run(args.raw_root, args.keep, args.datasets, args.apply, args.max_bytes))
 
 
 if __name__ == "__main__":

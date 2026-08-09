@@ -13,6 +13,17 @@ the traps block into the markdown. That is one rendering decision with a test
 each way: traps are rendered at a generous budget, and they are still there at
 every budget the ladder can satisfy.
 
+**There are two targets now, so the tests that were about "the target" are
+parameterised over both rather than duplicated** (PLAN-8 step 5). The published
+ones are built over a Parquet export written into a tmp directory, not over the
+real `published/`: the assertion worth having is that the six marts are the
+whole model set, and that holds for a six-row export as well as for a 140,000
+row one. The one to read first is
+`test_a_refusal_citing_a_staging_model_is_not_rendered_into_the_published_pack`,
+because the whole three-pack argument rests on it: if a citation resolves
+against a model the export does not carry, every other rule in the spec is
+quietly wrong.
+
 None of this touches the real warehouse or the dbt manifest, both of which are
 gitignored. The profile tests build a two-table DuckDB in memory instead, so
 this suite runs on a fresh clone with no pipeline, which is what lets it sit in
@@ -21,11 +32,12 @@ the same pytest job as the geometry tests.
 
 import hashlib
 import json
+from pathlib import Path
 
 import duckdb
 import pytest
 
-from generate import build_examples_block, disagreements
+from generate import GenerationError, build_examples_block, build_freshness_block, disagreements
 from pack_inputs import grain_sentence
 from pack_profile import column_shape, profile_model
 from pack_prose import (
@@ -34,12 +46,17 @@ from pack_prose import (
     check_class_three_examples,
     check_join_duplication,
     load_prose,
+    point_at_this_target_examples,
     resolve_citation,
     select_for_target,
     validate_shape,
 )
 from pack_render import BudgetExceeded, estimate_tokens, render
-from pack_target import TARGET_NAMES, Target
+
+# PUBLISHED_MARTS through pack_target rather than from publish/export.py: that
+# module is on sys.path only because pack_target put it there, and the test
+# should read the model set the generator reads.
+from pack_target import PUBLISHED_MARTS, TARGET_NAMES, Target, TargetError, open_target
 
 # ---------------------------------------------------------------------------
 # Fixtures: a target, and a pack shaped like the real one but small
@@ -62,6 +79,89 @@ def target():
     )
     yield Target("duckdb", connection, "main", ["events"])
     connection.close()
+
+
+# The published target, over an export written here rather than the real one.
+# `make publish` writes one Parquet per mart and lands the manifest last
+# (ADR-8), and both halves of that matter to what is tested below: the manifest
+# is what `_open_export` requires before it will call a directory an export.
+BUILD_TIME = "2026-08-05 09:17:00"
+PUBLISH_TIME = "2026-08-07T02:22:01+00:00"
+
+_MART_SQL = {
+    "mart_activity_by_h3": (
+        "select 613196575465799679 as h3_r8, 8 as event_count, 2.0 as events_per_1000_residents"
+    ),
+    "mart_activity_by_neighborhood": (
+        "select 'Mission' as neighborhood, 12 as event_count, 1000 as population, "
+        "12.0 as events_per_1000_residents"
+    ),
+    "mart_film_locations": "select 'Bullitt' as title, 1968 as release_year",
+    "dim_neighborhood": "select 'Mission' as neighborhood, 2.5 as area_sq_km",
+    "dim_supervisor_district": "select 9 as supervisor_district, 3.1 as area_sq_km",
+    "mart_pipeline_freshness": (
+        "select '311_cases' as source_name, 'core' as tier, 4 as row_count, "
+        f"timestamp '{BUILD_TIME}' as last_load_at, "
+        f"timestamp '{BUILD_TIME}' as last_run_finished_at, "
+        "24 as stale_after_hours, false as is_stale"
+    ),
+}
+
+
+def write_export(root: Path, marts=None, manifest: bool = True) -> Path:
+    """An export shaped like `make publish`'s, small enough to read."""
+    connection = duckdb.connect(":memory:")
+    for name in _MART_SQL if marts is None else marts:
+        (root / name).mkdir(parents=True, exist_ok=True)
+        path = root / name / f"{name}.parquet"
+        connection.execute(f"copy ({_MART_SQL[name]}) to '{path}' (format parquet)")
+    connection.close()
+    if manifest:
+        (root / "manifest.json").write_text(
+            json.dumps(
+                {"manifest_version": 2, "generated_at": PUBLISH_TIME, "datasets": []}, indent=2
+            )
+        )
+    return root
+
+
+def all_models() -> dict:
+    """Manifest shaped: what the warehouse holds, of which the export is six.
+
+    The three that stay behind are the point. `model_set` filters this down to
+    `PUBLISHED_MARTS`, and a test that fed it only the marts would not notice a
+    filter that had stopped filtering.
+    """
+    behind = ["stg_datasf__311_cases", "stg_spatial__polygon_h3", "int_point_activity"]
+    return {name: {"name": name} for name in [*behind, *_MART_SQL]}
+
+
+@pytest.fixture
+def export(tmp_path, monkeypatch):
+    """An empty export directory, and PUBLISH_DIR pointed at it."""
+    root = tmp_path / "published"
+    root.mkdir()
+    monkeypatch.setenv("PUBLISH_DIR", str(root))
+    return root
+
+
+@pytest.fixture
+def published_target(export):
+    write_export(export)
+    with open_target("published", all_models()) as opened:
+        yield opened
+
+
+def facts_for(target) -> TargetFacts:
+    """The TargetFacts `build_pack` builds, over an opened target."""
+    return TargetFacts(
+        target_name=target.name,
+        columns={
+            name: [column for column, _ in target.columns(name)] for name in target.model_names
+        },
+        adrs={"adr-8", "adr-12"},
+        sources={},
+    )
 
 
 def a_pack(**overrides) -> dict:
@@ -195,6 +295,131 @@ def a_pack(**overrides) -> dict:
     }
     pack.update(overrides)
     return pack
+
+
+# ---------------------------------------------------------------------------
+# The published target, which is six marts and is not a shorter warehouse
+# ---------------------------------------------------------------------------
+
+
+def test_a_refusal_citing_a_staging_model_is_not_rendered_into_the_published_pack(published_target):
+    """PLAN-8 step 5's first test, and the assertion the three-pack argument rests on.
+
+    Spec section 2: a model told about `stg_spatial__polygon_h3` while reading
+    six Parquet files will write a join to a table that is not there. So there
+    are two routes into that pack for such an entry and both are closed. An
+    entry that claims `published` fails generation, naming the citation, and one
+    that does not claim it is silently not rendered.
+    """
+    facts = facts_for(published_target)
+    citing = {
+        "id": "refuse.cites-a-staging-model",
+        "applies_to": ["duckdb", "published"],
+        "evidence": [{"kind": "column", "ref": "stg_datasf__311_cases.service_subtype"}],
+    }
+
+    with pytest.raises(ProseError) as error:
+        select_for_target({"refusals": [citing]}, facts)
+    assert "refuse.cites-a-staging-model" in str(error.value)
+    assert "not in the published target" in str(error.value)
+
+    warehouse_only = dict(citing, applies_to=["duckdb"])
+    assert select_for_target({"refusals": [warehouse_only]}, facts)["refusals"] == []
+
+
+def test_the_published_target_is_the_six_marts_and_nothing_upstream(published_target):
+    assert sorted(published_target.model_names) == sorted(PUBLISHED_MARTS)
+    facts = facts_for(published_target)
+    assert resolve_citation({"kind": "model", "ref": "int_point_activity"}, facts)
+    assert resolve_citation({"kind": "model", "ref": "mart_film_locations"}, facts) is None
+
+
+def test_an_export_with_no_manifest_is_not_an_export(export):
+    """ADR-8 makes the manifest the thing that lands last, so a directory without
+    one is a publish in progress rather than an export to describe."""
+    write_export(export, manifest=False)
+    with pytest.raises(TargetError) as error, open_target("published", all_models()):
+        pass
+    assert "no manifest.json" in str(error.value)
+
+
+def test_an_export_missing_a_mart_is_refused_rather_than_described(export):
+    """A pack over five marts would describe a model set no consumer has."""
+    write_export(export, marts=[name for name in _MART_SQL if name != "mart_film_locations"])
+    with pytest.raises(TargetError) as error, open_target("published", all_models()):
+        pass
+    assert "mart_film_locations" in str(error.value)
+
+
+def test_published_freshness_is_the_publish_time_and_the_build_time_is_beside_it(published_target):
+    """Spec 4.5, PLAN-8 step 2. The two numbers have been days apart.
+
+    The headline is the age of the files the consumer is holding. The per-source
+    rows are `mart_pipeline_freshness` as it stood in the build the export was
+    written from, which the export happens to carry, and giving either without
+    the other is how a reader concludes the export is as fresh as the pipeline.
+    """
+    block = build_freshness_block(
+        published_target, {"generated_at": PUBLISH_TIME, "manifest_version": 2}
+    )
+    assert block["published_at"] == PUBLISH_TIME
+    assert block["manifest_version"] == 2
+    assert block["sources"][0]["last_load_at"].startswith("2026-08-05")
+    assert "age of the files you are reading" in block["basis"]
+
+
+def test_a_published_pack_with_no_publish_time_fails_rather_than_reporting_the_build(
+    published_target,
+):
+    with pytest.raises(GenerationError) as error:
+        build_freshness_block(published_target, None)
+    assert "no publish time" in str(error.value)
+
+
+# ---------------------------------------------------------------------------
+# A refusal points at an example this pack carries, or at none
+# ---------------------------------------------------------------------------
+
+
+def _refusal(example_id: str) -> dict:
+    return {
+        "id": "refuse.rank-by-raw-count",
+        "instead": {"answer": "Rank by a rate.", "example": example_id},
+    }
+
+
+def test_a_pointer_at_another_packs_example_is_rewritten_not_left_dangling():
+    """`instead.example` is written once and read by every target (spec 4.7 rule 1).
+
+    A published pack saying "see example ex.reports-per-capita-by-neighborhood"
+    with no such example in it is the closed-world rule broken by the pack.
+    """
+    refusals = [_refusal("ex.reports-per-capita-by-neighborhood")]
+    examples = [{"id": "ex.export-rate", "demonstrates": ["refuse.rank-by-raw-count"]}]
+
+    rewritten = point_at_this_target_examples(refusals, examples)
+
+    assert rewritten[0]["instead"]["example"] == "ex.export-rate"
+    # The prose is one file behind three packs, so selection must not mutate it.
+    assert refusals[0]["instead"]["example"] == "ex.reports-per-capita-by-neighborhood"
+
+
+def test_a_pointer_with_nothing_in_this_pack_to_point_at_is_dropped():
+    rewritten = point_at_this_target_examples([_refusal("ex.elsewhere")], [])
+    assert "example" not in rewritten[0]["instead"]
+    assert rewritten[0]["instead"]["answer"] == "Rank by a rate."
+
+
+def test_a_pointer_this_pack_carries_is_left_alone():
+    """The regression the first version of the rule caused: an author may point a
+    refusal at an example demonstrating a neighbouring one, and rewriting that to
+    "the example that demonstrates this one" quietly overrules them."""
+    examples = [
+        {"id": "ex.neighbouring", "demonstrates": ["refuse.something-else"]},
+        {"id": "ex.this-one", "demonstrates": ["refuse.rank-by-raw-count"]},
+    ]
+    rewritten = point_at_this_target_examples([_refusal("ex.neighbouring")], examples)
+    assert rewritten[0]["instead"]["example"] == "ex.neighbouring"
 
 
 # ---------------------------------------------------------------------------
@@ -398,30 +623,44 @@ def _live(**overrides) -> dict:
     return live
 
 
-def test_a_current_pack_has_no_disagreements():
-    assert disagreements(a_pack(), _live()) == []
+# Both packs are checked in CI as of PLAN-8, so the drift check is parameterised
+# over the two targets rather than tested on the one it was written for.
+both_targets = pytest.mark.parametrize("target_name", ["duckdb", "published"])
 
 
-def test_a_pack_whose_schema_hash_moved_is_rejected():
-    problems = disagreements(a_pack(), _live(models={"events": "9999888877776666"}))
+@both_targets
+def test_a_current_pack_has_no_disagreements(target_name):
+    assert disagreements(a_pack(target=target_name), _live(target=target_name)) == []
+
+
+@both_targets
+def test_a_pack_whose_schema_hash_moved_is_rejected(target_name):
+    live = _live(target=target_name, models={"events": "9999888877776666"})
+    problems = disagreements(a_pack(target=target_name), live)
     assert len(problems) == 1
     assert "schema hash" in problems[0]
 
 
-def test_a_pack_built_from_older_prose_is_rejected():
-    problems = disagreements(a_pack(), _live(prose_revision="0000000000000000"))
+@both_targets
+def test_a_pack_built_from_older_prose_is_rejected(target_name):
+    live = _live(target=target_name, prose_revision="0000000000000000")
+    problems = disagreements(a_pack(target=target_name), live)
     assert any("prose revision" in problem for problem in problems)
 
 
-def test_a_pack_missing_a_model_the_target_holds_is_rejected():
-    live = _live(models={"events": "1111222233334444", "arrived_later": "aaaa"})
-    problems = disagreements(a_pack(), live)
+@both_targets
+def test_a_pack_missing_a_model_the_target_holds_is_rejected(target_name):
+    live = _live(target=target_name, models={"events": "1111222233334444", "arrived_later": "aaaa"})
+    problems = disagreements(a_pack(target=target_name), live)
     assert any("does not describe" in problem for problem in problems)
 
 
-def test_a_pack_for_another_target_is_rejected_outright():
-    problems = disagreements(a_pack(target="published"), _live())
-    assert problems == ["this is a published pack, not a duckdb one"]
+@pytest.mark.parametrize(
+    ("pack_target", "live_target"), [("published", "duckdb"), ("duckdb", "published")]
+)
+def test_a_pack_for_another_target_is_rejected_outright(pack_target, live_target):
+    problems = disagreements(a_pack(target=pack_target), _live(target=live_target))
+    assert problems == [f"this is a {pack_target} pack, not a {live_target} one"]
 
 
 # ---------------------------------------------------------------------------
@@ -438,15 +677,19 @@ def _facts(target_name="duckdb") -> TargetFacts:
     )
 
 
-def test_a_citation_of_a_model_the_target_lacks_does_not_resolve():
-    assert resolve_citation({"kind": "model", "ref": "events"}, _facts()) is None
-    problem = resolve_citation({"kind": "model", "ref": "street_trees"}, _facts())
-    assert problem and "not in the duckdb target" in problem
+@both_targets
+def test_a_citation_of_a_model_the_target_lacks_does_not_resolve(target_name):
+    facts = _facts(target_name)
+    assert resolve_citation({"kind": "model", "ref": "events"}, facts) is None
+    problem = resolve_citation({"kind": "model", "ref": "street_trees"}, facts)
+    assert problem and f"not in the {target_name} target" in problem
 
 
-def test_a_citation_of_a_column_the_target_lacks_does_not_resolve():
-    assert resolve_citation({"kind": "column", "ref": "events.dataset"}, _facts()) is None
-    problem = resolve_citation({"kind": "column", "ref": "events.h3_r9"}, _facts())
+@both_targets
+def test_a_citation_of_a_column_the_target_lacks_does_not_resolve(target_name):
+    facts = _facts(target_name)
+    assert resolve_citation({"kind": "column", "ref": "events.dataset"}, facts) is None
+    problem = resolve_citation({"kind": "column", "ref": "events.h3_r9"}, facts)
     assert problem and "no column 'h3_r9'" in problem
 
 
