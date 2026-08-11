@@ -1,7 +1,7 @@
 ---
-status: active
+status: superseded
 date: 2026-08-09
-related: [adr-4-raw-zone-layout, adr-9-cloud-raw-zone, adr-14-raw-zone-retention, adr-16-cut-datasets-leave-the-zone, plan-9-raw-zone-retention, plan-7-pipeline-assurance]
+related: [adr-4-raw-zone-layout, adr-9-cloud-raw-zone, adr-14-raw-zone-retention, adr-16-cut-datasets-leave-the-zone, adr-18-the-raw-zone, plan-9-raw-zone-retention, plan-7-pipeline-assurance]
 ---
 
 # ADR-17. The proof runs on a schedule and the deletion never does

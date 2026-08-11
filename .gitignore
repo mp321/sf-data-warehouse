@@ -63,6 +63,14 @@ published/
 
 # ---------------------------------------------------------------------------
 # os and editor noise
+#
+# .DS_Store has been here from the start and is why none has ever been
+# committed. It is NOT why two of them are in the bucket: `gcloud storage`
+# does not read this file, and the hand sync of the raw zone on 2026-08-01
+# carried data/raw/.DS_Store and data/raw/raw_311_cases/.DS_Store up with the
+# Parquet. Deleting them there is a bucket command, not a git one. Since PLAN-4
+# step 6 the writer uploads objects itself and nothing syncs a directory, so
+# the route that made them is closed; the two that exist are residue.
 # ---------------------------------------------------------------------------
 .DS_Store
 Thumbs.db

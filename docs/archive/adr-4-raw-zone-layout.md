@@ -1,7 +1,7 @@
 ---
 status: superseded
 date: 2026-07-31
-related: [adr-1-warehouse-targets, adr-3-dataset-scope, adr-9-cloud-raw-zone]
+related: [adr-1-warehouse-targets, adr-3-dataset-scope, adr-9-cloud-raw-zone, adr-18-the-raw-zone]
 ---
 
 # ADR-4. Raw zone layout, and loading as a separate step

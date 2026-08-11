@@ -1,7 +1,7 @@
 ---
-status: active
+status: superseded
 date: 2026-08-07
-related: [adr-4-raw-zone-layout, adr-9-cloud-raw-zone, adr-8-published-exports, adr-12-published-export-layout, adr-16-cut-datasets-leave-the-zone, adr-17-scheduled-retention-proof, plan-9-raw-zone-retention, plan-7-pipeline-assurance]
+related: [adr-4-raw-zone-layout, adr-9-cloud-raw-zone, adr-8-published-exports, adr-12-published-export-layout, adr-16-cut-datasets-leave-the-zone, adr-17-scheduled-retention-proof, adr-18-the-raw-zone, plan-9-raw-zone-retention, plan-7-pipeline-assurance]
 ---
 
 # ADR-14. A superseded snapshot partition may be deleted, and a delta partition never may

@@ -1,7 +1,7 @@
 ---
-status: active
+status: superseded
 date: 2026-08-09
-related: [adr-4-raw-zone-layout, adr-9-cloud-raw-zone, adr-10-narrowed-scope, adr-14-raw-zone-retention, adr-17-scheduled-retention-proof, plan-9-raw-zone-retention]
+related: [adr-4-raw-zone-layout, adr-9-cloud-raw-zone, adr-10-narrowed-scope, adr-14-raw-zone-retention, adr-17-scheduled-retention-proof, adr-18-the-raw-zone, plan-9-raw-zone-retention]
 ---
 
 # ADR-16. A dataset cut from the registry is deleted from the zone, and the prune is not the tool
