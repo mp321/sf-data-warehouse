@@ -2,7 +2,7 @@
   "spec_version": "2026-08-07",
   "pack_version": "1.0.0",
   "target": "published",
-  "generated_at": "2026-08-08T03:10:01+00:00",
+  "generated_at": "2026-08-15T17:25:29+00:00",
   "prose_revision": "64e423921de52c85",
   "identity": {
     "name": "sf-data-warehouse",
@@ -95,8 +95,8 @@
     "how_to_read": "Read the refusals and the disclosures before the schema. They are ordered first on purpose: a model that has read the schema has already begun composing SQL, and a constraint that arrives after a draft exists has to overturn something rather than shape it. The refusals are instructions to you, not notes about the data. Each one names the answer to give instead, and giving that answer is how you obey it."
   },
   "build": {
-    "invocation_id": "c0e3245a-5fb9-4e20-a081-21a7058289d0",
-    "manifest_generated_at": "2026-08-08T03:09:39.146747Z",
+    "invocation_id": "53450eca-97c0-4541-98b0-30fa0dc51db7",
+    "manifest_generated_at": "2026-08-15T17:09:56.243164Z",
     "dbt_version": "1.12.0",
     "adapter_type": "duckdb",
     "project_id": "b2ad435d37afeb27fc9880d6d2ae6e55",
@@ -254,8 +254,8 @@
             "null_rate": 0.0,
             "distinct_count": 41,
             "min": 39,
-            "max": 44708,
-            "median": 6045.0
+            "max": 44790,
+            "median": 6049.0
           },
           "low_signal": false
         },
@@ -267,8 +267,8 @@
             "null_rate": 0.0,
             "distinct_count": 41,
             "min": 18.0,
-            "max": 14227.0,
-            "median": 2063.0
+            "max": 14268.0,
+            "median": 2059.0
           },
           "low_signal": false
         },
@@ -279,7 +279,7 @@
           "profile": {
             "null_rate": 0.0,
             "distinct_count": 41,
-            "min": 102.55323107906395,
+            "min": 102.55323107906396,
             "max": 35465.88578228959,
             "median": 8889.285071868393
           },
@@ -293,8 +293,8 @@
             "null_rate": 0.0,
             "distinct_count": 41,
             "min": 28.892674140591502,
-            "max": 16359.052455865305,
-            "median": 2253.780119165178
+            "max": 16398.60030182756,
+            "median": 2255.8185093845013
           },
           "low_signal": false
         },
@@ -588,9 +588,9 @@
           "profile": {
             "null_rate": 0.0,
             "distinct_count": 11,
-            "min": 11927,
-            "max": 57386,
-            "median": 23117.0
+            "min": 11948,
+            "max": 57478,
+            "median": 23149.0
           },
           "low_signal": false
         },
@@ -601,9 +601,9 @@
           "profile": {
             "null_rate": 0.0,
             "distinct_count": 11,
-            "min": 4070.0,
-            "max": 19293.0,
-            "median": 7760.0
+            "min": 4075.0,
+            "max": 19333.0,
+            "median": 7755.0
           },
           "low_signal": false
         },
@@ -614,9 +614,9 @@
           "profile": {
             "null_rate": 0.0,
             "distinct_count": 11,
-            "min": 287.80587134546977,
-            "max": 17841.300057657245,
-            "median": 7813.538634925636
+            "min": 287.8058713454694,
+            "max": 17841.300057657256,
+            "median": 7813.538634925641
           },
           "low_signal": false
         },
@@ -650,7 +650,7 @@
       "layer": "mart",
       "materialisation": "table",
       "grain": "One row per H3 cell per dataset per category per month, at var('h3_mart_resolution'), currently 8.",
-      "row_count": 140163,
+      "row_count": 144049,
       "depends_on": [],
       "columns": [
         {
@@ -659,7 +659,7 @@
           "description": "The cell as a BIGINT. Part of the grain.",
           "profile": {
             "null_rate": 0.0,
-            "distinct_count": 15760
+            "distinct_count": 15790
           },
           "low_signal": false
         },
@@ -683,15 +683,15 @@
             "values": [
               {
                 "value": "business_locations",
-                "share": 0.852921
+                "share": 0.831786
               },
               {
                 "value": "building_permits",
-                "share": 0.098471
+                "share": 0.101264
               },
               {
                 "value": "311_cases",
-                "share": 0.048608
+                "share": 0.066949
               }
             ]
           },
@@ -732,136 +732,136 @@
           "type": "VARCHAR",
           "description": "The neighborhood owning this cell, for filtering and labelling. Null where the cell's centre is outside every neighborhood, which is water or just past the city line.",
           "profile": {
-            "null_rate": 0.446416,
+            "null_rate": 0.436518,
             "distinct_count": 41,
             "values": [
               {
                 "value": "Sunset/Parkside",
-                "share": 0.046061
+                "share": 0.046769
               },
               {
                 "value": "Mission",
-                "share": 0.043043
+                "share": 0.043332
               },
               {
                 "value": "Bayview Hunters Point",
-                "share": 0.041773
+                "share": 0.042229
               },
               {
                 "value": "West of Twin Peaks",
-                "share": 0.029337
+                "share": 0.029872
               },
               {
                 "value": "Financial District",
-                "share": 0.022317
+                "share": 0.022284
               },
               {
                 "value": "Outer Richmond",
-                "share": 0.021054
+                "share": 0.021291
               },
               {
                 "value": "South of Market",
-                "share": 0.021026
+                "share": 0.021118
               },
               {
                 "value": "Bernal Heights",
-                "share": 0.016909
-              },
-              {
-                "value": "Inner Richmond",
-                "share": 0.016096
+                "share": 0.017223
               },
               {
                 "value": "Potrero Hill",
-                "share": 0.015981
+                "share": 0.016272
+              },
+              {
+                "value": "Inner Richmond",
+                "share": 0.016168
               },
               {
                 "value": "Inner Sunset",
-                "share": 0.015439
+                "share": 0.015703
               },
               {
                 "value": "Marina",
-                "share": 0.015025
-              },
-              {
-                "value": "Outer Mission",
-                "share": 0.014533
-              },
-              {
-                "value": "Excelsior",
-                "share": 0.014055
+                "share": 0.015321
               },
               {
                 "value": "Lone Mountain/USF",
-                "share": 0.013912
+                "share": 0.01505
+              },
+              {
+                "value": "Outer Mission",
+                "share": 0.014898
+              },
+              {
+                "value": "Excelsior",
+                "share": 0.014245
               },
               {
                 "value": "Noe Valley",
-                "share": 0.01367
+                "share": 0.013849
               },
               {
                 "value": "Western Addition",
-                "share": 0.013306
-              },
-              {
-                "value": "Russian Hill",
-                "share": 0.012864
+                "share": 0.013655
               },
               {
                 "value": "Hayes Valley",
-                "share": 0.01123
+                "share": 0.01337
+              },
+              {
+                "value": "Russian Hill",
+                "share": 0.012989
               },
               {
                 "value": "Castro/Upper Market",
-                "share": 0.010823
+                "share": 0.010996
               },
               {
                 "value": "Golden Gate Park",
-                "share": 0.010609
+                "share": 0.010857
               },
               {
                 "value": "Oceanview/Merced/Ingleside",
-                "share": 0.010509
-              },
-              {
-                "value": "Pacific Heights",
-                "share": 0.010138
+                "share": 0.010663
               },
               {
                 "value": "Haight Ashbury",
-                "share": 0.010095
+                "share": 0.010219
+              },
+              {
+                "value": "Pacific Heights",
+                "share": 0.010219
               },
               {
                 "value": "Chinatown",
-                "share": 0.009946
+                "share": 0.009913
               },
               {
                 "value": "Nob Hill",
-                "share": 0.009403
+                "share": 0.009386
               },
               {
                 "value": "Lakeshore",
-                "share": 0.00879
+                "share": 0.008886
               },
               {
                 "value": "Glen Park",
-                "share": 0.008718
+                "share": 0.008858
               },
               {
                 "value": "Mission Bay",
-                "share": 0.00834
+                "share": 0.008504
               },
               {
                 "value": "Presidio",
-                "share": 0.008226
+                "share": 0.008261
               },
               {
                 "value": "Tenderloin",
-                "share": 0.008048
+                "share": 0.008261
               },
               {
                 "value": "Twin Peaks",
-                "share": 0.007734
+                "share": 0.007831
               },
               {
                 "value": "Japantown",
@@ -869,35 +869,35 @@
               },
               {
                 "value": "Portola",
-                "share": 0.006186
+                "share": 0.006303
               },
               {
                 "value": "Presidio Heights",
-                "share": 0.005058
+                "share": 0.005089
               },
               {
                 "value": "McLaren Park",
-                "share": 0.005001
+                "share": 0.005075
               },
               {
                 "value": "North Beach",
-                "share": 0.00351
+                "share": 0.003589
               },
               {
                 "value": "Visitacion Valley",
-                "share": 0.002832
+                "share": 0.002867
               },
               {
                 "value": "Treasure Island",
-                "share": 0.002568
+                "share": 0.002589
               },
               {
                 "value": "Seacliff",
-                "share": 0.002483
+                "share": 0.002513
               },
               {
                 "value": "Lincoln Park",
-                "share": 0.000499
+                "share": 0.000528
               }
             ]
           },
@@ -908,52 +908,52 @@
           "type": "VARCHAR",
           "description": "The supervisor district owning this cell, as a string, on the 2022 boundaries. Null under the same rule as analysis_neighborhood. Join to dim_supervisor_district on this rather than on the integer district number, which is what the id exists for.",
           "profile": {
-            "null_rate": 0.445895,
+            "null_rate": 0.436018,
             "distinct_count": 11,
             "values": [
               {
                 "value": "7.0",
-                "share": 0.064939
+                "share": 0.066047
               },
               {
                 "value": "10.0",
-                "share": 0.064553
+                "share": 0.065387
               },
               {
                 "value": "8.0",
-                "share": 0.057026
+                "share": 0.057834
               },
               {
                 "value": "9.0",
-                "share": 0.056541
+                "share": 0.057272
               },
               {
                 "value": "2.0",
-                "share": 0.055207
+                "share": 0.055759
               },
               {
                 "value": "3.0",
-                "share": 0.051169
+                "share": 0.051295
               },
               {
                 "value": "4.0",
-                "share": 0.046061
+                "share": 0.046769
               },
               {
                 "value": "1.0",
-                "share": 0.046046
+                "share": 0.046547
               },
               {
                 "value": "6.0",
-                "share": 0.04529
+                "share": 0.045609
               },
               {
                 "value": "5.0",
-                "share": 0.036172
+                "share": 0.039903
               },
               {
                 "value": "11.0",
-                "share": 0.0311
+                "share": 0.031559
               }
             ]
           },
@@ -965,9 +965,9 @@
           "description": "Events in this cell, dataset, category and month.",
           "profile": {
             "null_rate": 0.0,
-            "distinct_count": 257,
+            "distinct_count": 276,
             "min": 1,
-            "max": 1699,
+            "max": 1745,
             "median": 1.0
           },
           "low_signal": false
@@ -977,7 +977,7 @@
           "type": "DOUBLE",
           "description": "Interpolated residents in this cell. Null where the cell has no block group overlap at all, zero where it genuinely has nobody.",
           "profile": {
-            "null_rate": 0.415766,
+            "null_rate": 0.405563,
             "distinct_count": 156,
             "min": 0.0,
             "max": 29427.0,
@@ -990,7 +990,7 @@
           "type": "DOUBLE",
           "description": "Interpolated housing units in this cell, same method and same caveat as cell_population, and null under the same condition.",
           "profile": {
-            "null_rate": 0.415766,
+            "null_rate": 0.405563,
             "distinct_count": 154,
             "min": 0.0,
             "max": 16110.0,
@@ -1019,11 +1019,11 @@
           "type": "DOUBLE",
           "description": "The normalised companion, and the one to rank on. Null rather than infinite where the cell has no residents, which is correct and common: the bay, the Presidio and the Financial District all have real activity and close to nobody living in them.",
           "profile": {
-            "null_rate": 0.418163,
-            "distinct_count": 3938,
+            "null_rate": 0.407972,
+            "distinct_count": 4229,
             "min": 0.03398239711829273,
-            "max": 654.9295774647887,
-            "median": 0.39904229848363926
+            "max": 676.056338028169,
+            "median": 0.3992015968063872
           },
           "low_signal": false
         },
@@ -1032,11 +1032,11 @@
           "type": "DOUBLE",
           "description": "The same normalisation against dwellings rather than people. Useful where the question is about the building stock; null where the cell has no housing units, for the same reason as above.",
           "profile": {
-            "null_rate": 0.418163,
-            "distinct_count": 3819,
+            "null_rate": 0.407972,
+            "distinct_count": 4099,
             "min": 0.06207324643078833,
             "max": 18000.0,
-            "median": 0.9149130832570905
+            "median": 0.9179926560587516
           },
           "low_signal": false
         },
@@ -1046,9 +1046,9 @@
           "description": "Density. A constant rescaling of event_count at fixed resolution, so it ranks identically; kept for comparability with the neighborhood mart.",
           "profile": {
             "null_rate": 0.0,
-            "distinct_count": 257,
+            "distinct_count": 276,
             "min": 1.3562492483056354,
-            "max": 2304.2674728712745,
+            "max": 2366.6549382933335,
             "median": 1.3562492483056354
           },
           "low_signal": false
@@ -1060,7 +1060,7 @@
       "layer": "mart",
       "materialisation": "table",
       "grain": "One row per neighborhood per dataset per category per month.",
-      "row_count": 40157,
+      "row_count": 41965,
       "depends_on": [
         "dim_neighborhood"
       ],
@@ -1075,167 +1075,167 @@
             "values": [
               {
                 "value": "Financial District",
-                "share": 0.055109
+                "share": 0.05364
               },
               {
                 "value": "Mission",
-                "share": 0.052743
+                "share": 0.051591
               },
               {
                 "value": "South of Market",
-                "share": 0.040217
+                "share": 0.039461
               },
               {
                 "value": "Bayview Hunters Point",
-                "share": 0.039619
+                "share": 0.038913
               },
               {
                 "value": "Sunset/Parkside",
-                "share": 0.03703
+                "share": 0.036554
               },
               {
                 "value": "Tenderloin",
-                "share": 0.036432
+                "share": 0.036483
               },
               {
                 "value": "Chinatown",
-                "share": 0.035062
+                "share": 0.034314
               },
               {
                 "value": "Marina",
-                "share": 0.033045
+                "share": 0.032932
               },
               {
                 "value": "Nob Hill",
-                "share": 0.032572
+                "share": 0.032003
               },
               {
                 "value": "Outer Richmond",
-                "share": 0.032124
-              },
-              {
-                "value": "Castro/Upper Market",
-                "share": 0.030082
-              },
-              {
-                "value": "Inner Richmond",
-                "share": 0.028638
-              },
-              {
-                "value": "West of Twin Peaks",
-                "share": 0.028613
-              },
-              {
-                "value": "Pacific Heights",
-                "share": 0.028364
-              },
-              {
-                "value": "North Beach",
-                "share": 0.02814
-              },
-              {
-                "value": "Hayes Valley",
-                "share": 0.02799
-              },
-              {
-                "value": "Inner Sunset",
-                "share": 0.027293
-              },
-              {
-                "value": "Bernal Heights",
-                "share": 0.026645
-              },
-              {
-                "value": "Russian Hill",
-                "share": 0.026546
-              },
-              {
-                "value": "Noe Valley",
-                "share": 0.026023
-              },
-              {
-                "value": "Haight Ashbury",
-                "share": 0.025624
-              },
-              {
-                "value": "Potrero Hill",
-                "share": 0.024529
-              },
-              {
-                "value": "Mission Bay",
-                "share": 0.024155
+                "share": 0.031717
               },
               {
                 "value": "Western Addition",
-                "share": 0.023956
+                "share": 0.030406
               },
               {
-                "value": "Presidio Heights",
-                "share": 0.022636
+                "value": "Castro/Upper Market",
+                "share": 0.030001
               },
               {
-                "value": "Excelsior",
-                "share": 0.022412
+                "value": "West of Twin Peaks",
+                "share": 0.028381
+              },
+              {
+                "value": "Inner Richmond",
+                "share": 0.028166
+              },
+              {
+                "value": "Pacific Heights",
+                "share": 0.027833
+              },
+              {
+                "value": "North Beach",
+                "share": 0.027809
+              },
+              {
+                "value": "Hayes Valley",
+                "share": 0.027594
+              },
+              {
+                "value": "Inner Sunset",
+                "share": 0.02707
+              },
+              {
+                "value": "Bernal Heights",
+                "share": 0.026546
+              },
+              {
+                "value": "Russian Hill",
+                "share": 0.026403
+              },
+              {
+                "value": "Noe Valley",
+                "share": 0.025974
+              },
+              {
+                "value": "Haight Ashbury",
+                "share": 0.025426
+              },
+              {
+                "value": "Potrero Hill",
+                "share": 0.024473
+              },
+              {
+                "value": "Mission Bay",
+                "share": 0.024068
               },
               {
                 "value": "Lone Mountain/USF",
-                "share": 0.020768
+                "share": 0.023686
+              },
+              {
+                "value": "Presidio Heights",
+                "share": 0.022304
+              },
+              {
+                "value": "Excelsior",
+                "share": 0.022257
               },
               {
                 "value": "Outer Mission",
-                "share": 0.020569
+                "share": 0.020636
               },
               {
                 "value": "Oceanview/Merced/Ingleside",
-                "share": 0.018876
+                "share": 0.018921
               },
               {
                 "value": "Lakeshore",
-                "share": 0.016535
+                "share": 0.016418
               },
               {
                 "value": "Portola",
-                "share": 0.016386
+                "share": 0.016323
               },
               {
                 "value": "Glen Park",
-                "share": 0.015913
+                "share": 0.016061
               },
               {
                 "value": "Japantown",
-                "share": 0.015464
+                "share": 0.015322
               },
               {
                 "value": "Visitacion Valley",
-                "share": 0.01407
+                "share": 0.014012
               },
               {
                 "value": "Twin Peaks",
-                "share": 0.013298
-              },
-              {
-                "value": "Presidio",
-                "share": 0.008342
+                "share": 0.013273
               },
               {
                 "value": "Treasure Island",
-                "share": 0.008317
+                "share": 0.008316
+              },
+              {
+                "value": "Presidio",
+                "share": 0.008269
               },
               {
                 "value": "Seacliff",
-                "share": 0.007645
+                "share": 0.007673
               },
               {
                 "value": "Golden Gate Park",
-                "share": 0.004632
+                "share": 0.004933
               },
               {
                 "value": "McLaren Park",
-                "share": 0.002042
+                "share": 0.00224
               },
               {
                 "value": "Lincoln Park",
-                "share": 0.001544
+                "share": 0.001597
               }
             ]
           },
@@ -1251,15 +1251,15 @@
             "values": [
               {
                 "value": "business_locations",
-                "share": 0.71467
+                "share": 0.685214
               },
               {
                 "value": "building_permits",
-                "share": 0.211893
+                "share": 0.216085
               },
               {
                 "value": "311_cases",
-                "share": 0.073437
+                "share": 0.098701
               }
             ]
           },
@@ -1301,9 +1301,9 @@
           "description": "Events in this neighborhood, dataset, category and month.",
           "profile": {
             "null_rate": 0.0,
-            "distinct_count": 336,
+            "distinct_count": 357,
             "min": 1,
-            "max": 4509,
+            "max": 4707,
             "median": 2.0
           },
           "low_signal": false
@@ -1318,167 +1318,167 @@
             "values": [
               {
                 "value": 23908,
-                "share": 0.055109
+                "share": 0.05364
               },
               {
                 "value": 58062,
-                "share": 0.052743
+                "share": 0.051591
               },
               {
                 "value": 28426,
-                "share": 0.040217
+                "share": 0.039461
               },
               {
                 "value": 40384,
-                "share": 0.039619
+                "share": 0.038913
               },
               {
                 "value": 74656,
-                "share": 0.03703
+                "share": 0.036554
               },
               {
                 "value": 36067,
-                "share": 0.036432
+                "share": 0.036483
               },
               {
                 "value": 14455,
-                "share": 0.035062
+                "share": 0.034314
               },
               {
                 "value": 23325,
-                "share": 0.033045
+                "share": 0.032932
               },
               {
                 "value": 26398,
-                "share": 0.032572
+                "share": 0.032003
               },
               {
                 "value": 43211,
-                "share": 0.032124
-              },
-              {
-                "value": 22118,
-                "share": 0.030082
-              },
-              {
-                "value": 21895,
-                "share": 0.028638
-              },
-              {
-                "value": 37441,
-                "share": 0.028613
-              },
-              {
-                "value": 24948,
-                "share": 0.028364
-              },
-              {
-                "value": 11805,
-                "share": 0.02814
-              },
-              {
-                "value": 20098,
-                "share": 0.02799
-              },
-              {
-                "value": 28141,
-                "share": 0.027293
-              },
-              {
-                "value": 23416,
-                "share": 0.026645
-              },
-              {
-                "value": 18125,
-                "share": 0.026546
-              },
-              {
-                "value": 22859,
-                "share": 0.026023
-              },
-              {
-                "value": 17882,
-                "share": 0.025624
-              },
-              {
-                "value": 15752,
-                "share": 0.024529
-              },
-              {
-                "value": 16415,
-                "share": 0.024155
+                "share": 0.031717
               },
               {
                 "value": 23348,
-                "share": 0.023956
+                "share": 0.030406
               },
               {
-                "value": 10426,
-                "share": 0.022636
+                "value": 22118,
+                "share": 0.030001
               },
               {
-                "value": 37199,
-                "share": 0.022412
+                "value": 37441,
+                "share": 0.028381
+              },
+              {
+                "value": 21895,
+                "share": 0.028166
+              },
+              {
+                "value": 24948,
+                "share": 0.027833
+              },
+              {
+                "value": 11805,
+                "share": 0.027809
+              },
+              {
+                "value": 20098,
+                "share": 0.027594
+              },
+              {
+                "value": 28141,
+                "share": 0.02707
+              },
+              {
+                "value": 23416,
+                "share": 0.026546
+              },
+              {
+                "value": 18125,
+                "share": 0.026403
+              },
+              {
+                "value": 22859,
+                "share": 0.025974
+              },
+              {
+                "value": 17882,
+                "share": 0.025426
+              },
+              {
+                "value": 15752,
+                "share": 0.024473
+              },
+              {
+                "value": 16415,
+                "share": 0.024068
               },
               {
                 "value": 16547,
-                "share": 0.020768
+                "share": 0.023686
+              },
+              {
+                "value": 10426,
+                "share": 0.022304
+              },
+              {
+                "value": 37199,
+                "share": 0.022257
               },
               {
                 "value": 22240,
-                "share": 0.020569
+                "share": 0.020636
               },
               {
                 "value": 25803,
-                "share": 0.018876
+                "share": 0.018921
               },
               {
                 "value": 11642,
-                "share": 0.016535
+                "share": 0.016418
               },
               {
                 "value": 15649,
-                "share": 0.016386
+                "share": 0.016323
               },
               {
                 "value": 8286,
-                "share": 0.015913
+                "share": 0.016061
               },
               {
                 "value": 3899,
-                "share": 0.015464
+                "share": 0.015322
               },
               {
                 "value": 17925,
-                "share": 0.01407
+                "share": 0.014012
               },
               {
                 "value": 7767,
-                "share": 0.013298
-              },
-              {
-                "value": 2216,
-                "share": 0.008342
+                "share": 0.013273
               },
               {
                 "value": 1285,
-                "share": 0.008317
+                "share": 0.008316
+              },
+              {
+                "value": 2216,
+                "share": 0.008269
               },
               {
                 "value": 1986,
-                "share": 0.007645
+                "share": 0.007673
               },
               {
                 "value": 458,
-                "share": 0.004632
+                "share": 0.004933
               },
               {
                 "value": 1047,
-                "share": 0.002042
+                "share": 0.00224
               },
               {
                 "value": 178,
-                "share": 0.001544
+                "share": 0.001597
               }
             ]
           },
@@ -1494,167 +1494,167 @@
             "values": [
               {
                 "value": 16050,
-                "share": 0.055109
+                "share": 0.05364
               },
               {
                 "value": 26545,
-                "share": 0.052743
+                "share": 0.051591
               },
               {
                 "value": 15863,
-                "share": 0.040217
+                "share": 0.039461
               },
               {
                 "value": 12437,
-                "share": 0.039619
+                "share": 0.038913
               },
               {
                 "value": 28042,
-                "share": 0.03703
+                "share": 0.036554
               },
               {
                 "value": 20807,
-                "share": 0.036432
+                "share": 0.036483
               },
               {
                 "value": 7617,
-                "share": 0.035062
+                "share": 0.034314
               },
               {
                 "value": 14164,
-                "share": 0.033045
+                "share": 0.032932
               },
               {
                 "value": 18501,
-                "share": 0.032572
+                "share": 0.032003
               },
               {
                 "value": 19516,
-                "share": 0.032124
-              },
-              {
-                "value": 12435,
-                "share": 0.030082
-              },
-              {
-                "value": 10192,
-                "share": 0.028638
-              },
-              {
-                "value": 14620,
-                "share": 0.028613
-              },
-              {
-                "value": 14947,
-                "share": 0.028364
-              },
-              {
-                "value": 7137,
-                "share": 0.02814
-              },
-              {
-                "value": 11126,
-                "share": 0.02799
-              },
-              {
-                "value": 12842,
-                "share": 0.027293
-              },
-              {
-                "value": 9583,
-                "share": 0.026645
-              },
-              {
-                "value": 11182,
-                "share": 0.026546
-              },
-              {
-                "value": 11504,
-                "share": 0.026023
-              },
-              {
-                "value": 8980,
-                "share": 0.025624
-              },
-              {
-                "value": 8163,
-                "share": 0.024529
-              },
-              {
-                "value": 7870,
-                "share": 0.024155
+                "share": 0.031717
               },
               {
                 "value": 13065,
-                "share": 0.023956
+                "share": 0.030406
               },
               {
-                "value": 5203,
-                "share": 0.022636
+                "value": 12435,
+                "share": 0.030001
               },
               {
-                "value": 10938,
-                "share": 0.022412
+                "value": 14620,
+                "share": 0.028381
+              },
+              {
+                "value": 10192,
+                "share": 0.028166
+              },
+              {
+                "value": 14947,
+                "share": 0.027833
+              },
+              {
+                "value": 7137,
+                "share": 0.027809
+              },
+              {
+                "value": 11126,
+                "share": 0.027594
+              },
+              {
+                "value": 12842,
+                "share": 0.02707
+              },
+              {
+                "value": 9583,
+                "share": 0.026546
+              },
+              {
+                "value": 11182,
+                "share": 0.026403
+              },
+              {
+                "value": 11504,
+                "share": 0.025974
+              },
+              {
+                "value": 8980,
+                "share": 0.025426
+              },
+              {
+                "value": 8163,
+                "share": 0.024473
+              },
+              {
+                "value": 7870,
+                "share": 0.024068
               },
               {
                 "value": 7012,
-                "share": 0.020768
+                "share": 0.023686
+              },
+              {
+                "value": 5203,
+                "share": 0.022304
+              },
+              {
+                "value": 10938,
+                "share": 0.022257
               },
               {
                 "value": 6655,
-                "share": 0.020569
+                "share": 0.020636
               },
               {
                 "value": 8023,
-                "share": 0.018876
+                "share": 0.018921
               },
               {
                 "value": 5865,
-                "share": 0.016535
+                "share": 0.016418
               },
               {
                 "value": 4784,
-                "share": 0.016386
+                "share": 0.016323
               },
               {
                 "value": 3781,
-                "share": 0.015913
+                "share": 0.016061
               },
               {
                 "value": 2380,
-                "share": 0.015464
+                "share": 0.015322
               },
               {
                 "value": 4897,
-                "share": 0.01407
+                "share": 0.014012
               },
               {
                 "value": 3716,
-                "share": 0.013298
-              },
-              {
-                "value": 908,
-                "share": 0.008342
+                "share": 0.013273
               },
               {
                 "value": 338,
-                "share": 0.008317
+                "share": 0.008316
+              },
+              {
+                "value": 908,
+                "share": 0.008269
               },
               {
                 "value": 853,
-                "share": 0.007645
+                "share": 0.007673
               },
               {
                 "value": 124,
-                "share": 0.004632
+                "share": 0.004933
               },
               {
                 "value": 394,
-                "share": 0.002042
+                "share": 0.00224
               },
               {
                 "value": 63,
-                "share": 0.001544
+                "share": 0.001597
               }
             ]
           },
@@ -1669,168 +1669,168 @@
             "distinct_count": 41,
             "values": [
               {
-                "value": 44708,
-                "share": 0.055109
+                "value": 44790,
+                "share": 0.05364
               },
               {
-                "value": 23440,
-                "share": 0.052743
+                "value": 23480,
+                "share": 0.051591
               },
               {
-                "value": 18314,
-                "share": 0.040217
+                "value": 18345,
+                "share": 0.039461
               },
               {
-                "value": 13341,
-                "share": 0.039619
+                "value": 13361,
+                "share": 0.038913
               },
               {
-                "value": 13949,
-                "share": 0.03703
+                "value": 13972,
+                "share": 0.036554
               },
               {
-                "value": 8908,
-                "share": 0.036432
+                "value": 8931,
+                "share": 0.036483
               },
               {
-                "value": 9514,
-                "share": 0.035062
+                "value": 9537,
+                "share": 0.034314
               },
               {
-                "value": 9660,
-                "share": 0.033045
+                "value": 9682,
+                "share": 0.032932
               },
               {
-                "value": 8521,
-                "share": 0.032572
+                "value": 8528,
+                "share": 0.032003
               },
               {
-                "value": 9640,
-                "share": 0.032124
+                "value": 9656,
+                "share": 0.031717
               },
               {
-                "value": 9097,
-                "share": 0.030082
+                "value": 4903,
+                "share": 0.030406
               },
               {
-                "value": 6266,
-                "share": 0.028638
+                "value": 9117,
+                "share": 0.030001
               },
               {
-                "value": 8199,
-                "share": 0.028613
+                "value": 8225,
+                "share": 0.028381
               },
               {
-                "value": 7915,
-                "share": 0.028364
+                "value": 6275,
+                "share": 0.028166
               },
               {
-                "value": 6230,
-                "share": 0.02814
+                "value": 7927,
+                "share": 0.027833
               },
               {
-                "value": 7317,
-                "share": 0.02799
+                "value": 6236,
+                "share": 0.027809
               },
               {
-                "value": 6276,
-                "share": 0.027293
+                "value": 7333,
+                "share": 0.027594
               },
               {
-                "value": 6045,
-                "share": 0.026645
+                "value": 6286,
+                "share": 0.02707
               },
               {
-                "value": 5756,
+                "value": 6049,
                 "share": 0.026546
               },
               {
-                "value": 6205,
-                "share": 0.026023
+                "value": 5762,
+                "share": 0.026403
               },
               {
-                "value": 5470,
-                "share": 0.025624
+                "value": 6211,
+                "share": 0.025974
               },
               {
-                "value": 6634,
-                "share": 0.024529
+                "value": 5476,
+                "share": 0.025426
               },
               {
-                "value": 7312,
-                "share": 0.024155
+                "value": 6640,
+                "share": 0.024473
               },
               {
-                "value": 4898,
-                "share": 0.023956
+                "value": 7331,
+                "share": 0.024068
               },
               {
-                "value": 4070,
-                "share": 0.022636
+                "value": 3470,
+                "share": 0.023686
               },
               {
-                "value": 5054,
-                "share": 0.022412
+                "value": 4072,
+                "share": 0.022304
               },
               {
-                "value": 3465,
-                "share": 0.020768
+                "value": 5063,
+                "share": 0.022257
               },
               {
-                "value": 3638,
-                "share": 0.020569
+                "value": 3642,
+                "share": 0.020636
               },
               {
-                "value": 3588,
-                "share": 0.018876
+                "value": 3598,
+                "share": 0.018921
               },
               {
-                "value": 2187,
-                "share": 0.016535
+                "value": 2190,
+                "share": 0.016418
               },
               {
-                "value": 2224,
-                "share": 0.016386
+                "value": 2225,
+                "share": 0.016323
               },
               {
                 "value": 1908,
-                "share": 0.015913
+                "share": 0.016061
               },
               {
-                "value": 1650,
-                "share": 0.015464
+                "value": 1651,
+                "share": 0.015322
               },
               {
-                "value": 1846,
-                "share": 0.01407
+                "value": 1849,
+                "share": 0.014012
               },
               {
-                "value": 1332,
-                "share": 0.013298
+                "value": 1333,
+                "share": 0.013273
+              },
+              {
+                "value": 979,
+                "share": 0.008316
               },
               {
                 "value": 1292,
-                "share": 0.008342
-              },
-              {
-                "value": 975,
-                "share": 0.008317
+                "share": 0.008269
               },
               {
                 "value": 329,
-                "share": 0.007645
+                "share": 0.007673
               },
               {
                 "value": 129,
-                "share": 0.004632
+                "share": 0.004933
               },
               {
                 "value": 52,
-                "share": 0.002042
+                "share": 0.00224
               },
               {
                 "value": 39,
-                "share": 0.001544
+                "share": 0.001597
               }
             ]
           },
@@ -1846,167 +1846,167 @@
             "values": [
               {
                 "value": 2.908880921516469,
-                "share": 0.055109
+                "share": 0.05364
               },
               {
                 "value": 4.876489501759858,
-                "share": 0.052743
+                "share": 0.051591
               },
               {
                 "value": 2.2911580154881084,
-                "share": 0.040217
+                "share": 0.039461
               },
               {
                 "value": 13.392414190748209,
-                "share": 0.039619
+                "share": 0.038913
               },
               {
                 "value": 10.947223725006571,
-                "share": 0.03703
+                "share": 0.036554
               },
               {
                 "value": 1.0169490823209775,
-                "share": 0.036432
+                "share": 0.036483
               },
               {
                 "value": 0.5815740261037485,
-                "share": 0.035062
+                "share": 0.034314
               },
               {
                 "value": 2.6239613329466396,
-                "share": 0.033045
+                "share": 0.032932
               },
               {
                 "value": 1.0532763467037192,
-                "share": 0.032572
+                "share": 0.032003
               },
               {
                 "value": 4.636047410491565,
-                "share": 0.032124
-              },
-              {
-                "value": 2.2191951902480866,
-                "share": 0.030082
-              },
-              {
-                "value": 1.9263200307065795,
-                "share": 0.028638
-              },
-              {
-                "value": 7.918137151257576,
-                "share": 0.028613
-              },
-              {
-                "value": 2.0587696224456082,
-                "share": 0.028364
-              },
-              {
-                "value": 1.2821256696445724,
-                "share": 0.02814
-              },
-              {
-                "value": 1.269595537957591,
-                "share": 0.02799
-              },
-              {
-                "value": 3.6857935313789856,
-                "share": 0.027293
-              },
-              {
-                "value": 2.7907074189244994,
-                "share": 0.026645
-              },
-              {
-                "value": 1.277688562940694,
-                "share": 0.026546
-              },
-              {
-                "value": 2.527183477372313,
-                "share": 0.026023
-              },
-              {
-                "value": 1.4413467005871121,
-                "share": 0.025624
-              },
-              {
-                "value": 2.9434992098773582,
-                "share": 0.024529
-              },
-              {
-                "value": 2.0349095945689686,
-                "share": 0.024155
+                "share": 0.031717
               },
               {
                 "value": 1.5104030404257822,
-                "share": 0.023956
+                "share": 0.030406
               },
               {
-                "value": 1.3004497038975453,
-                "share": 0.022636
+                "value": 2.2191951902480866,
+                "share": 0.030001
               },
               {
-                "value": 3.6042698130357107,
-                "share": 0.022412
+                "value": 7.918137151257576,
+                "share": 0.028381
+              },
+              {
+                "value": 1.9263200307065795,
+                "share": 0.028166
+              },
+              {
+                "value": 2.0587696224456082,
+                "share": 0.027833
+              },
+              {
+                "value": 1.2821256696445724,
+                "share": 0.027809
+              },
+              {
+                "value": 1.269595537957591,
+                "share": 0.027594
+              },
+              {
+                "value": 3.6857935313789856,
+                "share": 0.02707
+              },
+              {
+                "value": 2.7907074189244994,
+                "share": 0.026546
+              },
+              {
+                "value": 1.277688562940694,
+                "share": 0.026403
+              },
+              {
+                "value": 2.527183477372313,
+                "share": 0.025974
+              },
+              {
+                "value": 1.4413467005871121,
+                "share": 0.025426
+              },
+              {
+                "value": 2.9434992098773582,
+                "share": 0.024473
+              },
+              {
+                "value": 2.0349095945689686,
+                "share": 0.024068
               },
               {
                 "value": 1.4996762804578794,
-                "share": 0.020768
+                "share": 0.023686
+              },
+              {
+                "value": 1.3004497038975453,
+                "share": 0.022304
+              },
+              {
+                "value": 3.6042698130357107,
+                "share": 0.022257
               },
               {
                 "value": 2.5997350952800984,
-                "share": 0.020569
+                "share": 0.020636
               },
               {
                 "value": 2.7269458198727885,
-                "share": 0.018876
+                "share": 0.018921
               },
               {
                 "value": 6.548762447955583,
-                "share": 0.016535
+                "share": 0.016418
               },
               {
                 "value": 2.137847627382922,
-                "share": 0.016386
+                "share": 0.016323
               },
               {
                 "value": 1.7305596686475178,
-                "share": 0.015913
+                "share": 0.016061
               },
               {
                 "value": 0.31245120938646426,
-                "share": 0.015464
+                "share": 0.015322
               },
               {
                 "value": 1.5839404253801388,
-                "share": 0.01407
+                "share": 0.014012
               },
               {
                 "value": 1.7155865762321525,
-                "share": 0.013298
-              },
-              {
-                "value": 6.119079221752601,
-                "share": 0.008342
+                "share": 0.013273
               },
               {
                 "value": 2.2994700169703117,
-                "share": 0.008317
+                "share": 0.008316
+              },
+              {
+                "value": 6.119079221752601,
+                "share": 0.008269
               },
               {
                 "value": 0.5511167570304412,
-                "share": 0.007645
+                "share": 0.007673
               },
               {
                 "value": 4.46479960187441,
-                "share": 0.004632
+                "share": 0.004933
               },
               {
                 "value": 1.5939908463978094,
-                "share": 0.002042
+                "share": 0.00224
               },
               {
                 "value": 1.0219640369217553,
-                "share": 0.001544
+                "share": 0.001597
               }
             ]
           },
@@ -2018,10 +2018,10 @@
           "description": "The default normalised companion. Null where the neighborhood has no residents.",
           "profile": {
             "null_rate": 0.0,
-            "distinct_count": 2448,
+            "distinct_count": 2568,
             "min": 0.013394770681525931,
-            "max": 491.26637554585153,
-            "median": 0.0959140610013428
+            "max": 548.0349344978166,
+            "median": 0.09904912836767037
           },
           "low_signal": false
         },
@@ -2031,10 +2031,10 @@
           "description": "The same normalisation against dwellings. Null where the neighborhood has no housing units.",
           "profile": {
             "null_rate": 0.0,
-            "distinct_count": 2445,
+            "distinct_count": 2565,
             "min": 0.03566079452250196,
-            "max": 1814.516129032258,
-            "median": 0.20420665713702266
+            "max": 2024.1935483870968,
+            "median": 0.20870291140561412
           },
           "low_signal": false
         },
@@ -2044,10 +2044,10 @@
           "description": "The right companion for anything commercial, and the one that most changes the ranking against per-capita.",
           "profile": {
             "null_rate": 0.0,
-            "distinct_count": 2438,
-            "min": 0.02236736154603203,
-            "max": 1744.1860465116279,
-            "median": 0.32102728731942215
+            "distinct_count": 2564,
+            "min": 0.022326412145568207,
+            "max": 1945.7364341085272,
+            "median": 0.3290556103981573
           },
           "low_signal": false
         },
@@ -2057,10 +2057,10 @@
           "description": "Density. Unlike the H3 mart, neighborhood areas genuinely differ.",
           "profile": {
             "null_rate": 0.0,
-            "distinct_count": 2448,
+            "distinct_count": 2568,
             "min": 0.07466913625556947,
-            "max": 2216.433486380368,
-            "median": 0.9785080138554455
+            "max": 2277.400157256847,
+            "median": 0.9833334012335262
           },
           "low_signal": false
         }
@@ -3052,7 +3052,7 @@
             "null_rate": 0.0,
             "distinct_count": 7,
             "min": 11,
-            "max": 729403,
+            "max": 2921878,
             "median": 2214.0
           },
           "low_signal": false
@@ -3070,15 +3070,15 @@
                 "share": 0.571429
               },
               {
-                "value": 31191,
+                "value": 29574,
                 "share": 0.142857
               },
               {
-                "value": 364731,
+                "value": 365400,
                 "share": 0.142857
               },
               {
-                "value": 499,
+                "value": 544,
                 "share": 0.142857
               }
             ]
@@ -3093,7 +3093,7 @@
             "null_rate": 0.0,
             "distinct_count": 7,
             "min": 11,
-            "max": 364672,
+            "max": 2556478,
             "median": 2214.0
           },
           "low_signal": false
@@ -3105,9 +3105,9 @@
           "profile": {
             "null_rate": 0.0,
             "min": "2026-07-31T06:56:41.226332",
-            "max": "2026-07-31T21:51:06.884731",
-            "newest_complete_month": "2026-06-01",
-            "newest_complete_month_count": 0
+            "max": "2026-08-15T16:13:11.286330",
+            "newest_complete_month": "2026-07-01",
+            "newest_complete_month_count": 4
           },
           "low_signal": false
         },
@@ -3123,7 +3123,7 @@
               "20260731T093034Z",
               "20260731T093037Z",
               "20260731T093038Z",
-              "20260731T214842Z"
+              "20260815T160922Z"
             ]
           },
           "low_signal": false
@@ -3134,9 +3134,9 @@
           "description": "When ingestion last ran at all, successful or not. Later than last_load_at whenever recent runs found nothing new.",
           "profile": {
             "null_rate": 0.0,
-            "min": "2026-07-31T21:48:53.391891",
-            "max": "2026-07-31T21:51:10.081736",
-            "newest_complete_month": "2026-06-01",
+            "min": "2026-08-15T16:09:45.549805",
+            "max": "2026-08-15T16:13:18.954474",
+            "newest_complete_month": "2026-07-01",
             "newest_complete_month_count": 0
           },
           "low_signal": false
@@ -3180,9 +3180,9 @@
           "profile": {
             "null_rate": 0.0,
             "distinct_count": 7,
-            "min": 172.46583333333334,
-            "max": 187.37277777777777,
-            "median": 184.80638888888888
+            "min": 0.9463888888888888,
+            "max": 370.2213888888889,
+            "median": 367.655
           },
           "low_signal": false
         },
@@ -3192,29 +3192,10 @@
           "description": "Hours since ingestion last ran, fractional.",
           "profile": {
             "null_rate": 0.0,
-            "distinct_count": 5,
-            "values": [
-              {
-                "value": 172.46527777777777,
-                "share": 0.428571
-              },
-              {
-                "value": 172.46472222222224,
-                "share": 0.142857
-              },
-              {
-                "value": 172.46555555555557,
-                "share": 0.142857
-              },
-              {
-                "value": 172.5025,
-                "share": 0.142857
-              },
-              {
-                "value": 172.50277777777777,
-                "share": 0.142857
-              }
-            ]
+            "distinct_count": 7,
+            "min": 0.9444444444444444,
+            "max": 1.003611111111111,
+            "median": 0.9458333333333333
           },
           "low_signal": false
         },
@@ -3244,8 +3225,8 @@
           "description": "Whether hours_since_load has passed stale_after_hours. Always false for sources with no SLA, so this never fires on a demoted source.",
           "profile": {
             "null_rate": 0.0,
-            "true_share": 0.428571,
-            "distinct_count": 2
+            "true_share": 0.0,
+            "distinct_count": 1
           },
           "low_signal": false
         },
@@ -3257,8 +3238,8 @@
             "null_rate": 0.428571,
             "distinct_count": 4,
             "min": 2214,
-            "max": 364731,
-            "median": 69843.5
+            "max": 365400,
+            "median": 89866.5
           },
           "low_signal": false
         },
@@ -3270,8 +3251,8 @@
             "null_rate": 0.428571,
             "distinct_count": 4,
             "min": 2127.0,
-            "max": 298076.0,
-            "median": 69198.5
+            "max": 298583.0,
+            "median": 89011.5
           },
           "low_signal": false
         },
@@ -3282,9 +3263,9 @@
           "profile": {
             "null_rate": 0.428571,
             "distinct_count": 4,
-            "min": 46.0,
-            "max": 10913.0,
-            "median": 665.0
+            "min": 65.0,
+            "max": 10926.0,
+            "median": 865.5
           },
           "low_signal": false
         },
@@ -3305,7 +3286,7 @@
                 "share": 0.142857
               },
               {
-                "value": 55742.0,
+                "value": 55891.0,
                 "share": 0.142857
               }
             ]
@@ -3335,9 +3316,9 @@
           "profile": {
             "null_rate": 0.428571,
             "distinct_count": 4,
-            "min": 0.12696660226331768,
-            "max": 18.275112343069274,
-            "median": 2.565985611816836
+            "min": 0.16807591859953974,
+            "max": 18.28598795840175,
+            "median": 2.547854859663016
           },
           "low_signal": false
         },
@@ -3347,11 +3328,27 @@
           "description": "Tests run against this source's staging model in the last completed dbt run.",
           "profile": {
             "null_rate": 0.0,
-            "distinct_count": 1,
+            "distinct_count": 5,
             "values": [
               {
-                "value": 0,
-                "share": 1.0
+                "value": 10,
+                "share": 0.285714
+              },
+              {
+                "value": 11,
+                "share": 0.285714
+              },
+              {
+                "value": 3,
+                "share": 0.142857
+              },
+              {
+                "value": 4,
+                "share": 0.142857
+              },
+              {
+                "value": 9,
+                "share": 0.142857
               }
             ]
           },
@@ -3363,11 +3360,27 @@
           "description": "Of those, how many passed.",
           "profile": {
             "null_rate": 0.0,
-            "distinct_count": 1,
+            "distinct_count": 5,
             "values": [
               {
-                "value": 0.0,
-                "share": 1.0
+                "value": 10.0,
+                "share": 0.285714
+              },
+              {
+                "value": 11.0,
+                "share": 0.285714
+              },
+              {
+                "value": 3.0,
+                "share": 0.142857
+              },
+              {
+                "value": 4.0,
+                "share": 0.142857
+              },
+              {
+                "value": 9.0,
+                "share": 0.142857
               }
             ]
           },
@@ -3426,11 +3439,11 @@
           "type": "TIMESTAMP",
           "description": "When that dbt run started. Null before the second ever run.",
           "profile": {
-            "null_rate": 1.0,
-            "min": null,
-            "max": null,
-            "newest_complete_month": null,
-            "newest_complete_month_count": null
+            "null_rate": 0.0,
+            "min": "2026-08-11T01:05:30",
+            "max": "2026-08-11T01:05:30",
+            "newest_complete_month": "2026-07-01",
+            "newest_complete_month_count": 0
           },
           "low_signal": false
         },
@@ -3440,8 +3453,8 @@
           "description": "False if the last ingestion run failed, if any test failed or errored, if any coordinate was malformed, or if the source is past its SLA. True otherwise. The single column to read when checking in.",
           "profile": {
             "null_rate": 0.0,
-            "true_share": 0.571429,
-            "distinct_count": 2
+            "true_share": 1.0,
+            "distinct_count": 1
           },
           "low_signal": false
         }
@@ -3501,45 +3514,45 @@
       {
         "source": "311_cases",
         "tier": "core",
-        "row_count": 134457,
-        "last_load_at": "2026-07-31T21:48:52.532492",
-        "last_run_finished_at": "2026-07-31T21:48:53.391891",
+        "row_count": 527079,
+        "last_load_at": "2026-08-15T16:09:43.019249",
+        "last_run_finished_at": "2026-08-15T16:09:45.549805",
         "stale_after_hours": 48,
-        "is_stale": true
+        "is_stale": false
       },
       {
         "source": "analysis_neighborhoods",
         "tier": "reference",
         "row_count": 41,
         "last_load_at": "2026-07-31T09:30:36.846363",
-        "last_run_finished_at": "2026-07-31T21:51:08.327049",
+        "last_run_finished_at": "2026-08-15T16:13:13.632434",
         "stale_after_hours": null,
         "is_stale": false
       },
       {
         "source": "building_permits",
         "tier": "core",
-        "row_count": 36611,
-        "last_load_at": "2026-07-31T21:48:54.086437",
-        "last_run_finished_at": "2026-07-31T21:48:54.125785",
+        "row_count": 44643,
+        "last_load_at": "2026-08-15T16:09:48.224041",
+        "last_run_finished_at": "2026-08-15T16:09:48.639405",
         "stale_after_hours": 168,
-        "is_stale": true
+        "is_stale": false
       },
       {
         "source": "business_locations",
         "tier": "core",
-        "row_count": 729403,
-        "last_load_at": "2026-07-31T21:51:06.884731",
-        "last_run_finished_at": "2026-07-31T21:51:07.189818",
+        "row_count": 2921878,
+        "last_load_at": "2026-08-15T16:13:11.286330",
+        "last_run_finished_at": "2026-08-15T16:13:12.162086",
         "stale_after_hours": 168,
-        "is_stale": true
+        "is_stale": false
       },
       {
         "source": "census_block_groups",
         "tier": "reference",
         "row_count": 681,
         "last_load_at": "2026-07-31T09:30:40.288231",
-        "last_run_finished_at": "2026-07-31T21:51:08.935482",
+        "last_run_finished_at": "2026-08-15T16:13:17.742120",
         "stale_after_hours": null,
         "is_stale": false
       },
@@ -3548,7 +3561,7 @@
         "tier": "demoted",
         "row_count": 2214,
         "last_load_at": "2026-07-31T06:56:41.226332",
-        "last_run_finished_at": "2026-07-31T21:51:10.081736",
+        "last_run_finished_at": "2026-08-15T16:13:18.954474",
         "stale_after_hours": null,
         "is_stale": false
       },
@@ -3557,12 +3570,12 @@
         "tier": "reference",
         "row_count": 11,
         "last_load_at": "2026-07-31T09:30:38.067363",
-        "last_run_finished_at": "2026-07-31T21:51:08.925510",
+        "last_run_finished_at": "2026-08-15T16:13:16.906501",
         "stale_after_hours": null,
         "is_stale": false
       }
     ],
-    "published_at": "2026-08-08T02:22:01.313683+00:00",
+    "published_at": "2026-08-15T17:10:09.680022+00:00",
     "manifest_version": 2
   },
   "traps": [
@@ -4528,7 +4541,7 @@
       "required": true,
       "verified": {
         "target": "published",
-        "at": "2026-08-08T03:10:01+00:00",
+        "at": "2026-08-15T17:25:29+00:00",
         "rows": 15,
         "sql_sha256": "0437e724da7d696dd7a322dd7b4d45f465ef49a2193be3fac79a54fa5eced7cd"
       }
@@ -4543,7 +4556,7 @@
       "required": true,
       "verified": {
         "target": "published",
-        "at": "2026-08-08T03:10:01+00:00",
+        "at": "2026-08-15T17:25:29+00:00",
         "rows": 12,
         "sql_sha256": "96b99d0667233c6fc8373ff72abec031aa10bd0b988c44447fe9b06c59a3a94b"
       }
@@ -4558,7 +4571,7 @@
       "required": true,
       "verified": {
         "target": "published",
-        "at": "2026-08-08T03:10:01+00:00",
+        "at": "2026-08-15T17:25:29+00:00",
         "rows": 12,
         "sql_sha256": "d67e2f29f7a9600435bccbb428c08de5b503641d7052d050906f871b8309cfd7"
       }
@@ -4573,7 +4586,7 @@
       "required": true,
       "verified": {
         "target": "published",
-        "at": "2026-08-08T03:10:01+00:00",
+        "at": "2026-08-15T17:25:29+00:00",
         "rows": 10,
         "sql_sha256": "326a6e803ca0e284accf2f92631d099d6bc30f970018836735a2cf9224e4eb85"
       }
@@ -4582,8 +4595,8 @@
   "integrity": {
     "self_refusal": "Before trusting this pack, compare its integrity block against the target itself: the schema hash of every model you intend to query, and the dbt invocation it was built from. If they disagree, this pack describes something the target does not contain, and the correct response is to refuse every question rather than to answer from a stale description.",
     "dbt": {
-      "invocation_id": "c0e3245a-5fb9-4e20-a081-21a7058289d0",
-      "manifest_generated_at": "2026-08-08T03:09:39.146747Z",
+      "invocation_id": "53450eca-97c0-4541-98b0-30fa0dc51db7",
+      "manifest_generated_at": "2026-08-15T17:09:56.243164Z",
       "dbt_version": "1.12.0",
       "adapter_type": "duckdb",
       "project_id": "b2ad435d37afeb27fc9880d6d2ae6e55"
@@ -4599,11 +4612,11 @@
       },
       "mart_activity_by_h3": {
         "schema_hash": "0e29db73e198cd99",
-        "row_count": 140163
+        "row_count": 144049
       },
       "mart_activity_by_neighborhood": {
         "schema_hash": "c206f557c69a5990",
-        "row_count": 40157
+        "row_count": 41965
       },
       "mart_film_locations": {
         "schema_hash": "c65a9053b2458bb4",
@@ -4615,7 +4628,7 @@
       }
     },
     "published_manifest_version": 2,
-    "published_generated_at": "2026-08-08T02:22:01.313683+00:00",
+    "published_generated_at": "2026-08-15T17:10:09.680022+00:00",
     "published_manifest_schema_hashes": {
       "dim_neighborhood": "d6ab3c72cd7f141e",
       "dim_supervisor_district": "58c1e954a3a26872",

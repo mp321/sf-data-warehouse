@@ -1,7 +1,7 @@
 # sf-data-warehouse context pack, target duckdb
 
 An analytics warehouse over seven public San Francisco datasets, modelled with dbt into staging views, one intermediate model and six marts, in which every geography is precomputed rather than computed at query time.
-Target `duckdb`, 19 models, generated 2026-08-11T03:53:17+00:00, prose revision `64e423921de52c85`, spec 2026-08-07, pack 1.0.0.
+Target `duckdb`, 19 models, generated 2026-08-15T17:24:13+00:00, prose revision `64e423921de52c85`, spec 2026-08-07, pack 1.0.0.
 Publisher DataSF and the US Census Bureau, modelled here, jurisdiction San Francisco, California. Public domain. Source data from DataSF (data.sfgov.org) and the US Census Bureau.
 
 ## How to read this pack
@@ -358,48 +358,48 @@ Grain: One row per analysis neighborhood, 41 of them.
 | socrata_updated_at | TIMESTAMP | (no description in the yml) 2016-07-13T23:33:14.829000 to 2016-07-13T23:33:14.829000; newest complete month 2016-06-01: 0 rows |
 | ingested_at | TIMESTAMP | (no description in the yml) 2026-07-31T09:30:36.846363 to 2026-07-31T09:30:36.846363; newest complete month 2026-06-01: 0 rows |
 
-### stg_spatial__point_geography (staging, view, 533,537 rows)
+### stg_spatial__point_geography (staging, view, 547,347 rows)
 
 Grain: One row per point-bearing raw row, across every point dataset.
 
 | column | type | description |
 |---|---|---|
-| source_table | VARCHAR | The raw table name from the dataset registry, e.g. raw_311_cases. Half the grain, and the string every point staging model filters on. values: raw_business_locations 68.4%, raw_311_cases 24.0%, raw_building_permits 7.1%, raw_film_locations 0.4% |
-| row_key | VARCHAR | The row's key in its own dataset, matching that dataset's grain_key in the registry. Half the grain. 533,537 distinct, e.g. 0000024-02-999-0000024, 0000028-02-001-0000028, 0000052-01-001-0000052, 0000071-01-001-0000071, 0000071-02-001-0000071 |
-| latitude | DOUBLE | (no description in the yml) 2.4% null; min -28.1, median 37.77, max 64.81 |
-| longitude | DOUBLE | (no description in the yml) 2.4% null; min -159.4, median -122.4, max 153.4 |
-| coordinate_status | VARCHAR | One of ok, missing, unparseable, impossible, out_of_bounds. values: ok 87.2%, out_of_bounds 10.5%, missing 2.4% |
-| is_usable_coordinate | BOOLEAN | Whether the coordinate parsed and landed inside the San Francisco box. 87.2% true; 2 distinct |
-| h3_r8 | BIGINT | H3 cell at resolution 8 as a BIGINT. Null unless the coordinate parsed. 2.4% null; 15,790 distinct |
-| h3_r10 | BIGINT | H3 cell at resolution 10 as a BIGINT. The membership resolution: this is the column boundary assignment was decided at. 2.4% null; 47,683 distinct |
-| analysis_neighborhood | VARCHAR | Exact neighborhood membership (ADR-6). Null means outside every neighborhood, which is a real answer and not a failure. 14.9% null; values: Financial District 10.0%, Mission 8.7%, South of Market 5.2%, Sunset/Parkside 3.9%, Bayview Hunters Point 3.8%, Tenderloin 3.3%, Castro/Upper Market 3.0%, Nob Hill 2.9%, and 33 more |
-| supervisor_district_id | VARCHAR | (no description in the yml) 14.8% null; values: 3.0 14.9%, 6.0 12.8%, 9.0 9.5%, 8.0 8.1%, 5.0 7.9%, 2.0 7.5%, 10.0 6.6%, 1.0 5.0%, and 3 more |
-| census_block_group_geoid | VARCHAR | (no description in the yml) 14.8% null; 678 distinct, e.g. 060750117002, 060750117004, 060750117003, 060759809001, 060750180002 |
-| neighborhood_assignment_method | VARCHAR | interior_cell where the cell alone settled it, exact_refinement where a point-in-polygon test was needed. The ratio between them is the diagnostic for whether the membership resolution is still fine enough: measured at 79 percent interior for neighborhoods at r10. 14.9% null; values: interior_cell 66.7%, exact_refinement 18.5% |
+| source_table | VARCHAR | The raw table name from the dataset registry, e.g. raw_311_cases. Half the grain, and the string every point staging model filters on. values: raw_business_locations 66.8%, raw_311_cases 25.8%, raw_building_permits 7.1%, raw_film_locations 0.4% |
+| row_key | VARCHAR | The row's key in its own dataset, matching that dataset's grain_key in the registry. Half the grain. 547,347 distinct, e.g. 0000024-02-999-0000024, 0000028-02-001-0000028, 0000052-01-001-0000052, 0000071-01-001-0000071, 0000071-02-001-0000071 |
+| latitude | DOUBLE | (no description in the yml) 2.3% null; min -28.1, median 37.77, max 64.81 |
+| longitude | DOUBLE | (no description in the yml) 2.3% null; min -159.4, median -122.4, max 153.4 |
+| coordinate_status | VARCHAR | One of ok, missing, unparseable, impossible, out_of_bounds. values: ok 87.5%, out_of_bounds 10.2%, missing 2.3% |
+| is_usable_coordinate | BOOLEAN | Whether the coordinate parsed and landed inside the San Francisco box. 87.5% true; 2 distinct |
+| h3_r8 | BIGINT | H3 cell at resolution 8 as a BIGINT. Null unless the coordinate parsed. 2.3% null; 15,800 distinct |
+| h3_r10 | BIGINT | H3 cell at resolution 10 as a BIGINT. The membership resolution: this is the column boundary assignment was decided at. 2.3% null; 47,720 distinct |
+| analysis_neighborhood | VARCHAR | Exact neighborhood membership (ADR-6). Null means outside every neighborhood, which is a real answer and not a failure. 14.5% null; values: Financial District 9.9%, Mission 8.9%, South of Market 5.2%, Sunset/Parkside 3.9%, Bayview Hunters Point 3.8%, Tenderloin 3.3%, Castro/Upper Market 3.0%, Nob Hill 2.9%, and 33 more |
+| supervisor_district_id | VARCHAR | (no description in the yml) 14.5% null; values: 3.0 14.8%, 6.0 12.8%, 9.0 9.8%, 8.0 8.2%, 5.0 8.0%, 2.0 7.5%, 10.0 6.6%, 1.0 5.1%, and 3 more |
+| census_block_group_geoid | VARCHAR | (no description in the yml) 14.5% null; 678 distinct, e.g. 060750117002, 060750117004, 060759809001, 060750117003, 060750180002 |
+| neighborhood_assignment_method | VARCHAR | interior_cell where the cell alone settled it, exact_refinement where a point-in-polygon test was needed. The ratio between them is the diagnostic for whether the membership resolution is still fine enough: measured at 79 percent interior for neighborhoods at r10. 14.5% null; values: interior_cell 66.9%, exact_refinement 18.6% |
 
-### stg_datasf__business_locations (staging, view, 365,123 rows)
+### stg_datasf__business_locations (staging, view, 365,400 rows)
 
 Grain: One row per registered business location.
 
 | column | type | description |
 |---|---|---|
-| business_location_id | VARCHAR | uniqueid upstream. The grain of this model. 365,123 distinct, e.g. 0000024-02-999-0000024, 0000028-02-001-0000028, 0000052-01-001-0000052, 0000071-01-001-0000071, 0000071-02-001-0000071 |
-| certificate_number | VARCHAR | The business tax certificate. Deliberately not unique: one business accumulates a row per location it has held. 257,223 distinct, e.g. 1058654, 0168329, 1000652, 1028560, 0046324 |
-| tax_id | VARCHAR | (no description in the yml) 365,123 distinct, e.g. 0000024-02-999, 0000028-02-001, 0000052-01-001, 0000071-01-001, 0000071-02-001 |
-| ownership_name | VARCHAR | (no description in the yml) 245,024 distinct, e.g. Side Inc, Bon Appetit Management Co, Breather Products Us Inc, American Tower Corporation, Compass Group Usa Inc |
-| business_name | VARCHAR | Trading name (dba_name upstream). Null on a small number of rows. 294,790 distinct, e.g. Breather, San Francisco, Uber, N/A, Sutter Pacific Medical Foundation |
-| license_code | VARCHAR | (no description in the yml) 96.4% null; 1,277 distinct, e.g. H25R, H24R, J02R, POS01R, HHHR HHHR HHHR HHHR HHHR HHHR HHHR HH... |
+| business_location_id | VARCHAR | uniqueid upstream. The grain of this model. 365,400 distinct, e.g. 0000024-02-999-0000024, 0000028-02-001-0000028, 0000052-01-001-0000052, 0000071-01-001-0000071, 0000071-02-001-0000071 |
+| certificate_number | VARCHAR | The business tax certificate. Deliberately not unique: one business accumulates a row per location it has held. 257,432 distinct, e.g. 1058654, 0168329, 1000652, 1028560, 0046324 |
+| tax_id | VARCHAR | (no description in the yml) 365,400 distinct, e.g. 0000024-02-999, 0000028-02-001, 0000052-01-001, 0000071-01-001, 0000071-02-001 |
+| ownership_name | VARCHAR | (no description in the yml) 245,220 distinct, e.g. Side Inc, Bon Appetit Management Co, Breather Products Us Inc, American Tower Corporation, Compass Group Usa Inc |
+| business_name | VARCHAR | Trading name (dba_name upstream). Null on a small number of rows. 295,004 distinct, e.g. Breather, San Francisco, Uber, N/A, Sutter Pacific Medical Foundation |
+| license_code | VARCHAR | (no description in the yml) 96.4% null; 1,278 distinct, e.g. H25R, H24R, J02R, POS01R, HHHR HHHR HHHR HHHR HHHR HHHR HHHR HH... |
 | business_category | VARCHAR | Business activity from the licence code, e.g. "Retail Trade". The category dimension of the activity marts for this dataset. 96.4% null; 138 distinct, e.g. Multiple, RESTAURANT 1,000 - 2,000 SQFT, RESTAURANT - UNDER 1,000 SQFT, TATTOO, BODY PIERCING, PRACTITIONER, POINT OF SALE STATION |
-| business_category_list | VARCHAR | (no description in the yml) 96.4% null; 1,786 distinct, e.g. RESTAURANT 1,000 - 2,000 SQFT, RESTAURANT - UNDER 1,000 SQFT, TATTOO, BODY PIERCING, PRACTITIONER, POINT OF SALE STATION, RESTAURANT - OVER 2,000 SQFT |
-| naics_code | VARCHAR | (no description in the yml) 64.9% null; 4,099 distinct, e.g. 531110, 531120, 531210, 722511, 541110 |
-| dba_started_at | TIMESTAMP | (no description in the yml) 1848-12-30T00:00:00 to 2026-08-08T00:00:00; newest complete month 2026-07-01: 788 rows |
-| dba_ended_at | TIMESTAMP | (no description in the yml) 45.0% null; 1900-07-01T00:00:00 to 2026-09-20T00:00:00; newest complete month 2026-08-01: 19 rows |
+| business_category_list | VARCHAR | (no description in the yml) 96.4% null; 1,787 distinct, e.g. RESTAURANT 1,000 - 2,000 SQFT, RESTAURANT - UNDER 1,000 SQFT, TATTOO, BODY PIERCING, PRACTITIONER, POINT OF SALE STATION, RESTAURANT - OVER 2,000 SQFT |
+| naics_code | VARCHAR | (no description in the yml) 64.7% null; 4,112 distinct, e.g. 531110, 531120, 531210, 722511, 541110 |
+| dba_started_at | TIMESTAMP | (no description in the yml) 1848-12-30T00:00:00 to 2026-08-15T00:00:00; newest complete month 2026-07-01: 810 rows |
+| dba_ended_at | TIMESTAMP | (no description in the yml) 44.9% null; 1900-07-01T00:00:00 to 2026-09-20T00:00:00; newest complete month 2026-08-01: 45 rows |
 | location_started_at | TIMESTAMP | When this location opened. The event date the activity marts count on, and not the same as dba_started_at, which is the trading name's life rather than the location's. 1849-01-01T00:00:00 to 2028-02-26T00:00:00; newest complete month 2028-01-01: 0 rows |
 | location_ended_at | TIMESTAMP | (no description in the yml) 34.6% null; 1907-01-01T00:00:00 to 2205-12-30T00:00:00; newest complete month 2205-11-01: 0 rows |
 | is_administratively_closed | BOOLEAN | (no description in the yml) 0.0% true; 1 distinct |
 | is_active | BOOLEAN | Whether the location has no end date. Roughly a third of rows are active; the rest are closed registrations that are still worth counting for a historical rate and not for a current one. 34.6% true; 2 distinct |
-| business_address | VARCHAR | (no description in the yml) <0.1% null; 226,520 distinct, e.g. 580 4th St, 2261 Market St, 548 Market St, 201 Spear St Ste 1100, 103 Horne Ave |
-| business_city | VARCHAR | (no description in the yml) <0.1% null; 3,135 distinct, e.g. San Francisco, Oakland, Daly City, San Jose, Hayward |
+| business_address | VARCHAR | (no description in the yml) <0.1% null; 226,658 distinct, e.g. 580 4th St, 2261 Market St, 548 Market St, 201 Spear St Ste 1100, 103 Horne Ave |
+| business_city | VARCHAR | (no description in the yml) <0.1% null; 3,129 distinct, e.g. San Francisco, Oakland, Daly City, San Jose, Hayward |
 | business_state | VARCHAR | (no description in the yml) 0.2% null; 61 distinct, e.g. CA, NY, TX, FL, IL |
 | business_zip | VARCHAR | (no description in the yml) 0.2% null; 5,065 distinct, e.g. 94110, 94107, 94103, 94109, 94102 |
 | business_corridor | VARCHAR | (no description in the yml) 90.8% null; values: Chinatown 1.3%, Central Market 1.2%, Market/Castro 0.9%, Union Street 0.7%, Mission Street 0.7%, North Beach 0.4%, Parkside Taraval 0.4%, 24th St 0.3%, and 19 more |
@@ -408,14 +408,14 @@ Grain: One row per registered business location.
 | upstream_supervisor_district | BIGINT | (no description in the yml) 21.2% null; values: 3 15.7%, 6 13.3%, 2 7.3%, 9 7.2%, 8 6.7%, 10 6.3%, 5 6.0%, 1 4.7%, and 3 more |
 | pays_parking_tax | BOOLEAN | (no description in the yml) 0.0% true; 1 distinct |
 | pays_transient_occupancy_tax | BOOLEAN | (no description in the yml) 0.0% true; 1 distinct |
-| socrata_updated_at | TIMESTAMP | (no description in the yml) 2026-08-09T11:16:06.046000 to 2026-08-09T11:18:00.476000; newest complete month 2026-07-01: 0 rows |
-| ingested_at | TIMESTAMP | (no description in the yml) 2026-08-10T10:39:36.600009 to 2026-08-10T10:42:29.782195; newest complete month 2026-07-01: 0 rows |
+| socrata_updated_at | TIMESTAMP | (no description in the yml) 2026-08-15T11:26:49.619000 to 2026-08-15T11:28:35.530000; newest complete month 2026-07-01: 0 rows |
+| ingested_at | TIMESTAMP | (no description in the yml) 2026-08-15T16:10:05.554453 to 2026-08-15T16:13:11.286330; newest complete month 2026-07-01: 0 rows |
 | latitude | DOUBLE | Latitude, parsed in ingestion/spatial.py. 3.0% null; min -28.1, median 37.78, max 64.81 |
 | longitude | DOUBLE | Longitude, parsed in ingestion/spatial.py. 3.0% null; min -159.4, median -122.4, max 153.4 |
 | coordinate_status | VARCHAR | Why a coordinate is unusable, where it is. out_of_bounds is the common one here and is not an error. values: ok 81.7%, out_of_bounds 15.3%, missing 3.0% |
 | is_usable_coordinate | BOOLEAN | (no description in the yml) 81.7% true; 2 distinct |
-| h3_r8 | BIGINT | (no description in the yml) 3.0% null; 15,775 distinct |
-| h3_r10 | BIGINT | (no description in the yml) 3.0% null; 47,060 distinct |
+| h3_r8 | BIGINT | (no description in the yml) 3.0% null; 15,785 distinct |
+| h3_r10 | BIGINT | (no description in the yml) 3.0% null; 47,086 distinct |
 | analysis_neighborhood | VARCHAR | The neighborhood this location is exactly inside (ADR-6). Null for the businesses registered here and located elsewhere. 21.2% null; values: Financial District 12.3%, Mission 6.4%, South of Market 5.0%, Sunset/Parkside 3.8%, Bayview Hunters Point 3.7%, Marina 2.6%, Outer Richmond 2.6%, Chinatown 2.6%, and 33 more |
 | supervisor_district_id | VARCHAR | (no description in the yml) 21.2% null; values: 3.0 15.7%, 6.0 13.3%, 2.0 7.3%, 9.0 7.2%, 8.0 6.7%, 10.0 6.3%, 5.0 6.0%, 1.0 4.7%, and 3 more |
 | census_block_group_geoid | VARCHAR | (no description in the yml) 21.2% null; 677 distinct, e.g. 060750117002, 060750117004, 060750117003, 060750180002, 060759809001 |
@@ -470,10 +470,10 @@ Grain: One row per analysis neighborhood, 41 rows.
 | published_area_sq_mi | DOUBLE | (no description in the yml) min 0.1207, median 0.8258, max 5.173 |
 | population | BIGINT | Interpolated 2020 residents. Zero is possible in principle and does not occur today; every rate divides through x_safe_divide anyway. min 178, median 2.01e+04, max 74,656 |
 | housing_units | BIGINT | Interpolated 2020 housing units. min 63, median 8,980, max 28,042 |
-| business_count | BIGINT | Registered business locations, ever. The right denominator for a historical commercial rate; use active_business_count for a current one, and note the two differ by more than half. min 39, median 6,047, max 44,749 |
-| active_business_count | HUGEINT | (no description in the yml) min 18, median 2,059, max 14,250 |
+| business_count | BIGINT | Registered business locations, ever. The right denominator for a historical commercial rate; use active_business_count for a current one, and note the two differ by more than half. min 39, median 6,049, max 44,790 |
+| active_business_count | HUGEINT | (no description in the yml) min 18, median 2,059, max 14,268 |
 | population_per_sq_km | DOUBLE | (no description in the yml) min 102.6, median 8,889, max 3.547e+04 |
-| businesses_per_sq_km | DOUBLE | (no description in the yml) min 28.89, median 2,255, max 1.638e+04 |
+| businesses_per_sq_km | DOUBLE | (no description in the yml) min 28.89, median 2,256, max 1.64e+04 |
 | h3_cell_count | BIGINT | How many r10 cells this neighborhood owns. A coverage diagnostic: a neighborhood whose cell count is out of line with its area has a boundary problem, not a population problem. values: 82 7.3%, 131 4.9%, 66 4.9%, 101 2.4%, 106 2.4%, 113 2.4%, 120 2.4%, 135 2.4%, and 29 more |
 | geojson | VARCHAR | (no description in the yml) 41 distinct |
 
@@ -503,160 +503,160 @@ Grain: One row per supervisor district, 11 rows, on the 2022 boundaries.
 | area_sq_km | DOUBLE | Spherical area from ingestion/geometry.py. min 4.603, median 9.354, max 260.6 |
 | population | BIGINT | Interpolated 2020 residents. min 71,813, median 7.881e+04, max 83,206 |
 | housing_units | BIGINT | (no description in the yml) min 24,422, median 3.347e+04, max 50,052 |
-| business_count | BIGINT | (no description in the yml) min 11,938, median 2.314e+04, max 57,441 |
-| active_business_count | HUGEINT | (no description in the yml) min 4,076, median 7,767, max 19,329 |
+| business_count | BIGINT | (no description in the yml) min 11,948, median 2.315e+04, max 57,478 |
+| active_business_count | HUGEINT | (no description in the yml) min 4,075, median 7,755, max 19,333 |
 | population_per_sq_km | DOUBLE | (no description in the yml) min 287.8, median 7,814, max 1.784e+04 |
 | h3_cell_count | BIGINT | (no description in the yml) min 291, median 595, max 16,767 |
 | geojson | VARCHAR | (no description in the yml) 11 distinct |
 
-### stg_datasf__311_cases (staging, view, 128,062 rows)
+### stg_datasf__311_cases (staging, view, 141,060 rows)
 
 Grain: One row per 311 case, deduplicated to the latest version of each case.
 
 | column | type | description |
 |---|---|---|
-| case_id | VARCHAR | Unique identifier for the service request. The grain of this model. 128,062 distinct, e.g. 101000232041, 101000263511, 101000298272, 101000303217, 101000316922 |
-| opened_at | TIMESTAMP | When the case was opened. 2024-06-14T10:28:36 to 2026-08-09T23:52:59; newest complete month 2026-07-01: 71,884 rows |
-| closed_at | TIMESTAMP | When the case was closed. Null while the case is open. 11.9% null; 2024-07-02T09:01:24 to 2026-08-10T00:44:39; newest complete month 2026-07-01: 69,818 rows |
-| last_updated_at | TIMESTAMP | (no description in the yml) 2026-06-21T00:21:59 to 2026-08-09T23:53:07; newest complete month 2026-07-01: 77,268 rows |
-| status | VARCHAR | Current case status as reported by SF311. values: Closed 88.1%, Open 11.9% |
-| agency | VARCHAR | (no description in the yml) 162 distinct, e.g. PW - Street and Environmental Services, MTA - Parking Enforcement Dispatch, Recology - Abandoned, Healthy Streets Operation Center, MTA - Abandoned Vehicles Work |
-| service_category | VARCHAR | Top-level request type, e.g. Street and Sidewalk Cleaning. values: Street and Sidewalk Cleaning 34.8%, Parking Enforcement 20.2%, Graffiti Public 8.5%, General Request 7.9%, Encampment 4.3%, Graffiti Private 3.8%, Noise 2.9%, Blocked Street and Sidewalk 2.5%, and 29 more |
-| service_subcategory | VARCHAR | (no description in the yml) 0.2% null; 231 distinct, e.g. garbage_and_debris, not_offensive, other_illegal_parking, parking_on_sidewalk, encampment |
-| address | VARCHAR | (no description in the yml) 60,019 distinct, e.g. Not associated with a specific address, 1001 OFARRELL ST, SAN FRANCISCO, CA 9..., 10 SOUTH VAN NESS AVE, SAN FRANCISCO,..., 101 JONES ST, SAN FRANCISCO, CA 94102, 102 GOLDEN GATE AVE, SAN FRANCISCO, C... |
-| upstream_supervisor_district | BIGINT | Supervisor district as DataSF stamped it, 1 to 11. Renamed from supervisor_district when the computed geography arrived: it is assigned at report time rather than recomputed when boundaries move, and ADR-2 rejected it as the answer. Kept for comparison. Join on supervisor_district_id instead. 0.9% null; values: 9 16.0%, 6 14.0%, 5 12.4%, 3 12.1%, 8 10.9%, 10 7.9%, 2 6.6%, 1 5.5%, and 3 more |
-| upstream_analysis_neighborhood | VARCHAR | (no description in the yml) 1.2% null; values: Mission 15.8%, South of Market 6.2%, Tenderloin 6.0%, Nob Hill 4.4%, Bayview Hunters Point 4.1%, Castro/Upper Market 4.1%, Hayes Valley 4.0%, Financial District/South Beach 3.6%, and 33 more |
-| police_district | VARCHAR | (no description in the yml) 1.0% null; values: MISSION 18.6%, NORTHERN 14.1%, CENTRAL 10.6%, SOUTHERN 10.5%, INGLESIDE 10.0%, TARAVAL 8.6%, PARK 8.0%, BAYVIEW 7.0%, and 4 more |
-| request_source | VARCHAR | (no description in the yml) values: Mobile 41.1%, Web 40.8%, Phone 17.3%, Integrated Agency 0.6%, Test <0.1%, Twitter <0.1%, Email <0.1% |
-| socrata_updated_at | TIMESTAMP | (no description in the yml) 2026-07-01T10:15:29.839000 to 2026-08-10T10:20:28.176000; newest complete month 2026-07-01: 74,339 rows |
-| ingested_at | TIMESTAMP | (no description in the yml) 2026-07-31T06:59:48.862429 to 2026-08-10T10:39:20.253022; newest complete month 2026-07-01: 74,339 rows |
+| case_id | VARCHAR | Unique identifier for the service request. The grain of this model. 141,060 distinct, e.g. 101000221495, 101000232041, 101000263511, 101000298272, 101000303217 |
+| opened_at | TIMESTAMP | When the case was opened. 2024-06-13T12:24:10 to 2026-08-14T23:56:17; newest complete month 2026-07-01: 71,898 rows |
+| closed_at | TIMESTAMP | When the case was closed. Null while the case is open. 10.9% null; 2024-07-02T09:01:24 to 2026-08-15T00:21:22; newest complete month 2026-07-01: 69,746 rows |
+| last_updated_at | TIMESTAMP | (no description in the yml) 2026-06-21T00:21:59 to 2026-08-14T23:58:06; newest complete month 2026-07-01: 76,357 rows |
+| status | VARCHAR | Current case status as reported by SF311. values: Closed 89.1%, Open 10.9% |
+| agency | VARCHAR | (no description in the yml) 164 distinct, e.g. PW - Street and Environmental Services, MTA - Parking Enforcement Dispatch, Recology - Abandoned, Healthy Streets Operation Center, MTA - Abandoned Vehicles Work |
+| service_category | VARCHAR | Top-level request type, e.g. Street and Sidewalk Cleaning. values: Street and Sidewalk Cleaning 34.9%, Parking Enforcement 20.3%, Graffiti Public 8.4%, General Request 7.9%, Encampment 4.4%, Graffiti Private 3.9%, Noise 2.7%, Blocked Street and Sidewalk 2.6%, and 29 more |
+| service_subcategory | VARCHAR | (no description in the yml) 0.2% null; 232 distinct, e.g. garbage_and_debris, not_offensive, other_illegal_parking, parking_on_sidewalk, encampment |
+| address | VARCHAR | (no description in the yml) 64,130 distinct, e.g. Not associated with a specific address, 1001 OFARRELL ST, SAN FRANCISCO, CA 9..., 10 SOUTH VAN NESS AVE, SAN FRANCISCO,..., 101 JONES ST, SAN FRANCISCO, CA 94102, 445 LEAVENWORTH ST, SAN FRANCISCO, CA... |
+| upstream_supervisor_district | BIGINT | Supervisor district as DataSF stamped it, 1 to 11. Renamed from supervisor_district when the computed geography arrived: it is assigned at report time rather than recomputed when boundaries move, and ADR-2 rejected it as the answer. Kept for comparison. Join on supervisor_district_id instead. 0.9% null; values: 9 16.3%, 6 13.9%, 5 12.4%, 3 12.0%, 8 11.0%, 10 7.9%, 2 6.6%, 1 5.5%, and 3 more |
+| upstream_analysis_neighborhood | VARCHAR | (no description in the yml) 1.2% null; values: Mission 16.1%, South of Market 6.2%, Tenderloin 6.0%, Nob Hill 4.3%, Bayview Hunters Point 4.2%, Castro/Upper Market 4.1%, Hayes Valley 4.1%, Haight Ashbury 3.6%, and 33 more |
+| police_district | VARCHAR | (no description in the yml) 0.9% null; values: MISSION 18.9%, NORTHERN 14.1%, CENTRAL 10.5%, SOUTHERN 10.4%, INGLESIDE 10.0%, TARAVAL 8.5%, PARK 8.0%, BAYVIEW 7.0%, and 4 more |
+| request_source | VARCHAR | (no description in the yml) values: Mobile 41.1%, Web 40.7%, Phone 17.4%, Integrated Agency 0.6%, Test <0.1%, Twitter <0.1%, Email <0.1% |
+| socrata_updated_at | TIMESTAMP | (no description in the yml) 2026-07-01T10:15:29.839000 to 2026-08-15T10:19:28.717000; newest complete month 2026-07-01: 73,751 rows |
+| ingested_at | TIMESTAMP | (no description in the yml) 2026-07-31T06:59:48.862429 to 2026-08-15T16:09:43.019249; newest complete month 2026-07-01: 73,751 rows |
 | latitude | DOUBLE | Latitude, parsed in ingestion/spatial.py. Null where unusable. 1.2% null; min 37.62, median 37.77, max 37.83 |
 | longitude | DOUBLE | Longitude, parsed in ingestion/spatial.py. Null where unusable. 1.2% null; min -122.5, median -122.4, max -122.4 |
 | coordinate_status | VARCHAR | One of ok, missing, unparseable, impossible, out_of_bounds. The last two are worth separating: impossible means the value is not a coordinate at all, out_of_bounds means it is a real place that is not in San Francisco. values: ok 98.8%, missing 1.2% |
 | is_usable_coordinate | BOOLEAN | Whether the coordinate parsed and landed inside the San Francisco bounding box. False covers four different situations; read coordinate_status to tell them apart. 98.8% true; 2 distinct |
 | h3_r8 | BIGINT | (no description in the yml) 1.2% null; 181 distinct |
-| h3_r10 | BIGINT | (no description in the yml) 1.2% null; 6,128 distinct |
-| analysis_neighborhood | VARCHAR | The neighborhood this case is exactly inside, from ADR-6's cell lookup plus point-in-polygon refinement. Null means outside every neighborhood, which is a real answer for a case in the bay. 1.2% null; values: Mission 15.8%, South of Market 6.2%, Tenderloin 6.0%, Nob Hill 4.4%, Bayview Hunters Point 4.1%, Castro/Upper Market 4.1%, Hayes Valley 4.0%, Financial District 3.6%, and 33 more |
-| supervisor_district_id | VARCHAR | (no description in the yml) 1.2% null; values: 9.0 16.3%, 5.0 13.3%, 6.0 12.4%, 3.0 12.3%, 8.0 10.8%, 10.0 7.5%, 2.0 6.9%, 11.0 5.4%, and 3 more |
-| census_block_group_geoid | VARCHAR | (no description in the yml) 1.2% null; 677 distinct, e.g. 060750177002, 060750120011, 060759803001, 060750201011, 060759809001 |
+| h3_r10 | BIGINT | (no description in the yml) 1.2% null; 6,185 distinct |
+| analysis_neighborhood | VARCHAR | The neighborhood this case is exactly inside, from ADR-6's cell lookup plus point-in-polygon refinement. Null means outside every neighborhood, which is a real answer for a case in the bay. 1.2% null; values: Mission 16.1%, South of Market 6.2%, Tenderloin 6.0%, Nob Hill 4.3%, Bayview Hunters Point 4.2%, Castro/Upper Market 4.1%, Hayes Valley 4.1%, Haight Ashbury 3.6%, and 33 more |
+| supervisor_district_id | VARCHAR | (no description in the yml) 1.2% null; values: 9.0 16.7%, 5.0 13.3%, 6.0 12.3%, 3.0 12.1%, 8.0 10.9%, 10.0 7.4%, 2.0 6.9%, 11.0 5.4%, and 3 more |
+| census_block_group_geoid | VARCHAR | (no description in the yml) 1.2% null; 677 distinct, e.g. 060750177002, 060750120011, 060759803001, 060750201012, 060759809001 |
 
-### stg_datasf__building_permits (staging, view, 38,138 rows)
+### stg_datasf__building_permits (staging, view, 38,673 rows)
 
 Grain: One row per building permit record, deduplicated to the latest version of each record.
 
 | column | type | description |
 |---|---|---|
-| permit_record_id | VARCHAR | Unique identifier for the permit record. The grain of this model. 38,138 distinct, e.g. 100044691422, 1000447396160, 1000492135302, 100112239879, 1001574417276 |
-| permit_number | VARCHAR | The permit this record belongs to. Deliberately not unique: one permit accumulates a record per revision, up to about 100. 34,674 distinct, e.g. 202009214648, 202607245559, 201911076677, 201711214576, 202411044364 |
-| permit_type_code | VARCHAR | (no description in the yml) values: 8 86.0%, 3 7.9%, 4 3.0%, 9 1.1%, 2 0.6%, 7 0.6%, 6 0.4%, 1 0.3%, and 1 more |
-| permit_type | VARCHAR | (no description in the yml) 1.1% null; values: otc alterations permit 86.0%, additions alterations or repairs 7.9%, sign - erect 3.0%, new construction wood frame 0.6%, wall or painted sign 0.6%, demolitions 0.4%, new construction 0.3%, grade or quarry or fill or excavate <0.1% |
+| permit_record_id | VARCHAR | Unique identifier for the permit record. The grain of this model. 38,673 distinct, e.g. 100044691422, 1000447396160, 1000492135302, 100112239879, 1001574417276 |
+| permit_number | VARCHAR | The permit this record belongs to. Deliberately not unique: one permit accumulates a record per revision, up to about 100. 35,155 distinct, e.g. 202009214648, 202607245559, 201911076677, 201711214576, 202411044364 |
+| permit_type_code | VARCHAR | (no description in the yml) values: 8 85.9%, 3 8.0%, 4 2.9%, 9 1.1%, 2 0.6%, 7 0.6%, 6 0.4%, 1 0.3%, and 1 more |
+| permit_type | VARCHAR | (no description in the yml) 1.1% null; values: otc alterations permit 85.9%, additions alterations or repairs 8.0%, sign - erect 2.9%, new construction wood frame 0.6%, wall or painted sign 0.6%, demolitions 0.4%, new construction 0.3%, grade or quarry or fill or excavate <0.1% |
 | submission_method | VARCHAR | (no description in the yml) values: in-house 96.0%, website 4.0%, epr website <0.1% |
-| permit_status | VARCHAR | Where the permit is in its lifecycle. Null on about a dozen records out of 1.3 million, so this deliberately carries no not_null test. values: complete 32.9%, cancelled 30.8%, issued 22.9%, filed 6.2%, expired 4.8%, triage 0.8%, withdrawn 0.7%, approved 0.4%, and 8 more |
-| status_changed_at | TIMESTAMP | (no description in the yml) 1981-01-10T00:00:00 to 2026-08-08T15:26:56; newest complete month 2026-07-01: 3,780 rows |
-| created_at | TIMESTAMP | (no description in the yml) 1979-09-19T00:00:00 to 2026-08-08T15:26:56; newest complete month 2026-07-01: 1,713 rows |
-| filed_at | TIMESTAMP | When the application was filed. Null on a handful of older records. 1.8% null; 1979-09-19T00:00:00 to 2026-08-08T15:26:56; newest complete month 2026-07-01: 1,654 rows |
-| approved_at | TIMESTAMP | (no description in the yml) 40.2% null; 1980-01-10T00:00:00 to 2026-08-07T16:51:58; newest complete month 2026-07-01: 1,688 rows |
-| issued_at | TIMESTAMP | When the permit was issued. Null unless it reached that stage. 37.8% null; 1980-01-10T00:00:00 to 2026-08-07T16:51:58; newest complete month 2026-07-01: 1,713 rows |
-| completed_at | TIMESTAMP | When work was recorded complete. Null on most records. 67.0% null; 1983-03-04T00:00:00 to 2026-08-07T16:18:22; newest complete month 2026-07-01: 1,348 rows |
-| first_construction_doc_at | TIMESTAMP | (no description in the yml) 99.2% null; 1992-06-16T00:00:00 to 2026-08-04T11:13:20; newest complete month 2026-07-01: 6 rows |
-| last_activity_at | TIMESTAMP | (no description in the yml) 1.8% null; 1960-01-01T00:00:00 to 2028-04-27T00:00:00; newest complete month 2028-03-01: 0 rows |
-| street_number | VARCHAR | (no description in the yml) 4,017 distinct, e.g. 1, 101, 555, 100, 2 |
-| street_number_suffix | VARCHAR | (no description in the yml) 98.0% null; values: A 1.5%, B 0.2%, V 0.2%, C <0.1%, D <0.1%, E <0.1%, L <0.1%, ½ <0.1%, and 3 more |
-| street_name | VARCHAR | (no description in the yml) 1,459 distinct, e.g. Mcallister, California, Market, Mission, Geary |
-| street_suffix | VARCHAR | (no description in the yml) 1.5% null; values: St 66.4%, Av 23.2%, Bl 2.3%, Dr 1.9%, Wy 1.8%, Ct 0.8%, Tr 0.7%, Ln 0.4%, and 12 more |
-| unit | VARCHAR | (no description in the yml) 87.2% null; 300 distinct, e.g. 0, 1, 2, 3, 101 |
-| unit_suffix | VARCHAR | (no description in the yml) 98.8% null; 87 distinct, e.g. A, B, C, D, HOA |
-| zipcode | VARCHAR | (no description in the yml) <0.1% null; values: 94110 8.4%, 94115 7.1%, 94114 5.7%, 94118 5.5%, 94122 5.1%, 94109 5.1%, 94112 4.8%, 94103 4.6%, and 21 more |
-| block | VARCHAR | (no description in the yml) 4,477 distinct, e.g. 0777, 3708, 1180, 1177, 1178 |
-| lot | VARCHAR | (no description in the yml) 719 distinct, e.g. 001, 008, 007, 004, 003 |
-| permit_description | VARCHAR | (no description in the yml) 0.4% null; 31,900 distinct, e.g. re-roofing: remove and replace roofin..., reroofing, street space, reroofing no hot works, reroofing hot works |
-| estimated_cost | DOUBLE | Cost declared by the applicant at filing, in dollars. 2.8% null; min 0, median 1.5e+04, max 1.75e+08 |
-| revised_cost | DOUBLE | Cost after departmental revision, in dollars. Differs from estimated_cost often enough that the two should not be used interchangeably. 6.5% null; min 0, median 1.17e+04, max 1.75e+08 |
-| existing_use | VARCHAR | (no description in the yml) 5.4% null; 86 distinct, e.g. 1 family dwelling, apartments, 2 family dwelling, office, retail sales |
+| permit_status | VARCHAR | Where the permit is in its lifecycle. Null on about a dozen records out of 1.3 million, so this deliberately carries no not_null test. values: complete 33.2%, cancelled 30.4%, issued 23.0%, filed 6.2%, expired 4.8%, triage 0.8%, withdrawn 0.7%, approved 0.5%, and 8 more |
+| status_changed_at | TIMESTAMP | (no description in the yml) 1981-01-10T00:00:00 to 2026-08-14T18:12:16; newest complete month 2026-07-01: 3,650 rows |
+| created_at | TIMESTAMP | (no description in the yml) 1979-09-19T00:00:00 to 2026-08-14T18:05:05; newest complete month 2026-07-01: 1,708 rows |
+| filed_at | TIMESTAMP | When the application was filed. Null on a handful of older records. 1.9% null; 1979-09-19T00:00:00 to 2026-08-14T18:05:07; newest complete month 2026-07-01: 1,652 rows |
+| approved_at | TIMESTAMP | (no description in the yml) 39.8% null; 1980-01-10T00:00:00 to 2026-08-14T17:05:20; newest complete month 2026-07-01: 1,688 rows |
+| issued_at | TIMESTAMP | When the permit was issued. Null unless it reached that stage. 37.5% null; 1980-01-10T00:00:00 to 2026-08-14T18:12:16; newest complete month 2026-07-01: 1,713 rows |
+| completed_at | TIMESTAMP | When work was recorded complete. Null on most records. 66.7% null; 1983-03-04T00:00:00 to 2026-08-14T16:41:40; newest complete month 2026-07-01: 1,348 rows |
+| first_construction_doc_at | TIMESTAMP | (no description in the yml) 99.2% null; 1992-06-16T00:00:00 to 2026-08-11T12:01:40; newest complete month 2026-07-01: 6 rows |
+| last_activity_at | TIMESTAMP | (no description in the yml) 1.7% null; 1960-01-01T00:00:00 to 2028-04-27T00:00:00; newest complete month 2028-03-01: 0 rows |
+| street_number | VARCHAR | (no description in the yml) 4,029 distinct, e.g. 1, 101, 555, 100, 2 |
+| street_number_suffix | VARCHAR | (no description in the yml) 98.0% null; values: A 1.5%, B 0.3%, V 0.1%, C <0.1%, D <0.1%, E <0.1%, L <0.1%, ½ <0.1%, and 3 more |
+| street_name | VARCHAR | (no description in the yml) 1,464 distinct, e.g. Mcallister, California, Market, Mission, Geary |
+| street_suffix | VARCHAR | (no description in the yml) 1.5% null; values: St 66.3%, Av 23.3%, Bl 2.3%, Dr 1.9%, Wy 1.8%, Ct 0.8%, Tr 0.7%, Ln 0.4%, and 12 more |
+| unit | VARCHAR | (no description in the yml) 87.3% null; 303 distinct, e.g. 0, 1, 2, 3, 101 |
+| unit_suffix | VARCHAR | (no description in the yml) 98.8% null; 90 distinct, e.g. A, B, C, D, HOA |
+| zipcode | VARCHAR | (no description in the yml) <0.1% null; values: 94110 8.4%, 94115 7.0%, 94114 5.8%, 94118 5.4%, 94122 5.1%, 94109 5.1%, 94112 4.8%, 94103 4.5%, and 21 more |
+| block | VARCHAR | (no description in the yml) 4,485 distinct, e.g. 0777, 3708, 1180, 1177, 1178 |
+| lot | VARCHAR | (no description in the yml) 722 distinct, e.g. 001, 008, 007, 004, 003 |
+| permit_description | VARCHAR | (no description in the yml) 0.4% null; 32,374 distinct, e.g. re-roofing: remove and replace roofin..., reroofing, street space, reroofing no hot works, reroofing hot works |
+| estimated_cost | DOUBLE | Cost declared by the applicant at filing, in dollars. 2.7% null; min 0, median 1.5e+04, max 1.75e+08 |
+| revised_cost | DOUBLE | Cost after departmental revision, in dollars. Differs from estimated_cost often enough that the two should not be used interchangeably. 6.5% null; min 0, median 1.2e+04, max 1.75e+08 |
+| existing_use | VARCHAR | (no description in the yml) 5.3% null; 86 distinct, e.g. 1 family dwelling, apartments, 2 family dwelling, office, retail sales |
 | proposed_use | VARCHAR | (no description in the yml) 7.1% null; 86 distinct, e.g. 1 family dwelling, apartments, 2 family dwelling, office, retail sales |
-| existing_occupancy | VARCHAR | (no description in the yml) 4.3% null; 662 distinct, e.g. R-3, R-2, B, M, R-1 |
-| proposed_occupancy | VARCHAR | (no description in the yml) 5.9% null; 737 distinct, e.g. R-3, R-2, B, R-1, B,M |
+| existing_occupancy | VARCHAR | (no description in the yml) 4.3% null; 668 distinct, e.g. R-3, R-2, B, M, R-1 |
+| proposed_occupancy | VARCHAR | (no description in the yml) 5.9% null; 747 distinct, e.g. R-3, R-2, B, R-1, B,M |
 | existing_construction_type | VARCHAR | (no description in the yml) 9.5% null; values: wood frame (5) 68.7%, constr type 1 13.4%, constr type 3 5.6%, constr type 2 2.6%, constr type 4 0.2% |
-| proposed_construction_type | VARCHAR | (no description in the yml) 10.9% null; values: wood frame (5) 68.2%, constr type 1 13.2%, constr type 3 5.2%, constr type 2 2.3%, constr type 4 0.2% |
-| existing_units | BIGINT | (no description in the yml) 19.4% null; min 0, median 2, max 1,907 |
+| proposed_construction_type | VARCHAR | (no description in the yml) 10.9% null; values: wood frame (5) 68.3%, constr type 1 13.2%, constr type 3 5.2%, constr type 2 2.3%, constr type 4 0.2% |
+| existing_units | BIGINT | (no description in the yml) 19.5% null; min 0, median 2, max 1,907 |
 | proposed_units | BIGINT | (no description in the yml) 19.5% null; min 0, median 2, max 1,907 |
-| existing_stories | BIGINT | (no description in the yml) 9.0% null; min 0, median 3, max 302 |
-| proposed_stories | BIGINT | (no description in the yml) 10.7% null; min 0, median 3, max 220 |
-| plansets | BIGINT | (no description in the yml) 1.4% null; values: 2 65.3%, 0 32.1%, 1 1.1%, 3 <0.1%, 4 <0.1%, 8 <0.1% |
+| existing_stories | BIGINT | (no description in the yml) 8.9% null; min 0, median 3, max 302 |
+| proposed_stories | BIGINT | (no description in the yml) 10.6% null; min 0, median 3, max 220 |
+| plansets | BIGINT | (no description in the yml) 1.4% null; values: 2 65.2%, 0 32.2%, 1 1.1%, 3 <0.1%, 4 <0.1%, 8 <0.1% |
 | is_adu | BOOLEAN | Whether the permit covers an accessory dwelling unit. 1.2% true; 2 distinct |
 | is_site_permit | BOOLEAN | (no description in the yml) 1.6% true; 2 distinct |
-| is_fire_only_permit | BOOLEAN | (no description in the yml) 5.0% true; 2 distinct |
-| is_reroof | BOOLEAN | (no description in the yml) 6.9% true; 2 distinct |
+| is_fire_only_permit | BOOLEAN | (no description in the yml) 4.9% true; 2 distinct |
+| is_reroof | BOOLEAN | (no description in the yml) 6.8% true; 2 distinct |
 | needs_structural_review | BOOLEAN | (no description in the yml) 4.4% true; 2 distinct |
 | is_primary_address | BOOLEAN | (no description in the yml) 90.9% true; 2 distinct |
-| upstream_supervisor_district | BIGINT | Supervisor district as DataSF stamped it. Null where the address did not geocode. Kept for comparison; join on supervisor_district_id. 0.2% null; values: 3 14.9%, 8 12.2%, 2 11.7%, 6 9.8%, 7 8.7%, 9 8.7%, 5 8.3%, 1 7.7%, and 3 more |
-| upstream_analysis_neighborhood | VARCHAR | (no description in the yml) 0.2% null; values: Financial District/South Beach 10.1%, Mission 6.8%, Sunset/Parkside 6.2%, West of Twin Peaks 5.1%, Outer Richmond 4.0%, Castro/Upper Market 3.9%, Marina 3.9%, Noe Valley 3.8%, and 33 more |
-| socrata_updated_at | TIMESTAMP | (no description in the yml) 2026-01-01T12:31:23.428000 to 2026-08-09T12:24:24.956000; newest complete month 2026-07-01: 4,115 rows |
-| ingested_at | TIMESTAMP | (no description in the yml) 2026-07-31T07:01:40.822890 to 2026-08-10T10:39:23.994552; newest complete month 2026-07-01: 35,324 rows |
+| upstream_supervisor_district | BIGINT | Supervisor district as DataSF stamped it. Null where the address did not geocode. Kept for comparison; join on supervisor_district_id. 0.2% null; values: 3 14.8%, 8 12.3%, 2 11.6%, 6 9.8%, 7 8.7%, 9 8.7%, 5 8.3%, 1 7.7%, and 3 more |
+| upstream_analysis_neighborhood | VARCHAR | (no description in the yml) 0.2% null; values: Financial District/South Beach 10.0%, Mission 6.8%, Sunset/Parkside 6.2%, West of Twin Peaks 5.1%, Outer Richmond 4.0%, Castro/Upper Market 3.9%, Marina 3.9%, Noe Valley 3.8%, and 33 more |
+| socrata_updated_at | TIMESTAMP | (no description in the yml) 2026-01-01T12:31:23.428000 to 2026-08-15T12:41:26.622000; newest complete month 2026-07-01: 3,955 rows |
+| ingested_at | TIMESTAMP | (no description in the yml) 2026-07-31T07:01:40.822890 to 2026-08-15T16:09:48.224041; newest complete month 2026-07-01: 34,962 rows |
 | latitude | DOUBLE | Latitude. Previously extracted from the location GeoJSON in this model; now parsed once in ingestion/spatial.py so that it and the H3 cell beside it cannot come from different places. 0.2% null; min 37.71, median 37.77, max 37.83 |
 | longitude | DOUBLE | Longitude, parsed in ingestion/spatial.py. 0.2% null; min -122.5, median -122.4, max -122.4 |
 | coordinate_status | VARCHAR | Why a coordinate is unusable, where it is. values: ok 99.8%, missing 0.2% |
 | is_usable_coordinate | BOOLEAN | (no description in the yml) 99.8% true; 2 distinct |
 | h3_r8 | BIGINT | (no description in the yml) 0.2% null; 170 distinct |
-| h3_r10 | BIGINT | (no description in the yml) 0.2% null; 5,188 distinct |
-| analysis_neighborhood | VARCHAR | The neighborhood this permit is exactly inside (ADR-6). 0.2% null; values: Financial District 10.1%, Mission 6.8%, Sunset/Parkside 6.2%, West of Twin Peaks 5.1%, Outer Richmond 4.0%, Castro/Upper Market 3.9%, Marina 3.9%, Noe Valley 3.8%, and 33 more |
-| supervisor_district_id | VARCHAR | (no description in the yml) 0.2% null; values: 3.0 14.9%, 8.0 12.2%, 2.0 11.7%, 6.0 9.8%, 7.0 8.7%, 9.0 8.7%, 5.0 8.3%, 1.0 7.7%, and 3 more |
+| h3_r10 | BIGINT | (no description in the yml) 0.2% null; 5,198 distinct |
+| analysis_neighborhood | VARCHAR | The neighborhood this permit is exactly inside (ADR-6). 0.2% null; values: Financial District 10.0%, Mission 6.8%, Sunset/Parkside 6.2%, West of Twin Peaks 5.1%, Outer Richmond 4.0%, Castro/Upper Market 3.9%, Marina 3.9%, Noe Valley 3.8%, and 33 more |
+| supervisor_district_id | VARCHAR | (no description in the yml) 0.2% null; values: 3.0 14.8%, 8.0 12.3%, 2.0 11.6%, 6.0 9.8%, 7.0 8.7%, 9.0 8.7%, 5.0 8.3%, 1.0 7.7%, and 3 more |
 | census_block_group_geoid | VARCHAR | (no description in the yml) 0.2% null; 675 distinct, e.g. 060750117002, 060750158022, 060750615071, 060750615011, 060750117004 |
 
-### int_point_activity (intermediate, view, 530,619 rows)
+### int_point_activity (intermediate, view, 544,417 rows)
 
 Grain: One row per dated event, across every point dataset that has a date.
 
 | column | type | description |
 |---|---|---|
-| dataset | VARCHAR | Registry name of the source, e.g. 311_cases. values: business_locations 68.8%, 311_cases 24.1%, building_permits 7.1% |
-| event_id | VARCHAR | The event's key in its own dataset. Unique within a dataset but not across them, so the grain is the pair with dataset. 530,619 distinct, e.g. 0000024-02-999-0000024, 0000028-02-001-0000028, 0000052-01-001-0000052, 0000071-01-001-0000071, 0000071-02-001-0000071 |
+| dataset | VARCHAR | Registry name of the source, e.g. 311_cases. values: business_locations 67.1%, 311_cases 25.9%, building_permits 7.0% |
+| event_id | VARCHAR | The event's key in its own dataset. Unique within a dataset but not across them, so the grain is the pair with dataset. 544,417 distinct, e.g. 0000024-02-999-0000024, 0000028-02-001-0000028, 0000052-01-001-0000052, 0000071-01-001-0000071, 0000071-02-001-0000071 |
 | event_month | TIMESTAMP | First day of the month the event happened, as a DATE on both engines via x_month_start. Never null: undated rows are excluded. 1849-01-01T00:00:00 to 2028-02-01T00:00:00; newest complete month 2028-01-01: 0 rows |
-| h3_r8 | BIGINT | (no description in the yml) 2.4% null; 15,780 distinct |
-| h3_r10 | BIGINT | (no description in the yml) 2.4% null; 47,636 distinct |
-| analysis_neighborhood | VARCHAR | Exact neighborhood membership. Null means outside every neighborhood, mostly the registered businesses located outside San Francisco. 14.9% null; values: Financial District 10.0%, Mission 8.7%, South of Market 5.2%, Sunset/Parkside 3.9%, Bayview Hunters Point 3.8%, Tenderloin 3.3%, Castro/Upper Market 3.0%, Nob Hill 2.8%, and 33 more |
-| supervisor_district_id | VARCHAR | (no description in the yml) 14.9% null; values: 3.0 14.8%, 6.0 12.8%, 9.0 9.5%, 8.0 8.1%, 5.0 7.9%, 2.0 7.5%, 10.0 6.6%, 1.0 5.1%, and 3 more |
+| h3_r8 | BIGINT | (no description in the yml) 2.3% null; 15,790 distinct |
+| h3_r10 | BIGINT | (no description in the yml) 2.3% null; 47,673 distinct |
+| analysis_neighborhood | VARCHAR | Exact neighborhood membership. Null means outside every neighborhood, mostly the registered businesses located outside San Francisco. 14.6% null; values: Financial District 9.9%, Mission 9.0%, South of Market 5.2%, Sunset/Parkside 3.9%, Bayview Hunters Point 3.8%, Tenderloin 3.3%, Castro/Upper Market 3.0%, Nob Hill 2.9%, and 33 more |
+| supervisor_district_id | VARCHAR | (no description in the yml) 14.6% null; values: 3.0 14.7%, 6.0 12.8%, 9.0 9.8%, 8.0 8.2%, 5.0 8.0%, 2.0 7.5%, 10.0 6.7%, 1.0 5.1%, and 3 more |
 | category | VARCHAR | The dataset's own category dimension: service type for 311, permit type for permits, licence description for businesses. Coalesced to 'Unknown' rather than left null, so that grouping by it never silently drops rows. 184 distinct, e.g. Unknown, Street and Sidewalk Cleaning, otc alterations permit, Parking Enforcement, Graffiti Public |
 
-### mart_activity_by_h3 (mart, table, 143,357 rows)
+### mart_activity_by_h3 (mart, table, 144,049 rows)
 
 Grain: One row per H3 cell per dataset per category per month, at var('h3_mart_resolution'), currently 8.
 
 | column | type | description |
 |---|---|---|
-| h3_cell | BIGINT | The cell as a BIGINT. Part of the grain. 15,780 distinct |
+| h3_cell | BIGINT | The cell as a BIGINT. Part of the grain. 15,790 distinct |
 | h3_resolution | INTEGER | The resolution this mart was built at. Constant per build. 1 distinct |
-| dataset | VARCHAR | Registry name of the source. Part of the grain. values: business_locations 83.5%, building_permits 10.1%, 311_cases 6.4% |
+| dataset | VARCHAR | Registry name of the source. Part of the grain. values: business_locations 83.2%, building_permits 10.1%, 311_cases 6.7% |
 | category | VARCHAR | The dataset's own category dimension: service type for 311, permit type for permits, licence description for businesses. Part of the grain. One column name over three vocabularies, so grouping by it without also grouping by dataset pools three unrelated taxonomies. 176 distinct, e.g. Unknown, otc alterations permit, Multiple, additions alterations or repairs, RESTAURANT 1,000 - 2,000 SQFT |
 | event_month | TIMESTAMP | First day of the month. Part of the grain. 1849-05-01T00:00:00 to 2028-02-01T00:00:00; newest complete month 2028-01-01: 0 rows |
-| analysis_neighborhood | VARCHAR | The neighborhood owning this cell, for filtering and labelling. Null where the cell's centre is outside every neighborhood, which is water or just past the city line. 43.8% null; values: Sunset/Parkside 4.7%, Mission 4.3%, Bayview Hunters Point 4.2%, West of Twin Peaks 3.0%, Financial District 2.2%, Outer Richmond 2.1%, South of Market 2.1%, Bernal Heights 1.7%, and 33 more |
-| supervisor_district_id | VARCHAR | The supervisor district owning this cell, as a string, on the 2022 boundaries. Null under the same rule as analysis_neighborhood. Join to dim_supervisor_district on this rather than on the integer district number, which is what the id exists for. 43.8% null; values: 7.0 6.6%, 10.0 6.5%, 8.0 5.8%, 9.0 5.7%, 2.0 5.6%, 3.0 5.1%, 4.0 4.7%, 1.0 4.6%, and 3 more |
+| analysis_neighborhood | VARCHAR | The neighborhood owning this cell, for filtering and labelling. Null where the cell's centre is outside every neighborhood, which is water or just past the city line. 43.7% null; values: Sunset/Parkside 4.7%, Mission 4.3%, Bayview Hunters Point 4.2%, West of Twin Peaks 3.0%, Financial District 2.2%, Outer Richmond 2.1%, South of Market 2.1%, Bernal Heights 1.7%, and 33 more |
+| supervisor_district_id | VARCHAR | The supervisor district owning this cell, as a string, on the 2022 boundaries. Null under the same rule as analysis_neighborhood. Join to dim_supervisor_district on this rather than on the integer district number, which is what the id exists for. 43.6% null; values: 7.0 6.6%, 10.0 6.5%, 8.0 5.8%, 9.0 5.7%, 2.0 5.6%, 3.0 5.1%, 4.0 4.7%, 1.0 4.7%, and 3 more |
 | event_count | BIGINT | Events in this cell, dataset, category and month. min 1, median 1, max 1,745 |
-| cell_population | DOUBLE | Interpolated residents in this cell. Null where the cell has no block group overlap at all, zero where it genuinely has nobody. 40.7% null; min 0, median 6,199, max 2.943e+04 |
-| cell_housing_units | DOUBLE | Interpolated housing units in this cell, same method and same caveat as cell_population, and null under the same condition. 40.7% null; min 0, median 2,568, max 1.611e+04 |
+| cell_population | DOUBLE | Interpolated residents in this cell. Null where the cell has no block group overlap at all, zero where it genuinely has nobody. 40.6% null; min 0, median 6,199, max 2.943e+04 |
+| cell_housing_units | DOUBLE | Interpolated housing units in this cell, same method and same caveat as cell_population, and null under the same condition. 40.6% null; min 0, median 2,568, max 1.611e+04 |
 | cell_area_sq_km | DECIMAL(11,10) | The H3 constant for this resolution, carried so a density can be re-derived without another lookup. Identical on every row of a build, which is exactly why events_per_sq_km ranks like the count. values: 0.7373 100.0% |
-| events_per_1000_residents | DOUBLE | The normalised companion, and the one to rank on. Null rather than infinite where the cell has no residents, which is correct and common: the bay, the Presidio and the Financial District all have real activity and close to nobody living in them. 41.0% null; min 0.03398, median 0.3976, max 676.1 |
-| events_per_1000_housing_units | DOUBLE | The same normalisation against dwellings rather than people. Useful where the question is about the building stock; null where the cell has no housing units, for the same reason as above. 41.0% null; min 0.06207, median 0.9084, max 1.8e+04 |
+| events_per_1000_residents | DOUBLE | The normalised companion, and the one to rank on. Null rather than infinite where the cell has no residents, which is correct and common: the bay, the Presidio and the Financial District all have real activity and close to nobody living in them. 40.8% null; min 0.03398, median 0.3992, max 676.1 |
+| events_per_1000_housing_units | DOUBLE | The same normalisation against dwellings rather than people. Useful where the question is about the building stock; null where the cell has no housing units, for the same reason as above. 40.8% null; min 0.06207, median 0.918, max 1.8e+04 |
 | events_per_sq_km | DOUBLE | Density. A constant rescaling of event_count at fixed resolution, so it ranks identically; kept for comparability with the neighborhood mart. min 1.356, median 1.356, max 2,367 |
 
-### mart_activity_by_neighborhood (mart, table, 41,751 rows)
+### mart_activity_by_neighborhood (mart, table, 41,965 rows)
 
 Grain: One row per neighborhood per dataset per category per month.
 
 | column | type | description |
 |---|---|---|
-| analysis_neighborhood | VARCHAR | Neighborhood name. Part of the grain. values: Financial District 5.4%, Mission 5.2%, South of Market 3.9%, Bayview Hunters Point 3.9%, Sunset/Parkside 3.7%, Tenderloin 3.7%, Chinatown 3.4%, Marina 3.3%, and 33 more |
-| dataset | VARCHAR | Registry name of the source. Part of the grain. values: business_locations 68.8%, building_permits 21.6%, 311_cases 9.5% |
+| analysis_neighborhood | VARCHAR | Neighborhood name. Part of the grain. values: Financial District 5.4%, Mission 5.2%, South of Market 3.9%, Bayview Hunters Point 3.9%, Sunset/Parkside 3.7%, Tenderloin 3.6%, Chinatown 3.4%, Marina 3.3%, and 33 more |
+| dataset | VARCHAR | Registry name of the source. Part of the grain. values: business_locations 68.5%, building_permits 21.6%, 311_cases 9.9% |
 | category | VARCHAR | The dataset's own category dimension. Part of the grain. 172 distinct, e.g. Unknown, otc alterations permit, Multiple, additions alterations or repairs, RESTAURANT - UNDER 1,000 SQFT |
 | event_month | TIMESTAMP | First day of the month. Part of the grain. 1849-05-01T00:00:00 to 2028-02-01T00:00:00; newest complete month 2028-01-01: 0 rows |
 | event_count | BIGINT | Events in this neighborhood, dataset, category and month. min 1, median 2, max 4,707 |
-| population | BIGINT | Interpolated 2020 residents in this neighborhood, from dim_neighborhood. The denominator behind events_per_1000_residents, and an April 2020 count regardless of which month the events are from. values: 23,908 5.4%, 58,062 5.2%, 28,426 3.9%, 40,384 3.9%, 74,656 3.7%, 36,067 3.7%, 14,455 3.4%, 23,325 3.3%, and 33 more |
-| housing_units | BIGINT | Interpolated 2020 housing units, the denominator behind the rate below. values: 16,050 5.4%, 26,545 5.2%, 15,863 3.9%, 12,437 3.9%, 28,042 3.7%, 20,807 3.7%, 7,617 3.4%, 14,164 3.3%, and 33 more |
-| business_count | BIGINT | Registered business locations ever, the denominator behind events_per_1000_businesses. Not the active count, which is the one dim_neighborhood carries separately and which is less than half of this. values: 44,749 5.4%, 23,465 5.2%, 18,331 3.9%, 13,354 3.9%, 13,963 3.7%, 8,925 3.7%, 9,525 3.4%, 9,672 3.3%, and 33 more |
-| area_sq_km | DOUBLE | Spherical land area. Unlike the H3 mart this genuinely differs per row, which is what makes events_per_sq_km a real second measure here and a rescaled count there. values: 2.909 5.4%, 4.876 5.2%, 2.291 3.9%, 13.39 3.9%, 10.95 3.7%, 1.017 3.7%, 0.5816 3.4%, 2.624 3.3%, and 33 more |
-| events_per_1000_residents | DOUBLE | The default normalised companion. Null where the neighborhood has no residents. min 0.01339, median 0.09591, max 548 |
+| population | BIGINT | Interpolated 2020 residents in this neighborhood, from dim_neighborhood. The denominator behind events_per_1000_residents, and an April 2020 count regardless of which month the events are from. values: 23,908 5.4%, 58,062 5.2%, 28,426 3.9%, 40,384 3.9%, 74,656 3.7%, 36,067 3.6%, 14,455 3.4%, 23,325 3.3%, and 33 more |
+| housing_units | BIGINT | Interpolated 2020 housing units, the denominator behind the rate below. values: 16,050 5.4%, 26,545 5.2%, 15,863 3.9%, 12,437 3.9%, 28,042 3.7%, 20,807 3.6%, 7,617 3.4%, 14,164 3.3%, and 33 more |
+| business_count | BIGINT | Registered business locations ever, the denominator behind events_per_1000_businesses. Not the active count, which is the one dim_neighborhood carries separately and which is less than half of this. values: 44,790 5.4%, 23,480 5.2%, 18,345 3.9%, 13,361 3.9%, 13,972 3.7%, 8,931 3.6%, 9,537 3.4%, 9,682 3.3%, and 33 more |
+| area_sq_km | DOUBLE | Spherical land area. Unlike the H3 mart this genuinely differs per row, which is what makes events_per_sq_km a real second measure here and a rescaled count there. values: 2.909 5.4%, 4.876 5.2%, 2.291 3.9%, 13.39 3.9%, 10.95 3.7%, 1.017 3.6%, 0.5816 3.4%, 2.624 3.3%, and 33 more |
+| events_per_1000_residents | DOUBLE | The default normalised companion. Null where the neighborhood has no residents. min 0.01339, median 0.09905, max 548 |
 | events_per_1000_housing_units | DOUBLE | The same normalisation against dwellings. Null where the neighborhood has no housing units. min 0.03566, median 0.2087, max 2,024 |
-| events_per_1000_businesses | DOUBLE | The right companion for anything commercial, and the one that most changes the ranking against per-capita. min 0.02235, median 0.3294, max 1,946 |
+| events_per_1000_businesses | DOUBLE | The right companion for anything commercial, and the one that most changes the ranking against per-capita. min 0.02233, median 0.3291, max 1,946 |
 | events_per_sq_km | DOUBLE | Density. Unlike the H3 mart, neighborhood areas genuinely differ. min 0.07467, median 0.9833, max 2,277 |
 
 ### stg_datasf__film_locations (staging, view, 2,214 rows)
@@ -730,30 +730,30 @@ Grain: One row per registered source.
 | source_table | VARCHAR | Raw table the source lands in, e.g. raw_311_cases. 7 distinct, e.g. raw_311_cases, raw_analysis_neighborhoods, raw_building_permits, raw_business_locations, raw_census_block_groups |
 | staging_model | VARCHAR | Staging model built from this source. Also the join key to dbt's test results, which is why it has to match the model name exactly. 7 distinct, e.g. stg_census__block_groups, stg_datasf__311_cases, stg_datasf__analysis_neighborhoods, stg_datasf__building_permits, stg_datasf__business_locations |
 | tier | VARCHAR | core, reference or demoted, per ADR-7. Reference sources are the boundary sets: they change every several years, so staleness is not a signal and they carry no SLA, but they are not demoted either because every spatial mart depends on them. Demoted sources carry no SLA and earn no maintenance. values: core 42.9%, reference 42.9%, demoted 14.3% |
-| row_count | BIGINT | Rows currently in the raw table, counted directly rather than accumulated. min 11, median 2,214, max 730,238 |
-| row_delta | BIGINT | Rows the most recent ingestion run added. 0 is the common healthy case: the run went out, found nothing new, and wrote nothing. values: 0 57.1%, 251 14.3%, 31,848 14.3%, 365,123 14.3% |
-| previous_row_count | BIGINT | row_count minus row_delta, i.e. the count before the last run. min 11, median 2,214, max 373,011 |
-| last_load_at | TIMESTAMP | When rows last landed in the raw zone. Null if nothing has ever loaded. 2026-07-31T06:56:41.226332 to 2026-08-10T10:42:29.782195; newest complete month 2026-07-01: 4 rows |
-| last_ingest_run_id | VARCHAR | (no description in the yml) 7 distinct, e.g. 20260731T065640Z, 20260731T093034Z, 20260731T093037Z, 20260731T093038Z, 20260810T103851Z |
-| last_run_finished_at | TIMESTAMP | When ingestion last ran at all, successful or not. Later than last_load_at whenever recent runs found nothing new. 2026-08-10T10:39:21.659124 to 2026-08-10T10:42:33.582494; newest complete month 2026-07-01: 0 rows |
+| row_count | BIGINT | Rows currently in the raw table, counted directly rather than accumulated. min 11, median 2,214, max 2,921,878 |
+| row_delta | BIGINT | Rows the most recent ingestion run added. 0 is the common healthy case: the run went out, found nothing new, and wrote nothing. values: 0 57.1%, 29,574 14.3%, 365,400 14.3%, 544 14.3% |
+| previous_row_count | BIGINT | row_count minus row_delta, i.e. the count before the last run. min 11, median 2,214, max 2,556,478 |
+| last_load_at | TIMESTAMP | When rows last landed in the raw zone. Null if nothing has ever loaded. 2026-07-31T06:56:41.226332 to 2026-08-15T16:13:11.286330; newest complete month 2026-07-01: 4 rows |
+| last_ingest_run_id | VARCHAR | (no description in the yml) 7 distinct, e.g. 20260731T065640Z, 20260731T093034Z, 20260731T093037Z, 20260731T093038Z, 20260815T160922Z |
+| last_run_finished_at | TIMESTAMP | When ingestion last ran at all, successful or not. Later than last_load_at whenever recent runs found nothing new. 2026-08-15T16:09:45.549805 to 2026-08-15T16:13:18.954474; newest complete month 2026-07-01: 0 rows |
 | last_run_status | VARCHAR | success or failed, from the ingestion run manifest. values: success 100.0% |
 | last_run_mode | VARCHAR | (no description in the yml) values: incremental 100.0% |
-| hours_since_load | DOUBLE | Hours since last_load_at, fractional, in UTC on both engines. See x_utc_now in macros/cross_engine.sql for why that needed saying. min 14.38, median 255.6, max 258.1 |
-| hours_since_run_attempt | DOUBLE | Hours since ingestion last ran, fractional. values: 14.38 28.6%, 14.38 14.3%, 14.38 14.3%, 14.38 14.3%, 14.44 14.3%, 14.44 14.3% |
+| hours_since_load | DOUBLE | Hours since last_load_at, fractional, in UTC on both engines. See x_utc_now in macros/cross_engine.sql for why that needed saying. min 0.9464, median 367.7, max 370.2 |
+| hours_since_run_attempt | DOUBLE | Hours since ingestion last ran, fractional. min 0.9444, median 0.9458, max 1.004 |
 | stale_after_hours | INTEGER | Freshness SLA in hours. Null means the source has no SLA. 57.1% null; values: 168 28.6%, 48 14.3% |
 | is_stale | BOOLEAN | Whether hours_since_load has passed stale_after_hours. Always false for sources with no SLA, so this never fires on a demoted source. 0.0% true; 1 distinct |
-| point_count | BIGINT | Rows this source contributed to the spatial precompute. Null for a source with no point geometry, which is how a non-spatial source is told apart from a spatial one whose coordinates all failed. 42.9% null; min 2,214, median 8.31e+04, max 365,123 |
-| usable_point_count | HUGEINT | Of those, how many produced a coordinate inside San Francisco. 42.9% null; min 2,127, median 8.232e+04, max 298,365 |
-| missing_coordinate_count | HUGEINT | Rows with no coordinate at all. Expected to be nonzero forever and deliberately not counted against health. 42.9% null; min 65, median 792.5, max 10,919 |
-| out_of_bounds_count | HUGEINT | Rows whose coordinate is a real place outside San Francisco. Almost entirely registered businesses located elsewhere, which is correct data, so this does not count against health either. 42.9% null; values: 0 28.6%, 1 14.3%, 55,839 14.3% |
+| point_count | BIGINT | Rows this source contributed to the spatial precompute. Null for a source with no point geometry, which is how a non-spatial source is told apart from a spatial one whose coordinates all failed. 42.9% null; min 2,214, median 8.987e+04, max 365,400 |
+| usable_point_count | HUGEINT | Of those, how many produced a coordinate inside San Francisco. 42.9% null; min 2,127, median 8.901e+04, max 298,583 |
+| missing_coordinate_count | HUGEINT | Rows with no coordinate at all. Expected to be nonzero forever and deliberately not counted against health. 42.9% null; min 65, median 865.5, max 10,926 |
+| out_of_bounds_count | HUGEINT | Rows whose coordinate is a real place outside San Francisco. Almost entirely registered businesses located elsewhere, which is correct data, so this does not count against health either. 42.9% null; values: 0 28.6%, 1 14.3%, 55,891 14.3% |
 | malformed_coordinate_count | HUGEINT | Rows whose coordinate could not be parsed or was not on Earth. Unlike the two above this is a pipeline fault, not a fact about the world, so any value above zero makes is_healthy false. It is the shape an upstream column change takes. 42.9% null; values: 0 57.1% |
-| coordinate_drop_rate_pct | DOUBLE | Percentage of this source's rows that could not be placed on a map, all four reasons combined. Measured 2026-07-31: 311 1.20, permits 0.12, street trees 1.58, film locations 3.93, business locations 18.27. The last is high because the registry records businesses located outside the city, not because it is dirty. 42.9% null; min 0.1704, median 2.55, max 18.28 |
-| tests_total | BIGINT | Tests run against this source's staging model in the last completed dbt run. values: 0 100.0% |
-| tests_passed | HUGEINT | Of those, how many passed. values: 0 100.0% |
+| coordinate_drop_rate_pct | DOUBLE | Percentage of this source's rows that could not be placed on a map, all four reasons combined. Measured 2026-07-31: 311 1.20, permits 0.12, street trees 1.58, film locations 3.93, business locations 18.27. The last is high because the registry records businesses located outside the city, not because it is dirty. 42.9% null; min 0.1681, median 2.548, max 18.29 |
+| tests_total | BIGINT | Tests run against this source's staging model in the last completed dbt run. values: 10 28.6%, 11 28.6%, 3 14.3%, 4 14.3%, 9 14.3% |
+| tests_passed | HUGEINT | Of those, how many passed. values: 10 28.6%, 11 28.6%, 3 14.3%, 4 14.3%, 9 14.3% |
 | tests_failed | HUGEINT | Of those, how many failed. values: 0 100.0% |
 | tests_warned | HUGEINT | Of those, how many warned. Warnings are signals, not failures. values: 0 100.0% |
 | tests_errored | HUGEINT | Of those, how many errored, meaning the test itself could not run. values: 0 100.0% |
-| last_test_run_at | TIMESTAMP | When that dbt run started. Null before the second ever run. 100.0% null; none to none |
+| last_test_run_at | TIMESTAMP | When that dbt run started. Null before the second ever run. 2026-08-11T01:05:30 to 2026-08-11T01:05:30; newest complete month 2026-07-01: 0 rows |
 | is_healthy | BOOLEAN | False if the last ingestion run failed, if any test failed or errored, if any coordinate was malformed, or if the source is past its SLA. True otherwise. The single column to read when checking in. 100.0% true; 1 distinct |
 
 ### stg_census__block_groups (staging, view, 681 rows)
@@ -789,9 +789,9 @@ Grain: One row per sampled point per boundary set: the exact point-in-polygon an
 | boundary_set | VARCHAR | (no description in the yml) values: analysis_neighborhood 33.3%, census_block_group 33.3%, supervisor_district 33.3% |
 | latitude | DOUBLE | (no description in the yml) min 37.61, median 37.78, max 37.93 |
 | longitude | DOUBLE | (no description in the yml) min -122.5, median -122.4, max -122.3 |
-| exact_boundary_id | VARCHAR | The boundary the point is really inside, by exact geometry. Null means it is outside every boundary in the set, which is a correct answer and is credited as agreement by the tests. 1.5% null; 728 distinct, e.g. 3.0, 6.0, Financial District, 9.0, 2.0 |
-| h3_r8 | BIGINT | (no description in the yml) 238 distinct |
-| h3_r10 | BIGINT | (no description in the yml) 3,317 distinct |
+| exact_boundary_id | VARCHAR | The boundary the point is really inside, by exact geometry. Null means it is outside every boundary in the set, which is a correct answer and is credited as agreement by the tests. 1.5% null; 727 distinct, e.g. 3.0, 6.0, Financial District, 9.0, 5.0 |
+| h3_r8 | BIGINT | (no description in the yml) 239 distinct |
+| h3_r10 | BIGINT | (no description in the yml) 3,322 distinct |
 
 ## Join map
 
@@ -846,7 +846,7 @@ group by m.analysis_neighborhood, d.population
 order by reports_per_1000_residents desc
 ```
 
-Demonstrates: refuse.rank-by-raw-count, refuse.311-measures-reporting-not-incidence. Verified against duckdb at 2026-08-11T03:53:28+00:00, 41 rows.
+Demonstrates: refuse.rank-by-raw-count, refuse.311-measures-reporting-not-incidence. Verified against duckdb at 2026-08-15T17:24:37+00:00, 41 rows.
 
 ### ex.h3-cells-ranked-by-rate
 
@@ -871,7 +871,7 @@ order by events_per_1000_residents desc
 limit 20
 ```
 
-Demonstrates: refuse.events-per-sq-km-on-the-h3-mart. Verified against duckdb at 2026-08-11T03:53:28+00:00, 20 rows.
+Demonstrates: refuse.events-per-sq-km-on-the-h3-mart. Verified against duckdb at 2026-08-15T17:24:37+00:00, 20 rows.
 
 ### ex.rate-with-denominator-vintage
 
@@ -897,7 +897,7 @@ order by events_per_1000_residents desc
 limit 15
 ```
 
-Demonstrates: refuse.per-capita-divides-by-april-2020. Verified against duckdb at 2026-08-11T03:53:28+00:00, 15 rows.
+Demonstrates: refuse.per-capita-divides-by-april-2020. Verified against duckdb at 2026-08-15T17:24:37+00:00, 15 rows.
 
 ### ex.lowest-rate-with-exclusions-counted
 
@@ -931,7 +931,7 @@ order by events_per_1000_residents asc, h3_cell
 limit 10
 ```
 
-Demonstrates: refuse.null-rate-is-not-a-low-rate. Verified against duckdb at 2026-08-11T03:53:28+00:00, 10 rows.
+Demonstrates: refuse.null-rate-is-not-a-low-rate. Verified against duckdb at 2026-08-15T17:24:37+00:00, 10 rows.
 
 ### ex.permit-filings-per-month-by-type
 
@@ -955,7 +955,7 @@ order by filed_month desc, records_filed desc
 limit 40
 ```
 
-Demonstrates: refuse.permits-are-filings-not-construction. Verified against duckdb at 2026-08-11T03:53:28+00:00, 40 rows.
+Demonstrates: refuse.permits-are-filings-not-construction. Verified against duckdb at 2026-08-15T17:24:37+00:00, 40 rows.
 
 ### ex.distinct-businesses-by-neighborhood
 
@@ -977,7 +977,7 @@ order by certificates_active desc
 limit 15
 ```
 
-Demonstrates: refuse.business-registry-is-not-a-business-count. Verified against duckdb at 2026-08-11T03:53:28+00:00, 15 rows.
+Demonstrates: refuse.business-registry-is-not-a-business-count. Verified against duckdb at 2026-08-15T17:24:37+00:00, 15 rows.
 
 ## Freshness
 
@@ -985,36 +985,36 @@ mart_pipeline_freshness, projected. last_load_at is when rows last landed in the
 
 | source | tier | row_count | last_load_at | last_run_finished_at | stale_after_hours | is_stale |
 |---|---|---|---|---|---|---|
-| 311_cases | core | 404,859 | 2026-08-10T10:39:20.253022 | 2026-08-10T10:39:21.659124 | 48 | false |
-| analysis_neighborhoods | reference | 41 | 2026-07-31T09:30:36.846363 | 2026-08-10T10:42:31.404759 | none | false |
-| building_permits | core | 42,415 | 2026-08-10T10:39:23.994552 | 2026-08-10T10:39:24.236789 | 168 | false |
-| business_locations | core | 730,238 | 2026-08-10T10:42:29.782195 | 2026-08-10T10:42:30.447419 | 168 | false |
-| census_block_groups | reference | 681 | 2026-07-31T09:30:40.288231 | 2026-08-10T10:42:32.819304 | none | false |
-| film_locations | demoted | 2,214 | 2026-07-31T06:56:41.226332 | 2026-08-10T10:42:33.582494 | none | false |
-| supervisor_districts | reference | 11 | 2026-07-31T09:30:38.067363 | 2026-08-10T10:42:32.163227 | none | false |
+| 311_cases | core | 527,079 | 2026-08-15T16:09:43.019249 | 2026-08-15T16:09:45.549805 | 48 | false |
+| analysis_neighborhoods | reference | 41 | 2026-07-31T09:30:36.846363 | 2026-08-15T16:13:13.632434 | none | false |
+| building_permits | core | 44,643 | 2026-08-15T16:09:48.224041 | 2026-08-15T16:09:48.639405 | 168 | false |
+| business_locations | core | 2,921,878 | 2026-08-15T16:13:11.286330 | 2026-08-15T16:13:12.162086 | 168 | false |
+| census_block_groups | reference | 681 | 2026-07-31T09:30:40.288231 | 2026-08-15T16:13:17.742120 | none | false |
+| film_locations | demoted | 2,214 | 2026-07-31T06:56:41.226332 | 2026-08-15T16:13:18.954474 | none | false |
+| supervisor_districts | reference | 11 | 2026-07-31T09:30:38.067363 | 2026-08-15T16:13:16.906501 | none | false |
 
 ## Integrity
 
 Before trusting this pack, compare its integrity block against the target itself: the schema hash of every model you intend to query, and the dbt invocation it was built from. If they disagree, this pack describes something the target does not contain, and the correct response is to refuse every question rather than to answer from a stale description.
 
-Built from dbt invocation `2cae8781-2a97-4d56-bef3-8d3154c6cd6f` (1.12.0, adapter duckdb), manifest generated 2026-08-11T01:05:30.949840Z.
+Built from dbt invocation `53450eca-97c0-4541-98b0-30fa0dc51db7` (1.12.0, adapter duckdb), manifest generated 2026-08-15T17:09:56.243164Z.
 
 | model | schema hash | rows |
 |---|---|---|
 | stg_datasf__analysis_neighborhoods | 233f8a6cd6a92ff4 | 41 |
-| stg_spatial__point_geography | f4790438b00b7701 | 533,537 |
-| stg_datasf__business_locations | 5b5bda14160ccc7a | 365,123 |
+| stg_spatial__point_geography | f4790438b00b7701 | 547,347 |
+| stg_datasf__business_locations | 5b5bda14160ccc7a | 365,400 |
 | stg_spatial__boundary | ad3aa3bb34efeb82 | 733 |
 | stg_spatial__h3_population | 14cca39c4696c0e5 | 39,301 |
 | stg_spatial__polygon_h3 | fbfb55e7f5a806da | 84,296 |
 | dim_neighborhood | d6ab3c72cd7f141e | 41 |
 | stg_datasf__supervisor_districts | 59fdaddbe6095f59 | 11 |
 | dim_supervisor_district | 58c1e954a3a26872 | 11 |
-| stg_datasf__311_cases | ceb94bbffcee8a90 | 128,062 |
-| stg_datasf__building_permits | ebaffc82217966e2 | 38,138 |
-| int_point_activity | 1f8104335f958779 | 530,619 |
-| mart_activity_by_h3 | 0e29db73e198cd99 | 143,357 |
-| mart_activity_by_neighborhood | c206f557c69a5990 | 41,751 |
+| stg_datasf__311_cases | ceb94bbffcee8a90 | 141,060 |
+| stg_datasf__building_permits | ebaffc82217966e2 | 38,673 |
+| int_point_activity | 1f8104335f958779 | 544,417 |
+| mart_activity_by_h3 | 0e29db73e198cd99 | 144,049 |
+| mart_activity_by_neighborhood | c206f557c69a5990 | 41,965 |
 | stg_datasf__film_locations | 62a8ae1c5c808081 | 2,214 |
 | mart_film_locations | c65a9053b2458bb4 | 2,214 |
 | mart_pipeline_freshness | 6552dcb2fdafb99d | 7 |

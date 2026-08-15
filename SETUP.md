@@ -75,11 +75,13 @@ the set of choices that keep this project inside the always-free tier.
 - **Bucket settings that keep it free.** A single region rather than
   multi-region `US`, soft delete cleared, versioning off, uniform bucket-level
   access on, public access prevention on.
-- **IAM, the narrowest that works.** `roles/storage.objectAdmin` at the bucket,
+- **IAM, the narrowest that works.** `roles/storage.objectUser` at the bucket,
   and `bigquery.user` plus `bigquery.dataEditor` at the project. Not
-  `bigquery.admin`. Note that `objectAdmin` deliberately excludes
-  `storage.buckets.get`, so `client.get_bucket()` returns 403 while every
-  object read and write succeeds. That is correct, not a misconfiguration.
+  `bigquery.admin`, and not `storage.objectAdmin`: the pipeline only lists,
+  reads, writes and deletes objects, and never sets object IAM. Note the role
+  excludes `storage.buckets.get`, so `client.get_bucket()` returns 403 while
+  every object operation succeeds. That is why `publish/export.py` calls
+  `client.bucket()` instead, and is correct rather than a misconfiguration.
 - **Verify with a probe** that uploads and deletes one object as the service
   account. `gcloud auth activate-service-account` switches your active account
   globally until you switch back. Impersonating instead of using a key needs
