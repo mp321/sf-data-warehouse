@@ -8,7 +8,7 @@ related: [plan-1-duckdb-parquet, adr-1-warehouse-targets, adr-4-raw-zone-layout,
 
 ## Goal
 
-The Parquet raw zone lives in GCS and survives losing this machine. BigQuery
+The Parquet raw zone lives in GCS and survives losing local copy. BigQuery
 reads it through external tables rather than holding a copy, so BigQuery
 storage is marts only. `dbt build --target bigquery` has actually been
 executed, and `stg_datasf__311_cases` has been compared row for row against
@@ -66,7 +66,7 @@ replace-on-load rewrite entirely.
    default for 7 days and keeps billing for deleted objects, and object
    versioning. Both matter here because `--full-refresh` swaps whole trees and
    `make publish` rewrites every mart directory. Done 2026-07-31:
-   `gs://sf-data-bucket-mp`.
+   `gs://<bucket>`.
 3. **Prove BigQuery before changing it.** Change no scope and no code first:
    run `make load-bigquery` then `make build-bigquery` against the local zone
    as it stands. Capture an order-independent content hash of
@@ -115,14 +115,14 @@ replace-on-load rewrite entirely.
    were not snapshotted. `raw_datasf` still holds materialized raw tables, and
    emptying it of those is step 7, not this step.
    **Unblocked 2026-08-01.** `roles/storage.objectAdmin` was granted to
-   `sf-dw-pipeline@` and every object read and write works. Note the grant looks
+   the pipeline service account and every object read and write works. Note the grant looks
    like it failed if you test it wrong: objectAdmin deliberately does not include
    `storage.buckets.get`, so `client.get_bucket()` still returns 403 while
    `client.bucket()` plus object operations succeed. `publish/export.py` already
    used the latter. The command that granted it, for the record:
 
-       gcloud storage buckets add-iam-policy-binding gs://sf-data-bucket-mp \
-         --member=serviceAccount:sf-dw-pipeline@sf-data-warehouse.iam.gserviceaccount.com \
+       gcloud storage buckets add-iam-policy-binding gs://<bucket> \
+         --member=serviceAccount:<sa-name>@<project-id>.iam.gserviceaccount.com \
          --role=roles/storage.objectAdmin
 
    Steps 6 and 8 below are the two that remain.
@@ -329,10 +329,3 @@ replace-on-load rewrite entirely.
   move with the zone, and `read_json` over `gs://` reads all 19 of them
   correctly. They are also the reason external table URIs need `*.parquet`
   rather than `*`, since they sit inside the table directory.
-- Does anything reconcile the run manifests against the data? Carried forward
-  from PLAN-1 and still true: nothing does. **This plan is done and this
-  question is not, so it is now homeless rather than carried.** It has survived
-  two plans by being appended to the next one, and PLAN-5 has no step for it.
-  Either give it a step in PLAN-5 or accept it as a known gap in writing; do not
-  append it to PLAN-6, which would be the third time. Listed with the other
-  unowned PLAN-4 residue in `docs/dev-notes/2026-08-03.md`.

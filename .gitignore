@@ -77,4 +77,9 @@ Thumbs.db
 .idea/
 .vscode/
 *.swp
+
+# ---------------------------------------------------------------------------
+# personal working notes, deliberately not part of the project record. The
+# project's own record is docs/decisions/, docs/plans/ and docs/dev-notes/.
+# ---------------------------------------------------------------------------
 USER-NOTES.md

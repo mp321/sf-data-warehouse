@@ -153,7 +153,7 @@ one Parquet file, and verified back to its original content hash.
 directory.** `../data/sf.duckdb` is right when dbt runs from `dbt/`, which is
 what the Makefile does, and wrong from anywhere else. sqlfluff runs the dbt
 templater from the repo root and was trying to open
-`/Users/mp/projects/data/sf.duckdb`, a sibling of the repository, and crashing
+`<repo-parent>/data/sf.duckdb`, a sibling of the repository, and crashing
 with a raw `IOException` rather than anything mentioning configuration. The
 Makefile and CI now export an absolute `DUCKDB_PATH`.
 
@@ -436,8 +436,8 @@ PLAN-1 step 4 is closed after being open since the plan was written.
   only holds 2024 onward. That was a human decision taken with the tradeoff
   stated. `raw_datasf` still holds materialized raw tables; emptying it is
   step 7.
-- **The service account cannot see the bucket.** `gs://sf-data-bucket-mp` was
-  created under a human identity and never shared with `sf-dw-pipeline@`, which
+- **The service account cannot see the bucket.** `gs://<bucket>` was
+  created under a human identity and never shared with the pipeline service account, which
   gets 403 on `storage.buckets.get`. Steps 5 to 9 are all blocked on one
   `add-iam-policy-binding`, recorded in the plan.
 
@@ -1067,7 +1067,7 @@ native table anyone creates in that dataset, which is worth knowing and is not
 worth a change now.
 
 **Item 5 has been fixed by someone since the note above was written.**
-`DERIVED_ZONE_URI` is now in `.env` as `gs://sf-data-bucket-mp/derived`, so a
+`DERIVED_ZONE_URI` is now in `.env` as `gs://<bucket>/derived`, so a
 sourced shell no longer configures a remote raw zone against a local derived
 one. Not this session's work; recorded because the list above says otherwise.
 

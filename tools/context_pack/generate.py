@@ -28,10 +28,10 @@ examples, then the markers on undocumented columns, then profile statistics,
 then low-signal columns, and then it fails. **A pack missing a refusal is worse
 than no pack, because it reads complete.**
 
-**Only the duckdb target is implemented**, which is the one that needs no
-credentials and that CI can therefore gate on. `pack_target.py` declares the
-model set, freshness source and schema-hash policy of all three so the prose
-validator can already reason about them.
+**Two targets are generated: `duckdb` and `published`.** Neither needs
+credentials, which is what lets CI check both. `bigquery` is declared in
+`pack_target.py` so the prose validator can reason about its model set, and
+`open_target` raises for it; ADR-15 is why it is not generated.
 
 The sibling modules here are prefixed `pack_` for the reason ruff.toml gives
 about `ingestion/datasets.py`: this directory goes on `sys.path` when the script
@@ -187,8 +187,14 @@ def build_build_block(target, manifest: dict, sources: dict, variables: dict) ->
         for name, spec in sources.items()
     ]
     if target.name == "duckdb":
+        # Repo-relative on purpose. This block is committed, so an absolute path
+        # would publish the generating machine's home directory into the pack.
         databases = target.execute("pragma database_list")
-        block["warehouse_path"] = str(databases[0][2])
+        path = Path(str(databases[0][2]))
+        try:
+            block["warehouse_path"] = str(path.relative_to(REPO_ROOT))
+        except ValueError:
+            block["warehouse_path"] = path.name
     return block
 
 

@@ -6,12 +6,6 @@ wins and the other should be corrected.
 
 ## Working agreement (applies to every session)
 
-- **Never run `git commit`, `git push`, `git merge`, `git rebase`, `git reset`
-  or anything else that writes to git history or a remote. Not even when asked
-  to "finish up", "ship it", or "commit this". Leave every change in the
-  working tree and say what is there.** Committing is the human's call.
-  Never stage files with `git add`. Reading git (`status`, `diff`,
-  `log`, `show`) is fine and encouraged.
 - Plans live in `docs/plans/`, decisions in `docs/decisions/`, session notes in `docs/dev-notes/`. When we agree on a plan, write it to `docs/plans/` as a
   numbered file rather than leaving it in chat. Refer to documents as `ADR-1`
   and `PLAN-2`; see `docs/README.md` for the conventions.
@@ -20,10 +14,10 @@ wins and the other should be corrected.
   an accepted ADR's decision text.
 - Plans and dev notes stay separate files. A plan is intent, a dev note is
   incident. Mixing them makes the plan unexecutable later.
-- Output style: concise, one or two sentences per point unless the nuance is
-  load bearing. No emojis, no em dashes or en dashes anywhere, including in
-  generated docs, code comments, and commit messages. Plain hyphens only.
 - End a working session by appending to `docs/dev-notes/YYYY-MM-DD.md`.
+- Never run `git commit`, `git push`, `git merge`, `git rebase`, `git reset`
+  or anything else that writes to git history or a remote. Leave every change in the
+  working tree and say what is there. Never stage files with `git add`.
 
 ## What this project is
 

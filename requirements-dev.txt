@@ -9,7 +9,7 @@
 # .pre-commit-config.yaml pinned v0.8.6, pip resolved 0.16.1, 0.16 stabilised
 # PLC0415, and CI went red on a commit that passed pre-commit locally.
 #
-# This version and the ruff rev in .pre-commit-config.yaml must match.!!
+# This version and the ruff rev in .pre-commit-config.yaml must match.
 # scripts/check-lint-pins.sh enforces it, and runs as a hook and in CI.
 # To upgrade: change both, then run `make lint` before committing.
 ruff==0.16.1

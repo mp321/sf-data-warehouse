@@ -25,7 +25,7 @@ make docs
   reader nothing the two JSON files do not. `make docs-serve` builds it on
   demand.
 
-## Two things to know before trusting them
+## Caveats
 
 They are a snapshot, not a build output: nothing regenerates them
 automatically, so they are as current as whoever last ran `make docs`. Treat a

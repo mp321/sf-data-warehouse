@@ -29,17 +29,14 @@
 | ADR-17 scheduled retention proof | superseded by ADR-18 |
 | ADR-18 the raw zone | active. Supersedes ADR-4, 14, 16 and 17 |
 
-**ADR-18 is the fifth-amendment rule firing, which is worth recording because
-the rule was written here before it was needed.** ADR-4 stated the raw zone's
-append-only rule, ADR-14 added the second exception, ADR-16 the third, and
-ADR-17 moved half of ADR-14's answer onto a schedule. That is four documents
-plus an amendment note to answer "may this file be deleted", and the note below
-said the answer to a fifth was not a sixth document but one ADR that supersedes
-the lot and restates the rule in one place. ADR-18 is that ADR, written
-2026-08-10. **The count starts again from it**: the next change to the raw zone's
-rules is an ordinary amendment of ADR-18.
+**When a rule needs a fifth amendment, consolidate instead.** Four documents
+had accumulated to answer one question, "may this file be deleted": ADR-4 set
+the raw zone's append-only rule, ADR-14 added the second exception, ADR-16 the
+third, and ADR-17 moved half of ADR-14's answer onto a schedule. ADR-18
+supersedes all four and restates the rule in one place. The next change to the
+raw zone's rules is an ordinary amendment of ADR-18.
 
-**Amended rather than superseded, and the distinction is still load bearing.**
+**Amending is not superseding, and the distinction matters.**
 ADR-10 changed one line of ADR-5, the H3 resolution list, and ADR-11 changed
 what a re-run of the spatial step recomputes; ADR-5's actual decision, that
 cells are computed in Python and stored as BIGINTs because BigQuery has no H3
@@ -55,13 +52,11 @@ paragraph says ADR-4 is otherwise the description of the zone; read that as
 pointing at ADR-18, which restates ADR-4's layout, all-STRING contract, run
 manifests and watermark.
 
-**Everything in `docs/` is one of the five kinds below.** The two files that
-were not, the 2026-07-31 outside review and `handoff-prompt.md`, were deleted on
-2026-08-07, which is the condition each of them named for its own deletion.
-There is no standing handoff document: a session that needs one writes it, and
-the session that consumes it deletes it.
+**Everything in `docs/` is one of the five kinds below.** There is no standing
+handoff document: a session that needs one writes it, and the session that
+consumes it deletes it.
 
-## The five kinds of document
+## Docs / directories used to track
 
 | Folder | Filename | What it is | Mutable? |
 |---|---|---|---|

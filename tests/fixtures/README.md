@@ -23,7 +23,7 @@ in git, and need an exception to the `*.parquet` ignore rule. Starting from
 JSON means CI builds the Parquet zone the same way production does, and a
 change to the fixtures is reviewable in a diff.
 
-## Three invariants, all learned the hard way
+## Three rules these files have to satisfy
 
 **Every column the staging models reference must appear somewhere in the
 file.** Socrata omits null fields per record rather than sending nulls, so a
@@ -35,16 +35,11 @@ but it makes a naively sampled fixture useless. `make_fixtures.py` therefore
 appends one synthetic coverage record carrying every field the dataset
 publishes, with values borrowed from real rows.
 
-That record is built from the dataset's metadata, not from the scan, and the
-difference matters. The scan is ordered by `:updated_at`, so a column only
-populated on recently-touched rows is invisible in the oldest 400. The worked
-example outlived the dataset and is kept because the failure mode is a
-property of Socrata rather than of that dataset: not one of the 400 oldest
-`street_trees` rows carried `latitude`, `longitude`, `location`, `xcoord` or
-`ycoord`, so the first fixture built from a scan alone produced a dataset with
-no coordinates at all and broke `make spatial`. ADR-10 later cut street trees.
-The generator reads the column list from `/api/views/<id>.json` and fetches a
-real value for anything the scan missed.
+That record is built from the dataset's metadata rather than from the scan,
+which matters because the scan is ordered by `:updated_at`: a column populated
+only on recently-touched rows is invisible in the oldest 400. So the generator
+reads the column list from `/api/views/<id>.json` and fetches a real value for
+anything the scan missed.
 
 **The fixtures must pass the tests.** Adversarial values go only on columns
 with no `not_null` test. A fixture that breaks a test to make a point stops CI
@@ -63,7 +58,7 @@ cell counts a fixture run produces are not the cell counts real data produces.
 That is the intended split. CI proves the machinery runs and the tests hold;
 the numbers quoted in ADR-6 come from `make spatial` on the real zone.
 
-## What is deliberately nasty in here
+## The awkward cases these files carry on purpose
 
 - A 311 case ingested twice, opened then closed, so deduplication has to keep
   the later version.
@@ -80,9 +75,7 @@ the numbers quoted in ADR-6 come from `make spatial` on the real zone.
   must come out `impossible`. This is what the Earth-bounds `accepted_range`
   test on latitude and longitude exists to catch.
 
-Both flat `latitude`/`longitude` datasets and both `geojson_point` datasets
-are represented, and the adversarial coordinate cases are split across the
-two shapes on purpose: the unparseable pair sits on `311_cases`, which is
-flat, and the out-of-bounds and impossible pair on `business_locations`,
-which is GeoJSON. ADR-10 checked this before cutting `street_trees`, which
-was flat and carried no coordinate case of its own.
+Both coordinate shapes are represented, and the awkward cases are split across
+them on purpose: the unparseable pair sits on `311_cases`, which carries flat
+`latitude` and `longitude`, and the out-of-bounds and impossible pair on
+`business_locations`, which carries a `geojson_point`.
