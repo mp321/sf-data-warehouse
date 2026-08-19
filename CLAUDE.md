@@ -64,8 +64,7 @@ Read this before assuming the ADRs describe running code.
 | Scheduled ingest | `ingest.yml`, daily at 09:17 UTC, reads and writes the bucket. Cron-triggered runs are firing: 2026-08-08 and 2026-08-09 each wrote a full `business_locations` snapshot to the zone | same | PLAN-4 step 8 |
 | Scheduled retention | `retention.yml`, Mondays 11:29 UTC, runs the prune's proof and fails when the raw zone exceeds 1 GB. Reports only, never `--apply`. First fired 2026-08-10, exit 0, reporting 149.0 MB prunable; the apply that followed was a human's | same | ADR-18 |
 
-The rows that used to be the embarrassing ones are closed. `dbt build
---target bigquery` ran for the first time on 2026-07-31 and found four
+ `dbt build --target bigquery` ran for the first time on 2026-07-31 and found four
 cross-engine defects, three of which `dbt compile --target bigquery` cannot
 catch because compiling never asks the warehouse whether a type exists. All four
 are fixed, both targets build green, and `scripts/parity-check.py` compares the
@@ -75,8 +74,7 @@ point staging models row for row on demand. The zones moved to GCS on
 when `ingest.yml` went green on a runner.
 
 A fifth cross-engine defect landed on 2026-08-05 and is worth knowing about
-before touching `load.py` or a staging model's column list, because it is the
-class of thing `make check` structurally cannot see. BigQuery external tables
+before touching `load.py` or a staging model's column list, because it is the thing `make check` structurally cannot see. BigQuery external tables
 were built with `autodetect`, which infers one schema for a whole table from a
 sampled file, while DuckDB reads the raw zone with `union_by_name`. Socrata
 omits null fields per record, so the files in one partition genuinely differ,
