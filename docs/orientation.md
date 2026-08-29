@@ -236,7 +236,7 @@ denominators instead (`:248`). No historical data before 2024
 
 ---
 
-## 5. Where documents disagree
+## 5. Where documents do not align
 
 The ADR is immutable and stays as written. These are the mechanical
 differences.
@@ -247,14 +247,6 @@ differences.
 - `CLAUDE.md` says three of the four first-build defects are uncatchable by
   compiling. The three counts type errors; defect four is also uncatchable,
   because both engines accept the SQL and return different numbers.
-- ADR-13 says only the `duckdb` pack exists. The published pack landed on
-  2026-08-07 and ADR-15 closed the third. Two is the intended number.
-- ADR-1 says billing removes the table expiry at zero cost. `raw_datasf`
-  carried `default_table_expiration_ms` as a dataset property that outlived the
-  sandbox and had to be cleared by hand.
 - ADR-6 says boundary sets are a closed list in `datasets.py`. That file is now
   `ingestion/dataset_registry.py` and the registry is at
   `dbt/dbt_project.yml:134`.
-- ADR-9 says writes stay local. They followed the zones to GCS on 2026-08-01.
-- `stg_spatial__point_geography.sql:8` says three H3 resolutions. It carries
-  two.
