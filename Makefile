@@ -72,7 +72,7 @@ export DUCKDB_PATH := $(CURDIR)/$(DATA_DIR)/sf.duckdb
 .PHONY: help setup all ingest spatial load load-bigquery build build-bigquery \
         publish test test-python docs docs-serve lint fmt leak-check compile-duckdb \
         compile-bigquery ci-build rebuild clean clean-warehouse clean-derived check check-derived \
-        check-runs parity-check parity-columns context-pack context-pack-check
+        check-runs check-snapshots parity-check parity-columns context-pack context-pack-check
 
 # `make build` refuses to run against a derived zone that is behind the raw
 # zone. Set DERIVED_CHECK=0 to build anyway, which is worth doing only when you
@@ -159,6 +159,28 @@ check-derived: ## Check data/derived against data/raw and the code. Nonzero if n
 # credentials and no bucket. PLAN-7 step 1.
 check-runs: ## Check the raw zone's run manifests against the Parquet they describe.
 	@$(PY) ingestion/check_runs.py --strict
+
+# The raw zone's other question, and it is about the data rather than the
+# bookkeeping: is each `refresh: snapshot` partition as complete as the one
+# before it? A run killed mid-fetch writes a partition that reconciles against
+# its own manifest, because `_flush` counts as it writes, so `check-runs`
+# passes on it by design. What gives it away is the distinct grain_key count
+# falling off a cliff against the previous partition. One verdict, SHORT
+# (exit 3). ADR-19 step 3.
+#
+# LIKE check-runs AND UNLIKE check-derived, this is NOT a prerequisite of
+# `make build`, and the reason is the same test: what does the failure do to a
+# build? Today, nothing. Staging unions every partition and deduplicates by
+# grain_key to the newest _socrata_updated_at, so a short partition adds fewer
+# keys to the union and the complete partitions before it still supply the
+# rest; every model returns what it returned before. That changes with ADR-19
+# step 4, which filters snapshot staging to the grain_keys in the newest
+# ingest_date: a short newest partition would then truncate every snapshot
+# model silently, moving row counts in exactly the shape step 4 predicts as its
+# own expected one-time movement. ADDING THIS TO BUILD_PREREQS IS STEP 4'S
+# FIRST LINE, not an optional part of it.
+check-snapshots: ## Is each snapshot partition as complete as the one before it?
+	@$(PY) ingestion/check_snapshots.py --strict
 
 # The one thing in this project that deletes part of the record, and the second
 # exception to ADR-4's append-only rule after `ingest.py --full-refresh`.
@@ -440,6 +462,7 @@ ci-build: ## Full pipeline from fixtures, isolated. No network, no creds.
 	mkdir -p $(CI_RAW)
 	RAW_ZONE_DIR=$(CI_RAW) $(PY) ingestion/ingest.py --all --fixtures tests/fixtures/socrata
 	RAW_ZONE_DIR=$(CI_RAW) $(PY) ingestion/check_runs.py --strict
+	RAW_ZONE_DIR=$(CI_RAW) $(PY) ingestion/check_snapshots.py --strict
 	RAW_ZONE_DIR=$(CI_RAW) DERIVED_ZONE_DIR=$(CI_DERIVED) $(PY) ingestion/spatial.py --all
 	RAW_ZONE_DIR=$(CI_RAW) DERIVED_ZONE_DIR=$(CI_DERIVED) DUCKDB_PATH=$(CI_DB) \
 		$(PY) ingestion/load.py --all --target duckdb

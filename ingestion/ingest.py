@@ -1,8 +1,13 @@
 """Incremental ingestion from DataSF (Socrata) into the Parquet raw zone.
 
 How it works, in plain terms:
-  1. Look in <zone>/<table>/ for the newest _socrata_updated_at we already
-     have. If the zone is empty, fall back to the dataset's start_date.
+  1. Pick the watermark. A `refresh: delta` dataset resumes: look in
+     <zone>/<table>/ for the newest _socrata_updated_at we already have, and
+     fall back to the dataset's start_date if the zone is empty. A
+     `refresh: snapshot` dataset does not resume and always fetches from its
+     start_date, so that the partition it writes holds the whole dataset by
+     construction rather than because upstream happened to bump every row
+     (ADR-19). See resolve_watermark.
   2. Ask the Socrata API for rows updated after that watermark, ordered by
      update time, 5000 rows per page.
   3. Land every value as a STRING in a Parquet file under an
@@ -216,7 +221,32 @@ def _pages_for(name: str, cfg: dict, args: argparse.Namespace, watermark: str, a
 
 
 def resolve_watermark(cfg: dict, args: argparse.Namespace) -> str:
-    """--since beats --full-refresh beats what is already in the zone.
+    """--since beats --full-refresh beats `refresh: snapshot` beats the zone.
+
+    **A snapshot dataset does not resume from the zone, on purpose (ADR-19).**
+    `refresh: snapshot` is the registry saying upstream republishes this
+    dataset wholesale, and three things downstream now rest on a snapshot
+    partition holding the whole dataset rather than part of it: `prune_raw.py`
+    proves one partition against another, `check_snapshots.py` compares a
+    partition's grain against its predecessor's, and the staging models filter
+    to the newest `ingest_date`. Fetching from `start_date` is what makes a
+    complete partition true by construction. Until this branch existed it was
+    true by luck: the city bumps `:updated_at` across the whole current-state
+    registry on every bulk refresh, so a watermark fetch happened to return
+    every row, and nothing here required that it keep happening.
+
+    So this costs nothing today for exactly the reason it was unsafe today. It
+    changes the request and not the result: the watermark already matches every
+    row, and the day it stops doing so is the day a partition looks complete
+    from the outside and is not. The two failures are not the same size. A
+    snapshot refetched in full is bytes, which the prune exists to reclaim; a
+    snapshot quietly fetched in part is a partition the prune may prove itself
+    against and a staging model may filter to.
+
+    `--since` still wins, and on a snapshot that means a deliberately partial
+    partition. It is left reachable because narrowing a fetch by hand is a
+    legitimate thing to want, and it is `check_snapshots.py` rather than this
+    function that notices the partition it produced is short.
 
     The last branch is the one to be careful with. An empty zone and a zone
     pointed somewhere that holds nothing are the same answer here, None, and
@@ -232,6 +262,8 @@ def resolve_watermark(cfg: dict, args: argparse.Namespace) -> str:
     if args.since:
         return args.since
     if args.full_refresh:
+        return cfg["start_date"]
+    if cfg["refresh"] == "snapshot":
         return cfg["start_date"]
     watermark = raw_zone.read_watermark(cfg["table"], args.raw_root)
     if watermark is None:
@@ -259,7 +291,22 @@ def ingest_one(name: str, args: argparse.Namespace, app_token: str) -> dict:
     # neither the old data nor the new.
     write_table = f"{table}.rebuild-{run_id}" if args.full_refresh else table
 
-    mode = "fixtures" if args.fixtures else ("full-refresh" if args.full_refresh else "incremental")
+    # `mode` lands in the manifest and reaches mart_pipeline_freshness as
+    # `last_run_mode`, so it has to name what the run did. A `refresh:
+    # snapshot` dataset now fetches from `start_date` every run (ADR-19),
+    # which is not an incremental fetch and must not be recorded as one:
+    # "incremental" against a complete partition is the accident this change
+    # removed, written down. `--since` narrows a snapshot back to a window and
+    # is reported as incremental again, because the partition it writes is
+    # partial and the name should not promise otherwise.
+    if args.fixtures:
+        mode = "fixtures"
+    elif args.full_refresh:
+        mode = "full-refresh"
+    elif cfg["refresh"] == "snapshot" and not args.since:
+        mode = "snapshot"
+    else:
+        mode = "incremental"
     print(f"[{name}] {mode}: fetching rows with :updated_at > {watermark}")
 
     pages = _pages_for(name, cfg, args, watermark, app_token)

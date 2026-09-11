@@ -1,10 +1,22 @@
 ---
 status: active
 date: 2026-08-10
-related: [adr-1-warehouse-targets, adr-4-raw-zone-layout, adr-9-cloud-raw-zone, adr-10-narrowed-scope, adr-14-raw-zone-retention, adr-16-cut-datasets-leave-the-zone, adr-17-scheduled-retention-proof, plan-9-raw-zone-retention]
+related: [adr-1-warehouse-targets, adr-4-raw-zone-layout, adr-9-cloud-raw-zone, adr-10-narrowed-scope, adr-14-raw-zone-retention, adr-16-cut-datasets-leave-the-zone, adr-17-scheduled-retention-proof, adr-19-withdrawn-registrations, plan-9-raw-zone-retention]
 ---
 
 # ADR-18. The raw zone: what it is, and everything that may delete from it
+
+> **Amended by ADR-19 on 2026-09-07.** One line of the Revisit clause is
+> reversed. "A snapshot dataset starts failing its proof regularly ... means
+> the upstream stopped republishing wholesale and `refresh` has become a lie"
+> names a second-limb failure, and the failure that actually arrived is a
+> first-limb one: the city withdraws records from `business_locations`, so a
+> later partition is complete and is not a superset of an earlier one.
+> `refresh: snapshot` is still true and the registry needs no fix. The proof
+> below is unchanged, is still correct, and now refuses permanently rather
+> than until upstream recovers. Section 8's acceptance test was run in its
+> clean form on 2026-09-07 as this ADR asks, and held: 0 of 19 models moved.
+> Everything else here stands.
 
 Supersedes ADR-4, ADR-14, ADR-16 and ADR-17. Those four are the same
 conversation held five times, and this is the one document to read instead of
