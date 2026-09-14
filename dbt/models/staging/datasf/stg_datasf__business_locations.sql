@@ -33,6 +33,7 @@ with source as (
 
 ),
 
+
 deduplicated as (
 
     select *
@@ -43,6 +44,19 @@ deduplicated as (
             {{ x_cast('_socrata_updated_at', 'timestamp') }} desc,
             {{ x_cast('_ingested_at', 'timestamp') }} desc
     ) = 1
+
+),
+
+-- ADR-19: the newest ingest_date IS the dataset. The city withdraws
+-- registrations with no tombstone row, so a uniqueid absent from the
+-- newest partition has left the registry rather than merely gone
+-- un-updated. This is the model that forced the rule; the macro carries
+-- the argument and the one reading it deliberately does not take.
+current_snapshot as (
+
+    {{ restrict_to_newest_snapshot(
+        'deduplicated', 'uniqueid', source('raw_datasf', 'raw_business_locations')
+    ) }}
 
 ),
 
@@ -99,7 +113,7 @@ renamed as (
         {{ x_safe_cast('_socrata_updated_at', 'timestamp') }} as socrata_updated_at,
         {{ x_safe_cast('_ingested_at', 'timestamp') }} as ingested_at
 
-    from deduplicated
+    from current_snapshot
 
 ),
 

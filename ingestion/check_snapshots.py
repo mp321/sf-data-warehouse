@@ -49,33 +49,37 @@ and two orders below a mid-fetch death, which loses whole multiples of
 `ROWS_PER_FILE`. The gap between the two is wide enough that the exact
 constant is not load bearing; what is load bearing is that it sits inside it.
 
-**It does not gate `make build`, and that is a decision rather than an
-oversight (ADR-19 step 3).** `check_derived.py` gates the build because what
-it catches makes a build wrong: rows reach staging with null geography.
-`check_runs.py` gates nothing because what it catches makes a report wrong and
-a build correct. This one is `check_runs.py`'s case *today* and
-`check_derived.py`'s case *after ADR-19 step 4*, and it ships as the former
-because step 4 has not landed:
+**It gates `make build`, as of PLAN-10 step 2, and it did not when it
+shipped.** `check_derived.py` gates the build because what it catches makes a
+build wrong: rows reach staging with null geography. `check_runs.py` gates
+nothing because what it catches makes a report wrong and a build correct. This
+one is `check_runs.py`'s case *before ADR-19 step 4* and `check_derived.py`'s
+case *after* it, and the gate went in while the first sentence was still the
+true one:
 
-  - Today staging unions every partition and deduplicates by `grain_key` to
-    the newest `_socrata_updated_at`. A short partition contributes fewer keys
-    to that union and the older complete partitions still supply the rest, so
-    every model returns exactly what it returned before. The build is correct
-    and the zone is the thing that is wrong. Gating on it would wedge the
-    pipeline on a condition with no consequence yet, and a gate that fires
-    without consequence is the gate someone switches off, which is the
-    argument CLAUDE.md already makes about row counts in the context pack.
+  - Today staging still unions every partition and deduplicates by `grain_key`
+    to the newest `_socrata_updated_at`. A short partition contributes fewer
+    keys to that union and the older complete partitions still supply the
+    rest, so every model returns exactly what it returned before. The build is
+    correct and the zone is the thing that is wrong.
   - After step 4 the newest `ingest_date` decides which keys a snapshot
-    staging model returns at all. A short newest partition would then silently
-    truncate every snapshot model, and the row counts would move in exactly
-    the shape step 4 predicts as its expected one-time movement, which is the
-    one failure that would be indistinguishable from success. **Adding
-    `check-snapshots` to `BUILD_PREREQS` is therefore step 4's first line and
-    not an optional part of it.**
+    staging model returns at all. A short newest partition then silently
+    truncates every snapshot model, and the row counts move in exactly the
+    shape step 4 predicts as its expected one-time movement, which is the one
+    failure that would be indistinguishable from success.
 
-Until then it runs where `check_runs.py` runs: `make check-snapshots` by hand,
-and inside `make ci-build` against the fixture zone, credential-free, so it is
-a PR gate on the code even while it gates no build.
+**So the gate is deliberately a day early rather than a day late.** The cost
+of the early day is a refusal with no consequence behind it yet, which is the
+state CLAUDE.md warns about for a check that fires without teeth; the cost of
+the late day is the failure above landing in the same release as the change
+that makes it invisible. ADR-19's decision is an order, and this is its first
+line: `make build SNAPSHOT_CHECK=0` is the escape hatch, separate from
+`DERIVED_CHECK=0` so that neither switch turns off the other.
+
+It runs in three places, all credential-free on the local zone:
+`make check-snapshots` by hand, as a `make build` prerequisite, and inside
+`make ci-build`, which also proves on a fixture zone that a short partition
+stops a build and that `check_runs.py` passes on that same zone.
 
 Reads the zone and not `raw_ingest_runs`, for `check_runs.py`'s reason: the
 warehouse copy assumes `load.py` did its job, and a check of the zone that
