@@ -1,0 +1,62 @@
+version: 2
+
+# Consumers of the marts (PLAN-10 step 6). Each depends_on list is what that
+# consumer reads, and tests/test_exposures.py holds it to PUBLISHED_MARTS and
+# the committed pack JSON. URLs point at the repo, never the bucket: leak-check
+# scans for credentials, not bucket names.
+
+exposures:
+  - name: published_export
+    label: Published Parquet export
+    type: application
+    maturity: medium
+    url: https://github.com/mp321/sf-data-warehouse/blob/main/publish/export.py
+    description: >
+      `make publish` writes one Parquet file per mart plus `manifest.json`
+      (ADR-8, ADR-12). Run by hand; not scheduled.
+    depends_on:
+      - ref('mart_activity_by_h3')
+      - ref('mart_activity_by_neighborhood')
+      - ref('mart_film_locations')
+      - ref('dim_neighborhood')
+      - ref('dim_supervisor_district')
+      - ref('mart_pipeline_freshness')
+    owner:
+      name: mp321
+
+  - name: context_pack_duckdb
+    label: Context pack (DuckDB warehouse)
+    type: application
+    maturity: medium
+    url: https://github.com/mp321/sf-data-warehouse/blob/main/context-pack/context_pack.duckdb.md
+    description: >
+      LLM context pack generated from the DuckDB warehouse (ADR-13). It also
+      describes staging and intermediate models; only the marts are declared
+      here, since those are what a reader queries.
+    depends_on:
+      - ref('mart_activity_by_h3')
+      - ref('mart_activity_by_neighborhood')
+      - ref('mart_film_locations')
+      - ref('dim_neighborhood')
+      - ref('dim_supervisor_district')
+      - ref('mart_pipeline_freshness')
+    owner:
+      name: mp321
+
+  - name: context_pack_published
+    label: Context pack (published export)
+    type: application
+    maturity: medium
+    url: https://github.com/mp321/sf-data-warehouse/blob/main/context-pack/context_pack.published.md
+    description: >
+      LLM context pack generated from the published export, not the warehouse
+      (PLAN-8). Reads the same six marts through their Parquet files.
+    depends_on:
+      - ref('mart_activity_by_h3')
+      - ref('mart_activity_by_neighborhood')
+      - ref('mart_film_locations')
+      - ref('dim_neighborhood')
+      - ref('dim_supervisor_district')
+      - ref('mart_pipeline_freshness')
+    owner:
+      name: mp321

@@ -21,6 +21,7 @@ with source as (
 
 ),
 
+
 deduplicated as (
 
     select *
@@ -34,10 +35,23 @@ deduplicated as (
 
 ),
 
+-- ADR-19: the newest ingest_date IS the dataset. A no-op today, because
+-- the zone holds one partition of this dataset, and NOT dead code: it
+-- stops being a no-op the first time this dataset is ingested twice. The
+-- rule is applied to every refresh: snapshot model rather than only to
+-- the one that forced it, which is business_locations.
+current_snapshot as (
+
+    {{ restrict_to_newest_snapshot(
+        'deduplicated', 'sup_dist_num', source('raw_datasf', 'raw_supervisor_districts')
+    ) }}
+
+),
+
 renamed as (
 
-    -- Published as "11.0", so this goes through x_safe_int rather than a
-    -- direct int cast, which would null every value. Same trap as
+-- Published as "11.0", so this goes through x_safe_int rather than a
+-- direct int cast, which would null every value. Same trap as
     -- supervisor_district on 311.
     select
         {{ x_safe_int('sup_dist_num') }} as supervisor_district,
@@ -48,7 +62,7 @@ renamed as (
         {{ x_safe_cast('_socrata_updated_at', 'timestamp') }} as socrata_updated_at,
         {{ x_safe_cast('_ingested_at', 'timestamp') }} as ingested_at
 
-    from deduplicated
+    from current_snapshot
 
 )
 

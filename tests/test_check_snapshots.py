@@ -13,8 +13,14 @@ across the partitions of 2026-08-14 to 2026-09-05, growing by tens of keys a
 day and shrinking by 6 to 22 when the city withdrew records.
 """
 
+import subprocess
+from pathlib import Path
+
 import check_snapshots
 
+import raw_zone
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
 TOLERANCE = check_snapshots.SHORTFALL_TOLERANCE
 
 
@@ -150,3 +156,124 @@ def test_the_default_is_every_snapshot_dataset():
     assert "business_locations" in chosen
     assert "311_cases" not in chosen
     assert all(cfg["refresh"] == "snapshot" for cfg in chosen.values())
+
+
+# ---------------------------------------------------------------------------
+# The exit code, over a real zone
+#
+# Everything above tests `shortfalls`, which is the decision. These test the
+# exit code, which is the contract `make build` now rests on (PLAN-10 step 2,
+# ADR-19 step 4's first line). The two can disagree: a guard that reaches the
+# right verdict and returns 0 anyway leaves the build unrefused, and no test
+# above would notice. They build a real Parquet zone in `tmp_path` through
+# `raw_zone.write_batch` for test_prune_raw.py's reason, that the thing under
+# test is a query over the zone layout and a mock of that layout would be a
+# second copy of the assumption being checked.
+# ---------------------------------------------------------------------------
+
+TABLE = "raw_business_locations"
+DATASET = "business_locations"
+GRAIN = "uniqueid"
+
+
+def partition_keys(count: int, start: int = 0) -> list[str]:
+    return [f"key-{n:06d}" for n in range(start, start + count)]
+
+
+def write_partition(root, partition: str, keys: list[str], *, seq: int = 0, run: str = "") -> None:
+    run_id = f"{partition.replace('-', '')}T0900{seq:02d}Z{run}"
+    rows = [
+        {
+            GRAIN: key,
+            raw_zone.WATERMARK_COLUMN: f"{partition}T00:00:00.000Z",
+            raw_zone.RUN_ID_COLUMN: run_id,
+        }
+        for key in keys
+    ]
+    raw_zone.write_batch(TABLE, rows, run_id, seq, ingest_date=partition, root=root)
+
+
+def test_a_zone_holding_a_short_partition_exits_short(tmp_path):
+    write_partition(tmp_path, "2026-09-05", partition_keys(200))
+    write_partition(tmp_path, "2026-09-06", partition_keys(40))
+    assert check_snapshots.check(tmp_path, [DATASET], TOLERANCE) == check_snapshots.SHORT_EXIT
+
+
+def test_a_zone_whose_partitions_each_hold_the_dataset_exits_zero(tmp_path):
+    write_partition(tmp_path, "2026-09-05", partition_keys(200))
+    write_partition(tmp_path, "2026-09-06", partition_keys(201))
+    assert check_snapshots.check(tmp_path, [DATASET], TOLERANCE) == 0
+
+
+def test_a_dataset_with_nothing_in_the_zone_is_skipped_rather_than_short(tmp_path):
+    """An empty zone must not refuse a build. SKIP is a verdict, not a shortfall."""
+    assert check_snapshots.check(tmp_path, [DATASET], TOLERANCE) == 0
+
+
+def test_two_runs_on_one_day_are_one_partition_and_not_a_collapse(tmp_path):
+    """ADR-19's 2026-08-15, end to end rather than as a count.
+
+    Two runs on one day write two files into one partition and double its
+    rows while its distinct key count is unchanged. A row-based guard would
+    read 200, then 400, then 201 and call the third partition a 50% collapse,
+    refusing every build until someone raised the tolerance. The pure-function
+    tests above cannot show this, because they are handed key counts.
+    """
+    write_partition(tmp_path, "2026-09-05", partition_keys(200))
+    write_partition(tmp_path, "2026-09-06", partition_keys(200), seq=0)
+    write_partition(tmp_path, "2026-09-06", partition_keys(200), seq=1)
+    write_partition(tmp_path, "2026-09-07", partition_keys(201))
+    assert check_snapshots.check(tmp_path, [DATASET], TOLERANCE) == 0
+
+
+# ---------------------------------------------------------------------------
+# What the guard now gates
+#
+# PLAN-10 step 2. `check_derived.py` and this one are the two checks that can
+# refuse a build, and the difference between a check that gates and one that
+# reports is a single entry in a Makefile variable. Nothing else in the suite
+# can see that entry, so removing it would be silent: every test above would
+# still pass while a short partition built clean. `make --dry-run` asks make
+# what it would run without running any of it, which is the cheapest honest
+# question available here.
+# ---------------------------------------------------------------------------
+
+
+def dry_run(target: str, *overrides: str) -> str:
+    """What `make <target>` would run, without running it."""
+    done = subprocess.run(
+        ["make", "--dry-run", "--no-print-directory", target, *overrides],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return done.stdout
+
+
+def test_make_build_runs_the_completeness_guard_before_dbt():
+    recipe = dry_run("build")
+    assert "check_snapshots.py --strict" in recipe
+    assert recipe.index("check_snapshots.py") < recipe.index("dbt build")
+
+
+def test_make_build_still_runs_the_derived_check():
+    """The guard is an addition to BUILD_PREREQS and not a replacement of it."""
+    recipe = dry_run("build")
+    assert "check_derived.py --strict" in recipe
+
+
+def test_each_gate_has_its_own_escape_hatch():
+    """Turning one off must not turn the other off.
+
+    One variable for both would mean `DERIVED_CHECK=0`, which CLAUDE.md
+    documents for building against a knowingly stale derived zone, silently
+    dropped the snapshot guard as well.
+    """
+    without_snapshots = dry_run("build", "SNAPSHOT_CHECK=0")
+    assert "check_snapshots.py" not in without_snapshots
+    assert "check_derived.py --strict" in without_snapshots
+
+    without_derived = dry_run("build", "DERIVED_CHECK=0")
+    assert "check_derived.py" not in without_derived
+    assert "check_snapshots.py --strict" in without_derived

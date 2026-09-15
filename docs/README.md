@@ -4,8 +4,8 @@
 
 | Folder | What is in it |
 |---|---|
-| `decisions/` | 12 active ADRs and one draft (ADR-20), plus five superseded ones that stay: ADR-14, 16 and 17 beside ADR-18 while the consolidation is new, and ADR-2 and ADR-7 because `prose.yml` cites them and the resolver only looks here |
-| `plans/` | PLAN-10 (draft), plus a template. All nine earlier plans are done and archived |
+| `decisions/` | 12 active ADRs, plus six superseded ones that stay: ADR-14, 16 and 17 beside ADR-18 while the consolidation is new, ADR-2 and ADR-7 because `prose.yml` cites them and the resolver only looks here, and ADR-20, refused 2026-09-13 |
+| `plans/` | PLAN-10 (active), plus a template. All nine earlier plans are done and archived |
 | `specs/` | `context-pack.md`, the contract the generated pack is built against |
 | `dev-notes/` | 2026-08-09, 2026-08-10, 2026-08-25, 2026-09-07, and `ARCHIVE-2026-07.md` for everything before them |
 | `archive/` | superseded ADR-3 and ADR-4, all nine closed plans, and an index of what each was and what replaced it |
@@ -29,7 +29,7 @@
 | ADR-17 scheduled retention proof | superseded by ADR-18 |
 | ADR-18 the raw zone | active, amended by ADR-19. Supersedes ADR-4, 14, 16 and 17 |
 | ADR-19 withdrawn registrations | active. Amends ADR-18's first revisit clause |
-| ADR-20 registry history as dbt snapshot | draft, argued in PLAN-10. Not a rule until active |
+| ADR-20 registry history as dbt snapshot | superseded: refused 2026-09-13 (PLAN-10 step 4). A withdrawal ledger ADR is its successor, not yet written |
 
 **ADR-19 is the first amendment counted from ADR-18**, which is what ADR-18's
 lock-in note asks for: the fifth-amendment rule starts counting again from the

@@ -57,6 +57,10 @@ CI_RAW        := $(CI_DIR)/raw
 CI_DERIVED    := $(CI_DIR)/derived
 CI_DB         := $(CI_DIR)/sf.duckdb
 CI_PUBLISHED  := $(CI_DIR)/published
+# A second, deliberately broken zone: one snapshot partition holding a
+# fifth of the one before it. Never loaded, never built from; ci-build
+# points `make build` at it to prove the build is refused.
+CI_SHORT      := $(CI_DIR)/short-raw
 
 # dbt reads profiles.yml from here; every dbt target sets it explicitly so
 # these work regardless of what is in your shell.
@@ -74,12 +78,28 @@ export DUCKDB_PATH := $(CURDIR)/$(DATA_DIR)/sf.duckdb
         compile-bigquery ci-build rebuild clean clean-warehouse clean-derived check check-derived \
         check-runs check-snapshots parity-check parity-columns context-pack context-pack-check
 
-# `make build` refuses to run against a derived zone that is behind the raw
-# zone. Set DERIVED_CHECK=0 to build anyway, which is worth doing only when you
-# already know the geography is incomplete and are building for some other
-# reason. See ingestion/check_derived.py for what the check compares.
-DERIVED_CHECK ?= 1
-BUILD_PREREQS  := $(if $(filter-out 0,$(DERIVED_CHECK)),check-derived,)
+# `make build` refuses two states of the zones, and each refusal has its own
+# switch, because they are different mistakes to be making on purpose.
+#
+# DERIVED_CHECK=0 builds against a derived zone that is behind the raw zone or
+# was built by code that no longer exists. Worth doing only when you already
+# know the geography is incomplete and are building for some other reason. See
+# ingestion/check_derived.py for what the check compares.
+#
+# SNAPSHOT_CHECK=0 builds against a snapshot partition holding materially less
+# of its dataset than the partition before it, which is a run that died
+# mid-fetch. Added here by PLAN-10 step 2, which is ADR-19 step 4's first line;
+# the target below says why it shipped gating nothing and why that had to end
+# before the macro lands, not after.
+#
+# TWO VARIABLES AND NOT ONE. `make build DERIVED_CHECK=0` is a thing people
+# type, CLAUDE.md documents it, and it must not quietly take the other guard
+# with it. Ordered cheap first: check-derived reads a manifest, check-snapshots
+# scans every partition in the zone, which is seconds on the bucket.
+DERIVED_CHECK  ?= 1
+SNAPSHOT_CHECK ?= 1
+BUILD_PREREQS  := $(if $(filter-out 0,$(DERIVED_CHECK)),check-derived,) \
+                  $(if $(filter-out 0,$(SNAPSHOT_CHECK)),check-snapshots,)
 
 help: ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -168,17 +188,24 @@ check-runs: ## Check the raw zone's run manifests against the Parquet they descr
 # falling off a cliff against the previous partition. One verdict, SHORT
 # (exit 3). ADR-19 step 3.
 #
-# LIKE check-runs AND UNLIKE check-derived, this is NOT a prerequisite of
-# `make build`, and the reason is the same test: what does the failure do to a
-# build? Today, nothing. Staging unions every partition and deduplicates by
-# grain_key to the newest _socrata_updated_at, so a short partition adds fewer
-# keys to the union and the complete partitions before it still supply the
-# rest; every model returns what it returned before. That changes with ADR-19
-# step 4, which filters snapshot staging to the grain_keys in the newest
-# ingest_date: a short newest partition would then truncate every snapshot
-# model silently, moving row counts in exactly the shape step 4 predicts as its
-# own expected one-time movement. ADDING THIS TO BUILD_PREREQS IS STEP 4'S
-# FIRST LINE, not an optional part of it.
+# LIKE check-derived AND UNLIKE check-runs, this IS a prerequisite of
+# `make build`, as of PLAN-10 step 2. It shipped as neither: the test is what
+# the failure does to a build, and until ADR-19 step 4 lands the answer is
+# nothing. Staging unions every partition and deduplicates by grain_key to the
+# newest _socrata_updated_at, so a short partition adds fewer keys to the union
+# and the complete partitions before it still supply the rest; every model
+# returns what it returned before.
+#
+# IT GATES BEFORE THE MACRO AND NOT AFTER IT, which is the whole ordering
+# argument of ADR-19's decision. Step 4 filters snapshot staging to the
+# grain_keys in the newest ingest_date, and from that moment a short newest
+# partition silently truncates every snapshot model, moving row counts in
+# exactly the shape step 4 predicts as its own expected one-time movement:
+# the one failure that would be indistinguishable from success. A gate added
+# after the macro would be a gate added after the day it was needed.
+#
+# The cost of gating a day early is one zone scan per build and a refusal with
+# no consequence behind it yet. `make build SNAPSHOT_CHECK=0` if you mean it.
 check-snapshots: ## Is each snapshot partition as complete as the one before it?
 	@$(PY) ingestion/check_snapshots.py --strict
 
@@ -476,6 +503,47 @@ ci-build: ## Full pipeline from fixtures, isolated. No network, no creds.
 	RAW_ZONE_DIR=$(CI_RAW) DERIVED_ZONE_DIR=$(CI_DERIVED) DUCKDB_PATH=$(CI_DB) \
 		$(PY) ingestion/load.py --all --target duckdb
 	cd $(DBT_DIR) && DUCKDB_PATH=$(CI_DB) $(DBT) build
+
+	@echo ""
+	@echo "Proving the completeness guard refuses a build..."
+# Everything above proves the pipeline works on a zone that is fine. This
+# proves the one gate whose whole value is refusing, and it is here rather
+# than in pytest because what it tests is a Makefile fact: that a SHORT
+# verdict stops `make build` (PLAN-10 step 2). The fixture zone the pipeline
+# runs on cannot show this, because ingest.py dates a partition by the run's
+# own clock, so one fixture run is one partition and a guard that compares a
+# partition against its predecessor has nothing to compare.
+#
+# Two assertions, and the first is the reason the second one matters:
+# check-runs PASSES on this zone, because the manifests claim exactly the rows
+# that landed, and `make build` refuses it anyway. That is ADR-19 step 3's
+# argument executed rather than restated.
+#
+# RAW_ZONE_DIR and not RAW_ZONE_URI, so this stays on the fixture zone in a
+# shell that has sourced .env; DERIVED_CHECK=0 so the refusal under test is
+# the only one that can fire, since the derived zone knows nothing about this
+# raw zone and check-derived would reach it first; DUCKDB_PATH=$(CI_DB) so
+# that a regression which lets the build through runs dbt against the CI
+# warehouse rather than the real one.
+	$(PY) scripts/short-snapshot-fixture.py $(CI_SHORT)
+	RAW_ZONE_DIR=$(CI_SHORT) $(PY) ingestion/check_runs.py --strict
+	@RAW_ZONE_DIR=$(CI_SHORT) DUCKDB_PATH=$(CI_DB) \
+		$(MAKE) --no-print-directory build DERIVED_CHECK=0 \
+		>$(CI_DIR)/short-build.log 2>&1; \
+	status=$$?; \
+	if [ $$status -eq 0 ]; then \
+		echo "ERROR: make build accepted a snapshot partition holding 100 of 500 grain_key(s)."; \
+		echo "       check-snapshots has stopped gating the build. See BUILD_PREREQS."; \
+		cat $(CI_DIR)/short-build.log; \
+		exit 1; \
+	fi; \
+	grep -qF 'check-snapshots] Error 3' $(CI_DIR)/short-build.log || { \
+		echo "ERROR: make build failed against the short fixture zone, but not at"; \
+		echo "       check-snapshots, so this proves nothing about the guard:"; \
+		cat $(CI_DIR)/short-build.log; \
+		exit 1; \
+	}; \
+	echo "check-runs passes on the short zone and make build refuses it at check-snapshots."
 
 check: test-python lint leak-check compile-bigquery ci-build ## Everything CI runs on a PR, locally
 

@@ -28,6 +28,7 @@ with source as (
 
 ),
 
+
 deduplicated as (
 
     select *
@@ -38,6 +39,19 @@ deduplicated as (
             {{ x_cast('_socrata_updated_at', 'timestamp') }} desc,
             {{ x_cast('_ingested_at', 'timestamp') }} desc
     ) = 1
+
+),
+
+-- ADR-19: the newest ingest_date IS the dataset. A no-op today, because
+-- the zone holds one partition of this dataset, and NOT dead code: it
+-- stops being a no-op the first time this dataset is ingested twice. The
+-- rule is applied to every refresh: snapshot model rather than only to
+-- the one that forced it, which is business_locations.
+current_snapshot as (
+
+    {{ restrict_to_newest_snapshot(
+        'deduplicated', '_socrata_id', source('raw_datasf', 'raw_film_locations')
+    ) }}
 
 ),
 
@@ -76,15 +90,15 @@ renamed as (
         {{ x_safe_cast('_socrata_updated_at', 'timestamp') }} as socrata_updated_at,
         {{ x_safe_cast('_ingested_at', 'timestamp') }} as ingested_at
 
-    from deduplicated
+    from current_snapshot
 
 ),
 
 final as (
 
-    -- This dataset does carry flat latitude and longitude columns, usable on
-    -- 2,127 of 2,214 rows. ADR-3 asserted it did not and excluded it from
-    -- ADR-2 on that basis; ADR-7 corrects the record. No geocoding decision
+-- This dataset does carry flat latitude and longitude columns, usable on
+-- 2,127 of 2,214 rows. ADR-3 asserted it did not and excluded it from
+-- ADR-2 on that basis; ADR-7 corrects the record. No geocoding decision
     -- was needed, because there was nothing to geocode.
     {{ join_point_geography('renamed', 'raw_film_locations', 'film_location_id') }}
 

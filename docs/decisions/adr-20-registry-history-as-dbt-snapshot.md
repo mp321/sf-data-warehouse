@@ -1,13 +1,54 @@
 ---
-status: draft
+status: superseded
 date: 2026-09-10
-related: [adr-9-cloud-raw-zone, adr-18-the-raw-zone, adr-19-withdrawn-registrations]
+related: [adr-9-cloud-raw-zone, adr-18-the-raw-zone, adr-19-withdrawn-registrations, plan-10-snapshot-semantics-and-exposures]
 ---
 
 # ADR-20. Registry history lives in a dbt snapshot, not in the raw zone
 
 Draft, to be argued in the first PLAN-10 session. The Decision section is a
 proposal until this file is `active`.
+
+## Refused, 2026-09-13 (PLAN-10 step 4)
+
+**A dbt snapshot needs a warehouse that lasts, and this project's warehouse is
+thrown away on purpose. Choosing C would give up that rule for a history that
+starts empty and still needs the old partitions.** Nothing was built. The text
+below this note is left as it was argued.
+
+1. **The Decision's durability does not exist.** `make rebuild` starts by
+   deleting the DuckDB file, `ci-build` deletes it and rebuilds to prove the
+   zones are enough, and a runner starts each job with no DuckDB file.
+   `make publish` copies the table out, but nothing loads it back before the
+   next `dbt snapshot`. Scheduling publish is also outside PLAN-10's scope.
+2. **It cannot see withdrawals that already happened.** Step 3 removed the 27
+   from staging, so the first snapshot run never sees them. The old
+   partitions stay the only record of them, so C is not "the precondition
+   for reclaiming the zone".
+3. **It runs in places that don't want it.** `dbt build` runs snapshots, so
+   `make build`, `make rebuild`, `ci-build` and the weekly `dbt.yml`
+   (`dbt build --target bigquery`) would each write a history of their own.
+   The BigQuery one would be the first table BigQuery stores (ADR-9).
+   Running it on BigQuery alone would keep it, but the marts, the export and
+   both context packs all read DuckDB (ADR-15).
+4. **It needs a daily dbt run that doesn't exist**, since `ingest.yml` runs
+   no dbt. Minor: `invalidate_hard_deletes` has been deprecated since dbt 1.9
+   (1.12.0 is installed).
+
+A and B stay refused for the reasons given under them. The question itself,
+which locations left the registry and when, is still real.
+
+**Where a successor ADR should start (not decided here): a withdrawal ledger
+in the raw zone.** At ingest, write the keys that were in the previous
+complete snapshot partition and are missing from the new one, with their last
+row, as a small append-only partition. For: everything downstream of Parquet
+stays disposable, no new workflow, no data stored in BigQuery, a one-time
+backfill from the partitions still in the zone, and a testable condition for
+the deferred prune (survivor plus ledger covers every key in the candidate).
+Against: custom ingest code rather than a dbt feature, withdrawals only with
+no attribute history, and it must refuse to write on a SHORT partition,
+because otherwise it writes false withdrawals into a file that can't be
+edited.
 
 ## Context
 
