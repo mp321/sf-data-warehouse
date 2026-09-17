@@ -181,8 +181,9 @@ docs/decisions/     ADRs. Start here for why anything is the way it is.
 docs/plans/         forward-looking intent
 docs/dev-notes/     append-only session log, including what broke
 tests/              pytest over the geometry code, the dataset registry, the
-                    retention proof and the pack generator; fixtures/ is
-                    committed JSON so CI runs with no network
+                    retention proof, the pack generator, and which API failures
+                    are worth retrying; fixtures/ is committed JSON so CI runs
+                    with no network
 .github/workflows/  ci.yml (every PR), ingest.yml (daily), dbt.yml (weekly),
                     retention.yml (weekly): proves what the raw zone can spare
                     and fails when it is over 1 GB. It never deletes anything.
@@ -440,4 +441,4 @@ What is open:
 ## License
 
 Code is released under the MIT License. All source data is public: DataSF
-(data.sfgov.org) and the US Census Bureau.
+(data.sf.gov) and the US Census Bureau.

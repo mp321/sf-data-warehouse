@@ -108,7 +108,7 @@ def fetch(socrata_id: str, limit: int) -> list[dict]:
             "$limit": limit,
         }
     )
-    url = f"https://data.sfgov.org/resource/{socrata_id}.json?{query}"
+    url = f"https://data.sf.gov/resource/{socrata_id}.json?{query}"
     with urllib.request.urlopen(url, timeout=120) as response:
         return json.load(response)
 
@@ -132,7 +132,7 @@ def dataset_fields(socrata_id: str) -> list[str]:
     change when DataSF adds a region.
     """
     with urllib.request.urlopen(
-        f"https://data.sfgov.org/api/views/{socrata_id}.json", timeout=120
+        f"https://data.sf.gov/api/views/{socrata_id}.json", timeout=120
     ) as response:
         metadata = json.load(response)
     return [
@@ -153,7 +153,7 @@ def fetch_field_value(socrata_id: str, field: str):
     query = urllib.parse.urlencode(
         {"$select": field, "$where": f"{field} IS NOT NULL", "$limit": 1}
     )
-    url = f"https://data.sfgov.org/resource/{socrata_id}.json?{query}"
+    url = f"https://data.sf.gov/resource/{socrata_id}.json?{query}"
     try:
         with urllib.request.urlopen(url, timeout=120) as response:
             rows = json.load(response)

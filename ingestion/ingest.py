@@ -45,7 +45,7 @@ Required environment variables: none. This step needs no credentials against a
 local zone. A `gs://` zone authenticates through GOOGLE_APPLICATION_CREDENTIALS
 like everything else that touches the bucket; see ingestion/remote.py.
 Optional:
-    SOCRATA_APP_TOKEN  free token from data.sfgov.org, raises rate limits
+    SOCRATA_APP_TOKEN  free token from data.sf.gov, raises rate limits
     RAW_ZONE_DIR       root of the raw zone as a directory (default: data/raw)
     RAW_ZONE_URI       root of the raw zone as a gs:// prefix, when DIR is unset
 """
@@ -66,7 +66,15 @@ import remote
 from census import census_pages
 from dataset_registry import DATASETS
 
-SOCRATA_DOMAIN = "https://data.sfgov.org"
+# DataSF moved the portal from data.sfgov.org to data.sf.gov. The old host is
+# not a working alias: it 301s a bare /resource/<id>.json, but its edge returns
+# a bare nginx 403 -- HTML, no Socrata error body -- to any request carrying a
+# $select, which is every request this module makes. That is what killed the
+# scheduled ingest from 2026-09-09 on, and it is why the failure looked like a
+# credentials problem: a 403 with no token in play reads as one. It is not.
+# Both hosts were checked against all six registry datasets on 2026-09-17:
+# old 403, new 200, with and without an app token.
+SOCRATA_DOMAIN = "https://data.sf.gov"
 PAGE_SIZE = 5000  # rows per API request
 ROWS_PER_FILE = 50000  # buffer this many rows before writing each Parquet file
 MAX_RETRIES = 3
@@ -141,28 +149,61 @@ def socrata_pages(socrata_id: str, watermark: str, app_token: str):
         time.sleep(0.3)  # be polite to the API
 
 
-def _check_app_token(resp: requests.Response) -> None:
-    """Turn Socrata's 403 for a bad app token into a sentence about the token.
+# Statuses no amount of waiting fixes. Retrying these is not merely wasteful:
+# it buries the cause. The 2026-09-09 outage was a 403 from the retired host's
+# edge proxy, and three attempts with backoff turned a permanent, one-line
+# diagnosis into a 70-second job that died with a bare HTTPError against a
+# 300-character percent-encoded URL. 429 and 5xx are absent on purpose: those
+# are the ones backoff is for.
+TERMINAL_STATUSES = {401, 403, 404}
 
-    Worth special-casing for two reasons. It is not transient, so the retry loop
-    below would sleep 15 seconds to fail the same way three times. And the
-    request succeeds without any token at all, so an invalid token is strictly
-    worse than no token: the header is the only reason this call is refused.
 
-    The likely cause is pasting the wrong value. Socrata's developer settings
-    page issues an App Token and a Secret Token, and only the first goes in
-    `X-App-Token`.
+def _check_response(resp: requests.Response) -> None:
+    """Raise a sentence a human can act on, for the failures backoff cannot fix.
+
+    Two cases, most specific first.
+
+    The app token. Socrata answers a bad `X-App-Token` with a 403 whose JSON
+    body names `app_token`. The request succeeds without any token at all, so an
+    invalid token is strictly worse than no token: the header is the only reason
+    the call is refused. The likely cause is pasting the wrong value, because
+    Socrata's developer settings page issues an App Token and a Secret Token and
+    only the first goes in that header.
+
+    Everything else terminal. This is the half that was missing on 2026-09-09.
+    The body then was nginx's HTML error page, so the `app_token` substring was
+    absent and this function correctly declined to blame the token -- and what
+    the caller saw instead was `raise_for_status`'s bare 403, which got read as
+    a credentials failure anyway and cost four days. So say the things that
+    separate the causes: which host answered, whether a token was even sent,
+    and whether the body came from Socrata or from something in front of it.
     """
-    if resp.status_code != 403 or "app_token" not in resp.text:
+    if resp.status_code not in TERMINAL_STATUSES:
         return
+
+    if resp.status_code == 403 and "app_token" in resp.text:
+        raise RuntimeError(
+            "Socrata rejected the app token: "
+            f"{resp.json().get('message', resp.text[:200])}. "
+            "SOCRATA_APP_TOKEN is set to something Socrata does not recognise. "
+            "The token is optional and this request works without one, so an "
+            "invalid token is worse than none: unset it, or replace it with the "
+            "App Token (not the Secret Token) from "
+            "https://data.sf.gov/profile/edit/developer_settings"
+        )
+
+    from_socrata = "json" in resp.headers.get("Content-Type", "").lower()
     raise RuntimeError(
-        "Socrata rejected the app token: "
-        f"{resp.json().get('message', resp.text[:200])}. "
-        "SOCRATA_APP_TOKEN is set to something Socrata does not recognise. "
-        "The token is optional and this request works without one, so an "
-        "invalid token is worse than none: unset it, or replace it with the "
-        "App Token (not the Secret Token) from "
-        "https://data.sfgov.org/profile/edit/developer_settings"
+        f"{resp.status_code} from {SOCRATA_DOMAIN} and retrying will not help. "
+        f"Token sent: {'yes' if resp.request.headers.get('X-App-Token') else 'no'}. "
+        + (
+            f"Socrata says: {resp.text[:200]}"
+            if from_socrata
+            else "The body is not JSON, so this was refused in front of the API "
+            "rather than by it -- a proxy, a WAF, or a host that no longer "
+            "serves this dataset. Check that SOCRATA_DOMAIN is still where "
+            f"DataSF publishes: {resp.text[:120]!r}"
+        )
     )
 
 
@@ -170,9 +211,11 @@ def _get_with_retries(session: requests.Session, url: str, params: dict, headers
     for attempt in range(1, MAX_RETRIES + 1):
         try:
             resp = session.get(url, params=params, headers=headers, timeout=90)
-            # Before raise_for_status, so the token case is reported as itself
-            # rather than as a generic 403 against a URL nobody can read.
-            _check_app_token(resp)
+            # Before raise_for_status, so a terminal failure is reported as
+            # itself rather than as a generic status against a URL nobody can
+            # read. RuntimeError is not caught below, so this also short-circuits
+            # the backoff instead of sleeping 15s to fail three times.
+            _check_response(resp)
             resp.raise_for_status()
             return resp.json()
         except (requests.RequestException, ValueError) as exc:
