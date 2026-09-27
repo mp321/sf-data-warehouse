@@ -101,10 +101,11 @@ snapshots, exposures, tests) are exactly this work.
 8. **Docs.** CLAUDE.md current-state rows for staging, the guard, and the
    snapshot; README metrics (test count will move); `docs/README.md` ADR
    table; dev note.
-   Status: incomplete, 2026-09-13. Done: CLAUDE.md rows and prose (staging,
-   guard, registry history, open plans) and the ADR table. Left: README
-   metrics (tests are 254 after step 6) and the `docs/README.md` dev-notes
-   list, which step 7 will move again.
+   Status: complete, 2026-09-27. 2026-09-13 did the CLAUDE.md rows and the ADR
+   table; 2026-09-27 did the README accuracy pass (150 dbt tests, 283 pytest,
+   each count stated once), CLAUDE.md's ingest and BigQuery rows, `SETUP.md`
+   and the dev-notes list. Step 7 should move none of those counts; its
+   session adds its own note to the list.
 
 ## Out of scope
 
@@ -141,8 +142,8 @@ snapshots, exposures, tests) are exactly this work.
       `docs/dev-notes/2026-09-13.md`.
 - [ ] The materialization measurement is written down with numbers.
 - [ ] `make check` green; `make build-bigquery` green; both recorded.
-- [ ] Docs match the code (step 8). CLAUDE.md and the ADR table done
-      2026-09-13; README metrics and dev-notes list wait for the last session.
+- [x] Docs match the code (step 8). Done 2026-09-27,
+      `docs/dev-notes/2026-09-27.md`.
 
 ## Open questions
 
@@ -246,7 +247,7 @@ carry state between sessions, so nothing needs to stay in chat.
 |---|---|---|---|---|
 | done 2026-09-13 | 8, the CLAUDE.md rows and ADR table | Sonnet | nothing | the canonical file had been wrong since step 2 |
 | done 2026-09-13 | 6, exposures | Sonnet | nothing | credential-free, and `make docs` is the check |
-| next | 7, materialization | Sonnet | bucket zone | timings should come from a quiet session |
-| last | 8, the rest (README metrics, dev-notes list) | Sonnet | nothing | test counts settle last. Close the plan after this: `status: done`, move to `docs/archive/`, delete Session kickoff |
-| outside the plan | the Socrata 403, by hand | none | repository secrets | the ledger ADR needs a working daily ingest |
+| done 2026-09-27 | 8, the rest (README metrics, dev-notes list) | Sonnet | nothing | test counts settled at 150 dbt and 283 pytest |
+| next, last | 7, materialization | Sonnet | bucket zone | timings should come from a quiet session. Also record `make build-bigquery`, then close the plan: `status: done`, move to `docs/archive/`, delete Session kickoff |
+| outside the plan | the Socrata 403 | none | nothing | a DataSF host move, not a token: fixed in code 2026-09-27, confirm with the 2026-09-28 ingest. The ledger ADR needs a working daily ingest |
 | outside the plan | the successor ADR (ledger) | Opus | nothing to argue it | it is a decision, not implementation |
