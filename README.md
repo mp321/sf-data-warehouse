@@ -4,18 +4,20 @@
 analytics warehouse that anyone can rebuild from scratch.**
 
 Python ingestion into a Parquet raw zone, an H3 spatial layer computed outside
-the query engine, dbt modelling under 148 tests, scheduled CI, a published
-Parquet export, and a generated contract that lets a language model query the
-result correctly. Every design decision is recorded in `docs/decisions/`.
+the query engine, tested dbt models, scheduled CI, a published Parquet export,
+and a generated contract that lets a language model query the result
+correctly. Every design decision is recorded in `docs/decisions/`.
 
-| | |
+| As of 2026-09-27 | |
 |---|---|
 | **Runs on a fresh clone** | `make setup && make ci-build`. No cloud account, no credentials, no cost. |
-| **Tested** | 148 dbt tests plus a Python suite over the geometry code, on every pull request. |
+| **Tested** | 150 dbt tests and 283 Python tests, on every pull request. |
 | **Reproducible** | CI drops the warehouse and rebuilds it from Parquet, to prove the files are the source of truth. |
 | **Two engines** | Every model compiles on DuckDB and BigQuery. Running both found five defects that compiling could not. |
+| **Spatial** | About 610k points placed in 733 boundaries by Python, not SQL (last full build, 2026-09-13). |
+| **Published** | 6 Parquet files, one per mart, plus a manifest. |
 | **LLM-ready** | A generated context pack tells a model what this warehouse holds and what it must refuse to answer. |
-| **Documented** | 18 numbered architecture decisions, 11 still binding, 9 closed plans, and an append-only session log. |
+| **Documented** | 20 ADRs (12 active), 9 closed plans plus PLAN-10 (active), and an append-only session log. |
 
 ---
 
@@ -43,7 +45,7 @@ population, so every count column here has a rate column beside it.
 
 **Geography is precomputed, not queried.** Each record's neighborhood, district
 and H3 cells are stored as columns, written once by a Python step that resolves
-533k points against 733 boundaries. Queries then do integer comparisons. No
+every point against every boundary. Queries then do integer comparisons. No
 model uses a geometry type or a spatial function, which is what lets the same
 SQL run on both DuckDB and BigQuery.
 
@@ -80,7 +82,7 @@ flowchart LR
 
     subgraph OUT["4  OUTPUTS"]
         direction TB
-        O1["<b>published/</b><br/>7 Parquet files + manifest"]
+        O1["<b>published/</b><br/>one Parquet file per mart + manifest"]
         O2["<b>context pack</b><br/>schema, refusals, examples"]
     end
 
@@ -109,51 +111,44 @@ local directories, so those hold whatever the last local run left there
 
 ## How you run it
 
-Rectangles are commands you run. Diamonds are checks that stop the pipeline,
-and each was added after the failure it catches had already occurred once.
+Rectangles are commands you run. Diamonds are the two checks `make build` runs
+before dbt, and either one stops the build. `make load` has no gate, and
+`make check-runs` gates nothing: it reconciles run manifests against the
+Parquet, and CI runs it.
 
 ```mermaid
 flowchart TD
-    START(["fresh clone<br/>no cloud account"])
-    START --> A
-
     A["<b>make ingest</b><br/>APIs to the raw zone"]
-    A --> G1
-
-    G1{"<b>make check-runs</b><br/>does every run manifest match<br/>the Parquet beside it?"}
-    G1 --> B
-
     B["<b>make spatial</b><br/>raw zone to derived zone"]
-    B --> G2
-
-    G2{"<b>make check-derived</b><br/>is the geography current with<br/>both the data and the code?"}
-    G2 -->|"stale or recoded"| STOP(["stops, exit 3 or 4,<br/>naming the step to re-run"])
-    G2 -->|"current"| C
-
     C["<b>make load</b><br/>both zones into DuckDB"]
-    C --> D
-
-    D["<b>make build</b><br/>dbt run and 148 tests"]
-    D --> E
-
+    subgraph BUILD["make build"]
+        G1{"<b>check-derived</b><br/>is the geography current<br/>with the data and code?"}
+        G2{"<b>check-snapshots</b><br/>is each snapshot<br/>partition as complete<br/>as the one before it?"}
+        D["<b>dbt build</b><br/>run and test every model"]
+    end
     E["<b>make publish</b><br/>marts to Parquet and a manifest"]
-    E --> G3
+    STOP(["the build stops"])
 
-    G3{"<b>make context-pack-check</b><br/>does the committed pack still<br/>describe what was built?"}
-    G3 --> DONE(["a warehouse anyone can<br/>rebuild from the files"])
+    A --> B --> C --> G1
+    G1 -->|"current"| G2
+    G2 -->|"complete"| D
+    D --> E
+    G1 -->|"stale, exit 3<br/>recoded, exit 4"| STOP
+    G2 -->|"short, exit 3"| STOP
 
     style STOP stroke-width:2px
 ```
 
 | Command | Does | Needs network | Needs credentials |
 |---|---|---|---|
-| `make ingest` | APIs to raw zone, resuming from the newest record already held | yes | no |
+| `make ingest` | APIs to raw zone. Delta datasets resume from the watermark; snapshot datasets refetch in full | yes | no |
 | `make spatial` | raw zone to derived zone. 23s full, 0.3s when nothing moved | no | no |
 | `make load` | both zones to DuckDB, idempotent replace | no | no |
-| `make build` | dbt run and test, in dependency order | no | no |
+| `make build` | `check-derived`, then `check-snapshots`, then dbt run and test | no | no |
+| `make check-snapshots` | is each snapshot partition as complete as the one before it? Exit 3 if not | no | no |
 | `make publish` | warehouse to `published/`, one file per mart | no | no |
 | `make ci-build` | all of the above from committed fixtures, isolated | no | no |
-| `make check` | everything CI runs on a pull request | no | no |
+| `make check` | most of the pull request gate, locally (see [Checks](#checks-and-when-they-run)) | no | no |
 
 `make all` runs the first four in order. `make setup` builds the venv and
 installs the git hooks. Only the BigQuery targets need a Google account, and
@@ -180,10 +175,14 @@ context-pack/       the generated packs. The one generated thing here that IS
 docs/decisions/     ADRs. Start here for why anything is the way it is.
 docs/plans/         forward-looking intent
 docs/dev-notes/     append-only session log, including what broke
+docs/specs/         the contract a generated artifact is built against
+docs/orientation.md why the repo is built this way, with a file per reason
 tests/              pytest over the geometry code, the dataset registry, the
                     retention proof, the pack generator, and which API failures
                     are worth retrying; fixtures/ is committed JSON so CI runs
                     with no network
+scripts/            leak check, lint wrappers, the BigQuery parity check, and
+                    the short-snapshot fixture that proves the build gate
 .github/workflows/  ci.yml (every PR), ingest.yml (daily), dbt.yml (weekly),
                     retention.yml (weekly): proves what the raw zone can spare
                     and fails when it is over 1 GB. It never deletes anything.
@@ -207,7 +206,7 @@ an H3 call in a model cannot compile on both targets. Cells are computed once
 in Python and stored as BIGINTs, so both engines read the same value rather
 than deriving their own (ADR-5).
 
-**Exact point-in-polygon is expensive.** 533k points against 733 boundaries,
+**Exact point-in-polygon is expensive.** Every point against every boundary,
 with no geometry engine permitted at query time. Covering cells filter first,
 then exact refinement runs against only the two or three boundaries each cell
 touches. A test compares the result against an independently computed oracle
@@ -238,7 +237,7 @@ examples, checked against the warehouse on every pull request (ADR-13).
 | pytest over the point-in-polygon and area code | every pull request, gating the end-to-end job | no |
 | Build the raw zone from committed fixtures, end to end | every pull request | no |
 | Reconcile run manifests against the Parquet | every pull request | no |
-| 148 dbt tests: grain, not null, accepted ranges, relationships, 3 spatial assertions | every pull request | no |
+| dbt tests: grain, not null, accepted ranges, relationships, 3 spatial assertions | every pull request | no |
 | Drop the warehouse and rebuild it from the zones alone | every pull request | no |
 | Compile every model as BigQuery SQL | every pull request | no |
 | Context pack drift check, both packs | every pull request | no |
@@ -252,6 +251,10 @@ The pull request gate needs no credentials so that it runs on forks, where
 repository secrets are unavailable. The tradeoff is that a green `make check`
 covers neither BigQuery nor the bucket zones. `make build-bigquery` and
 `make parity-check` cover those, by hand.
+
+`make check` and `ci.yml` are close but not identical: `ci.yml` skips
+`check_derived`, `check_snapshots` and the short-snapshot proof, and
+`make check` skips the two context-pack `--check` steps.
 
 ---
 
@@ -319,7 +322,9 @@ joined to a neighborhood or a cell, so it has nothing to contribute here.
 | Analysis neighborhoods | reference | The 41 polygons every spatial mart joins to. |
 | Supervisor districts | reference | The 11 polygons, 2022 boundaries. |
 | Census block groups | reference | 681 polygons with 2020 population. The denominator. |
-| Film locations | demo | Small and slow-moving, so it serves as the pipeline canary and the demo mart. |
+| Film locations | demoted | Small and slow-moving, so it serves as the pipeline canary and the demo mart. |
+
+311 cases and building permits start at 2024-01-01.
 
 ## Stack and decisions
 
@@ -329,10 +334,12 @@ joined to a neighborhood or a cell, so it has nothing to contribute here.
 - **Parquet is the record and the warehouses are derived.** DuckDB is canonical,
   BigQuery is a secondary target fed from the same files, and either can be
   dropped and rebuilt from the zone. (ADR-1, ADR-18)
-- **Incremental ingestion, ordered by a total key.** Each run resumes from the
-  newest `:updated_at` in the zone, paging by `(:updated_at, :id)`. DataSF
-  bulk-refreshes these datasets, and ties of several thousand rows across a page
-  boundary were silently losing records. (ADR-18)
+- **Incremental where it is safe, ordered by a total key.** Delta datasets (311,
+  permits) resume from the newest `:updated_at` in the zone; snapshot datasets
+  refetch in full every run, so each partition is complete (ADR-19). Paging
+  orders by `(:updated_at, :id)`: DataSF bulk-refreshes these datasets, and ties
+  of several thousand rows across a page boundary were silently losing
+  records. (ADR-18)
 - **H3 computed in Python, not by either engine.** BigQuery has no H3 support,
   so an H3 call cannot compile on both targets. Cells are computed once and
   stored as BIGINTs that both engines read. (ADR-5)
@@ -343,7 +350,7 @@ joined to a neighborhood or a cell, so it has nothing to contribute here.
 - **Every count mart carries rate columns.** Per 1000 residents, per 1000
   housing units, per 1000 businesses and per square kilometre. See
   `dbt/models/marts/README.md` for which to use when.
-- **Testing and observability.** 148 dbt tests per build: grain, not null,
+- **Testing and observability.** dbt tests on every build: grain, not null,
   accepted ranges on coordinates, relationships from every point table to the
   neighborhood dimension, a population reconciliation, and three spatial
   assertions against exact geometry. `mart_pipeline_freshness` reports staleness
@@ -366,25 +373,32 @@ Each limit below has a recorded reason.
   crosswalk between budget department codes and the 311 `agency_responsible`
   field: two independently maintained taxonomies with no reason to agree.
   Building it is a project in itself.
-- **The BigQuery build runs by hand, not on every pull request.** CI compiles
-  every model for BigQuery without credentials, proving the SQL is valid there
-  but not that it returns the same rows. `make parity-check` proves that on
-  demand, row for row, and `make parity-columns` compares column sets. Real
-  builds against both engines have found five defects that compiling alone did
-  not catch.
+- **The BigQuery build runs weekly and by hand, not on every pull request.**
+  CI compiles every model for BigQuery without credentials, proving the SQL is
+  valid there but not that it returns the same rows. `make parity-check` proves
+  that on demand, row for row, and `make parity-columns` compares column sets.
+  Real builds against both engines have found five defects that compiling alone
+  did not catch.
 - **`make publish` is manual.** Originally for cost: one publish wrote 2,280
   objects against a free tier of 5,000 a month, because two marts were
   partitioned by month over a range starting in 1849. Every mart is now a single
-  file, so a publish is 7 objects and 3 MB. It stays manual because nobody has
-  scheduled it (ADR-12).
+  file, so a publish is one file per mart plus a manifest, about 3 MB. It stays
+  manual because nobody has scheduled it (ADR-12).
 - **The raw zone is append-only and is pruned anyway, which needs a proof.**
-  The city republishes `business_locations` wholesale every few days, so a daily
-  ingest writes another full copy. `make prune-raw` removes a partition only
+  Snapshot datasets are refetched in full, so every daily ingest writes another
+  full copy of `business_locations`. `make prune-raw` removes a partition only
   when a later one provably holds every key at values no older. Snapshot
   datasets are prunable and delta ones never are, since deleting a partition of
   311 or permits removes rows the API cannot serve again. **A bucket lifecycle
   rule would be simpler and is the wrong mechanism**, because it deletes by
   object age and knows nothing about which partitions are snapshots (ADR-18).
+- **The raw zone cannot shrink below about 1.3 GB, and that floor rises.** The
+  city withdraws registrations: a business that closes simply disappears from
+  the next copy. So a partition written before the latest withdrawal holds keys
+  no later partition has, the prune can never prove it redundant, and it stays.
+  The Monday retention job fails because the zone is over 1 GB. That is correct,
+  and it stays red until a new ADR decides whether older partitions may be
+  treated as unreachable (ADR-19).
 - **Editing the spatial code invalidates the entire derived zone.** Its manifest
   hashes the source of every module that computes it, so `make check-derived`
   can report "built by code that no longer exists" rather than only "behind".
@@ -397,9 +411,11 @@ Each limit below has a recorded reason.
 
 ## How this repo is documented
 
-Four kinds of document, each answering a different question. Running the
-pipeline requires none of them.
+Each kind of document answers a different question. Running the pipeline
+requires none of them.
 
+- **`docs/orientation.md`** is the short tour: why the repo is built the way it
+  is, citing the file that implements each reason.
 - **`docs/decisions/`** holds one architecture decision record per decision:
   what was chosen, what was rejected, and what it costs. ADRs are immutable
   once accepted, so changing a decision means writing a new one that supersedes
@@ -411,6 +427,8 @@ pipeline requires none of them.
 - **`docs/dev-notes/`** is an append-only log of what broke and how it was
   diagnosed. Findings that remained true about running code were moved into
   `CLAUDE.md`; the rest stayed as history.
+- **`docs/specs/`** holds the contract a generated artifact is built against.
+  `context-pack.md` is the only one, and it was written before the generator.
 - **`CLAUDE.md`** is the canonical architecture summary and the working
   agreement for AI-assisted sessions: hard constraints, read-first order, and
   rules such as never committing to git. The filename is tool-specific and
@@ -422,14 +440,24 @@ pipeline requires none of them.
 
 ## Roadmap
 
-All nine plans are closed and archived in `docs/archive/`. See `docs/README.md`
-for the index and the document conventions.
+PLAN-10 is the open plan; its one remaining step is a measured check of how
+`mart_activity_by_h3` is materialized. Earlier plans are closed and archived in
+`docs/archive/`. See `docs/README.md` for the index and the document
+conventions.
 
 What is open:
 
+- **A withdrawal ledger.** A dbt snapshot of the business registry was refused
+  (ADR-20) because the warehouse is rebuilt from scratch, so only the old raw
+  partitions record which registrations the city withdrew. A ledger in the raw
+  zone needs its own ADR.
+- **The deferred prune decision.** Whether the prune may treat older snapshot
+  partitions as unreachable, now that staging keeps only the keys in the newest
+  one. ADR-19 leaves it to a later ADR with its own acceptance test, after the
+  ledger.
 - **A public, always-on view of the published export.** Everything needed for
-  one exists: `published/` is six marts as single Parquet files with a
-  manifest, and `dim_neighborhood` carries GeoJSON. Nothing renders it yet.
+  one exists: `published/` is one Parquet file per mart with a manifest, and
+  `dim_neighborhood` carries GeoJSON. Nothing renders it yet.
 - **Per-boundary-set H3 resolution.** The measurements in ADR-6 show block
   groups want a finer one and supervisor districts would be fine with a
   coarser one.

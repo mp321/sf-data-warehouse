@@ -37,7 +37,8 @@ that exists but is behind the raw zone fails less visibly again, so
 `make build` runs `make check-derived` first and stops if it is stale.
 
 The full target list with one line each is in `CLAUDE.md` under "How to run
-everything". `make check` is what CI runs on a pull request.
+everything". `make check` runs the pull request gate locally; it and `ci.yml`
+differ by a few steps, which `CLAUDE.md` lists.
 
 ## The two targets that need credentials
 
