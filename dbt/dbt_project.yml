@@ -75,7 +75,7 @@ vars:
   #                     models/staging/datasf/_datasf__sources.yml. null means
   #                     no SLA: staleness is still reported, never counted as
   #                     a failure.
-  #   socrata_id        the dataset id on data.sfgov.org, visible in its URL.
+  #   socrata_id        the dataset id on data.sf.gov, visible in its URL.
   #                     Absent for datasets that are not Socrata; see `api`.
   #   api               which transport ingest.py uses. socrata (the default)
   #                     or tigerweb for the Census block groups, which come

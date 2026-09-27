@@ -146,7 +146,7 @@ MANIFEST_NAME = "manifest.json"
 # when tools/context_pack/ started importing it. DataSF and the Census Bureau
 # are different publishers under the same public-domain terms, and the spec
 # records leaving the per-dataset distinction out.
-LICENSE = "Public domain. Source data from DataSF (data.sfgov.org) and the US Census Bureau."
+LICENSE = "Public domain. Source data from DataSF (data.sf.gov) and the US Census Bureau."
 
 # Bumped when the layout or the manifest shape changes in a way a consumer
 # would notice. A consumer that pins this can refuse to read a newer export

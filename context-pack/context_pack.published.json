@@ -9,33 +9,33 @@
     "description": "An analytics warehouse over seven public San Francisco datasets, modelled with dbt into staging views, one intermediate model and six marts, in which every geography is precomputed rather than computed at query time. This pack describes the published export of that warehouse and not the warehouse: 6 marts, one Parquet file each, and nothing else. Anything the export does not carry is a refusal here even where the warehouse can answer it.",
     "publisher": "DataSF and the US Census Bureau, modelled here",
     "jurisdiction": "San Francisco, California",
-    "licence": "Public domain. Source data from DataSF (data.sfgov.org) and the US Census Bureau.",
+    "licence": "Public domain. Source data from DataSF (data.sf.gov) and the US Census Bureau.",
     "repo": "https://github.com/mp321/sf-data-warehouse",
     "source_urls": [
       {
         "dataset": "311_cases",
         "publisher": "DataSF",
-        "url": "https://data.sfgov.org/d/vw6y-z8j6"
+        "url": "https://data.sf.gov/d/vw6y-z8j6"
       },
       {
         "dataset": "building_permits",
         "publisher": "DataSF",
-        "url": "https://data.sfgov.org/d/i98e-djp9"
+        "url": "https://data.sf.gov/d/i98e-djp9"
       },
       {
         "dataset": "business_locations",
         "publisher": "DataSF",
-        "url": "https://data.sfgov.org/d/g8m3-pdis"
+        "url": "https://data.sf.gov/d/g8m3-pdis"
       },
       {
         "dataset": "analysis_neighborhoods",
         "publisher": "DataSF",
-        "url": "https://data.sfgov.org/d/ajp5-b2md"
+        "url": "https://data.sf.gov/d/ajp5-b2md"
       },
       {
         "dataset": "supervisor_districts",
         "publisher": "DataSF",
-        "url": "https://data.sfgov.org/d/f2zs-jevy"
+        "url": "https://data.sf.gov/d/f2zs-jevy"
       },
       {
         "dataset": "census_block_groups",
@@ -45,7 +45,7 @@
       {
         "dataset": "film_locations",
         "publisher": "DataSF",
-        "url": "https://data.sfgov.org/d/yitu-d5am"
+        "url": "https://data.sf.gov/d/yitu-d5am"
       }
     ],
     "update_cadence": [

@@ -655,7 +655,7 @@ files are `_<source>__sources.yml`.
 ## Hard constraints
 
 - **All data in this project is public.** Everything comes from
-  data.sfgov.org. If a dataset is not public, it does not belong here.
+  data.sf.gov. If a dataset is not public, it does not belong here.
 - **No credentials in the repo, ever.** No service account JSON, no `.env`, no
   tokens, no project ids in committed files. Secrets reach code only through
   environment variables locally and GitHub repository secrets in CI.

@@ -327,7 +327,7 @@ def source_urls(sources: dict) -> list[dict]:
                 {
                     "dataset": name,
                     "publisher": "DataSF",
-                    "url": f"https://data.sfgov.org/d/{spec['socrata_id']}",
+                    "url": f"https://data.sf.gov/d/{spec['socrata_id']}",
                 }
             )
     return urls

@@ -2,7 +2,7 @@
 
 An analytics warehouse over seven public San Francisco datasets, modelled with dbt into staging views, one intermediate model and six marts, in which every geography is precomputed rather than computed at query time. This pack describes the published export of that warehouse and not the warehouse: 6 marts, one Parquet file each, and nothing else. Anything the export does not carry is a refusal here even where the warehouse can answer it.
 Target `published`, 6 models, generated 2026-08-15T17:25:29+00:00, prose revision `64e423921de52c85`, spec 2026-08-07, pack 1.0.0.
-Publisher DataSF and the US Census Bureau, modelled here, jurisdiction San Francisco, California. Public domain. Source data from DataSF (data.sfgov.org) and the US Census Bureau.
+Publisher DataSF and the US Census Bureau, modelled here, jurisdiction San Francisco, California. Public domain. Source data from DataSF (data.sf.gov) and the US Census Bureau.
 
 ## How to read this pack
 
