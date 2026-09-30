@@ -5,6 +5,11 @@ is identical either way, which is what lets one reader serve both:
 
     <root>/<table>/ingest_date=YYYY-MM-DD/part-<run_id>-<seq>.parquet
     <root>/<table>/_runs/<run_id>.json
+    <root>/<table>/_withdrawals/<stamp>.json
+
+`_withdrawals/` is the withdrawal ledger (ADR-21): the last-seen row of every
+snapshot `grain_key` that left the registry, written by `prune_raw.py` before
+it deletes the partitions that were the only other record of it.
 
 `<table>` is the registry's `table` value (`raw_311_cases`), not the friendly
 dataset name, so one directory maps to exactly one dbt source table on both
@@ -48,6 +53,13 @@ import remote
 RUNS_DIRNAME = "_runs"
 PARTITION_KEY = "ingest_date"
 
+# The withdrawal ledger (ADR-21). JSON and not Parquet, and that is the load
+# bearing choice rather than the underscore: `read_sql` globs `**/*.parquet`
+# over the whole table and BigQuery's external tables glob `<table>/*.parquet`,
+# whose `*` crosses directories, so a Parquet ledger here would be read as rows
+# of the dataset by both engines.
+WITHDRAWALS_DIRNAME = "_withdrawals"
+
 # Socrata's :updated_at, after sanitize_column(). The watermark column.
 WATERMARK_COLUMN = "_socrata_updated_at"
 
@@ -79,6 +91,10 @@ def dataset_dir(table: str, root: Path | str | None = None) -> Path | str:
 
 def runs_dir(table: str, root: Path | str | None = None) -> Path | str:
     return remote.child(dataset_dir(table, root), RUNS_DIRNAME)
+
+
+def withdrawals_dir(table: str, root: Path | str | None = None) -> Path | str:
+    return remote.child(dataset_dir(table, root), WITHDRAWALS_DIRNAME)
 
 
 def new_run_id(now: datetime | None = None) -> str:
@@ -307,3 +323,49 @@ def write_run_manifest(table: str, manifest: dict, root: Path | str | None = Non
     destination = directory / filename
     destination.write_text(payload)
     return destination
+
+
+def write_withdrawals(
+    table: str, stamp: str, records: list[dict], root: Path | str | None = None
+) -> Path | str:
+    """Add one ledger file recording `records` as withdrawn. Returns its path.
+
+    One new file per call, named by `stamp`, and never an edit of an earlier
+    one: the ledger is inside the zone, so it is under the rule that nothing
+    in the zone is edited. A key recorded twice across two files is harmless
+    and a key recorded in no file is the failure, so readers take the union.
+    Same one-array-per-file JSON as the run manifests, for the same reason.
+    """
+    directory = withdrawals_dir(table, root)
+    payload = json.dumps(records, indent=2, sort_keys=True) + "\n"
+    filename = f"{stamp}.json"
+    if remote.is_remote(directory):
+        return remote.write_text(remote.child(directory, filename), payload)
+
+    directory.mkdir(parents=True, exist_ok=True)
+    destination = directory / filename
+    if destination.exists():
+        raise FileExistsError(f"{destination} exists; the ledger is append-only")
+    destination.write_text(payload)
+    return destination
+
+
+def recorded_withdrawals(table: str, grain_key: str, root: Path | str | None = None) -> set[str]:
+    """Every `grain_key` any ledger file for `table` records as withdrawn.
+
+    Read file by file rather than through DuckDB's `read_json`, because the
+    ledger's rows carry whatever columns the dataset had and two files need
+    not agree on them, and the only column this has to agree on is the key.
+    """
+    directory = withdrawals_dir(table, root)
+    if remote.is_remote(directory):
+        paths = remote.glob(f"{directory}/*.json")
+        texts = [remote.read_text(path) for path in paths]
+    else:
+        texts = [path.read_text() for path in sorted(directory.glob("*.json"))]
+    return {
+        str(record[grain_key])
+        for text in texts
+        for record in json.loads(text)
+        if record.get(grain_key) is not None
+    }

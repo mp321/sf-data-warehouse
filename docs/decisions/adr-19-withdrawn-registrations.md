@@ -6,6 +6,10 @@ related: [adr-9-cloud-raw-zone, adr-14-raw-zone-retention, adr-17-scheduled-rete
 
 # ADR-19. Withdrawn registrations: the newest snapshot is the dataset
 
+> **Its deferred decision was taken by ADR-21 (2026-09-28).** "Step 4 does
+> not license a change to the proof" still holds for step 4 alone; ADR-21 is
+> the separate decision, with its own acceptance test, that this ADR asked for.
+
 Amends ADR-18's first revisit clause. It does not touch the append-only rule,
 its three exceptions, the superset proof or the 1 GB threshold; all of those
 stand exactly as ADR-18 states them. What it changes is the *reading* of a

@@ -17,7 +17,6 @@ import subprocess
 from pathlib import Path
 
 import check_snapshots
-
 import raw_zone
 
 REPO_ROOT = Path(__file__).resolve().parent.parent

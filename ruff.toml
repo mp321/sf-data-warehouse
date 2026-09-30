@@ -78,6 +78,10 @@ known-first-party = [
     # sits beside in ingestion/, which reads as a dependency and is the exact
     # confusion this list exists to prevent.
     "load",
+    # `check_snapshots` joined on 2026-09-28 for the same reason as `load`:
+    # prune_raw.py imports its key counts and tolerance (ADR-21), so the prune
+    # and the build gate cannot disagree about whether a partition is SHORT.
+    "check_snapshots",
     # tools/context_pack/, added 2026-08-06 with PLAN-6 step 2. Same
     # arrangement as ingestion/: a directory of scripts whose entry point puts
     # itself on sys.path, imported by tests/ through conftest.py. The modules

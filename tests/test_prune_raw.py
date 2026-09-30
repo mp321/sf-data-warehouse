@@ -19,11 +19,16 @@ reaches. The one to read is the precedence test. Over budget and unproven can
 hold at once and they ask for opposite things, so the exit code has to be the
 more serious of the two.
 
+The final block is ADR-21: a key absent from the survivor may be read as a
+withdrawal, and the tests there are mostly the cases where it may not, because
+a run that died mid-fetch leaves exactly the same trace.
+
 The end-to-end proof against the real bucket is in the dev notes for 2026-08-07
 and 2026-08-09. This covers the decisions behind it.
 """
 
 import json
+from pathlib import Path
 
 import check_runs
 import prune_raw
@@ -358,3 +363,165 @@ def test_zone_bytes_counts_datasets_the_registry_does_not_describe(zone):
     after, objects_after = prune_raw.zone_bytes(zone)
     assert after == before + 4096
     assert objects_after == objects_before + 1
+
+
+# ---------------------------------------------------------------------------
+# Withdrawals (ADR-21): the first limb may fail as a withdrawal, and only as one
+# ---------------------------------------------------------------------------
+
+KEYS = [f"k{n:03d}" for n in range(100)]
+WITHDRAWN = "k050"
+
+
+def withdrawal_zone(root):
+    """The shape of the real zone since 2026-08-24, at fixture scale.
+
+    One key leaves the registry between OLD and MID and never comes back, and
+    one key joins at NEW. 1% of OLD's keys are absent from the survivor, inside
+    the guard's 2%, and nothing present is behind.
+    """
+    remaining = [key for key in KEYS if key != WITHDRAWN]
+    snapshot(root, OLD, KEYS)
+    snapshot(root, MID, remaining)
+    snapshot(root, NEW, [*remaining, "k100"])
+    manifest(root, "20260801T090000Z", OLD, len(KEYS))
+    manifest(root, "20260802T090000Z", MID, len(remaining))
+    manifest(root, "20260803T090000Z", NEW, len(remaining) + 1)
+    return root
+
+
+def ledger(root) -> list[dict]:
+    directory = root / TABLE / raw_zone.WITHDRAWALS_DIRNAME
+    return [
+        record
+        for path in sorted(directory.glob("*.json"))
+        for record in json.loads(path.read_text())
+    ]
+
+
+def test_a_withdrawn_key_is_ledgered_before_its_partition_goes(tmp_path, capsys):
+    """ADR-21's acceptance test, end to end.
+
+    The partition goes, the key it alone held is in the ledger at the values it
+    was last seen with, and the zone still agrees with its own manifests.
+    """
+    zone = withdrawal_zone(tmp_path)
+    assert prune_raw.run(zone, keep=2, only=[DATASET], apply=True) == 0
+    capsys.readouterr()
+
+    assert not (zone / TABLE / f"{raw_zone.PARTITION_KEY}={OLD}").exists()
+    records = ledger(zone)
+    assert [record[GRAIN] for record in records] == [WITHDRAWN]
+    assert records[0]["dba_name"] == f"business {WITHDRAWN}"
+    assert records[0]["_last_seen_ingest_date"] == OLD
+    assert records[0]["_absent_from_ingest_date"] == NEW
+    assert raw_zone.recorded_withdrawals(TABLE, GRAIN, zone) == {WITHDRAWN}
+    assert check_runs.check(zone) == 0
+
+
+def test_report_mode_writes_no_ledger_and_deletes_nothing(tmp_path, capsys):
+    """The retention job runs this, and it must add nothing to the zone either."""
+    zone = withdrawal_zone(tmp_path)
+    assert prune_raw.run(zone, keep=2, only=[DATASET], apply=False) == 0
+    out = capsys.readouterr().out
+    assert "1 of 100 grain_key(s) withdrawn" in out
+    assert "would be recorded in the ledger" in out
+    assert (zone / TABLE / f"{raw_zone.PARTITION_KEY}={OLD}").exists()
+    assert not (zone / TABLE / raw_zone.WITHDRAWALS_DIRNAME).exists()
+
+
+def test_the_ledger_is_never_read_as_rows_of_the_dataset(tmp_path, capsys):
+    """JSON beside the Parquet, so neither engine's glob can reach it."""
+    zone = withdrawal_zone(tmp_path)
+    prune_raw.run(zone, keep=2, only=[DATASET], apply=True)
+    capsys.readouterr()
+    with raw_zone.connect(zone) as con:
+        rows = con.execute(f"select count(*) from {raw_zone.read_sql(TABLE, zone)}").fetchone()[0]
+    assert rows == 2 * (len(KEYS) - 1) + 1
+
+
+def test_a_short_survivor_refuses_to_read_absence_as_withdrawal(tmp_path, capsys):
+    """The failure a withdrawal looks exactly like: a run that died mid-fetch."""
+    snapshot(tmp_path, OLD, KEYS)
+    snapshot(tmp_path, MID, KEYS)
+    snapshot(tmp_path, NEW, KEYS[:90])
+
+    code = prune_raw.run(tmp_path, keep=2, only=[DATASET], apply=True)
+    assert code == prune_raw.UNPROVEN_EXIT
+    assert "SHORT" in capsys.readouterr().out
+    assert (tmp_path / TABLE / f"{raw_zone.PARTITION_KEY}={OLD}").exists()
+    assert not (tmp_path / TABLE / raw_zone.WITHDRAWALS_DIRNAME).exists()
+
+
+def test_a_loss_over_the_guard_tolerance_refuses_even_when_the_survivor_passes(tmp_path, capsys):
+    """Two short runs in a row: the second is not short against the first.
+
+    The guard compares neighbours, so the survivor passes it. The candidate's
+    own loss against the survivor is what catches this.
+    """
+    snapshot(tmp_path, OLD, KEYS)
+    snapshot(tmp_path, MID, KEYS[:90])
+    snapshot(tmp_path, NEW, KEYS[:90])
+    manifest(tmp_path, "20260801T090000Z", OLD, len(KEYS))
+
+    code = prune_raw.run(tmp_path, keep=2, only=[DATASET], apply=True)
+    assert code == prune_raw.UNPROVEN_EXIT
+    assert "10.0% of its keys absent" in capsys.readouterr().out
+    assert (tmp_path / TABLE / f"{raw_zone.PARTITION_KEY}={OLD}").exists()
+
+
+def test_a_withdrawal_does_not_excuse_a_key_that_is_behind(tmp_path, capsys):
+    """The second limb is untouched by ADR-21, and a withdrawal beside it
+    does not license the delete."""
+    zone = withdrawal_zone(tmp_path)
+    stale = "k001"
+    run_id = "20260801T120000Z"
+    write(zone, OLD, run_id, [row(stale, "2026-08-09T00:00:00.000Z", run_id)], seq=1)
+
+    code = prune_raw.run(zone, keep=2, only=[DATASET], apply=True)
+    assert code == prune_raw.UNPROVEN_EXIT
+    assert "present at an older _socrata_updated_at" in capsys.readouterr().out
+    assert (zone / TABLE / f"{raw_zone.PARTITION_KEY}={OLD}").exists()
+
+
+def test_a_ledger_that_does_not_read_back_stops_every_delete(tmp_path, capsys, monkeypatch):
+    """The read-back is the gate, not the write. Nothing goes until it holds."""
+    zone = withdrawal_zone(tmp_path)
+    monkeypatch.setattr(raw_zone, "recorded_withdrawals", lambda *args, **kwargs: set())
+
+    code = prune_raw.run(zone, keep=2, only=[DATASET], apply=True)
+    assert code == prune_raw.UNRECORDED_EXIT
+    assert "Nothing was deleted" in capsys.readouterr().out
+    assert (zone / TABLE / f"{raw_zone.PARTITION_KEY}={OLD}").exists()
+    assert (zone / TABLE / raw_zone.RUNS_DIRNAME / "20260801T090000Z.json").exists()
+
+
+def test_a_key_already_ledgered_is_not_written_again(tmp_path, capsys):
+    """A second apply adds nothing for a key an earlier one recorded.
+
+    The ledger is append-only, so a duplicate would be harmless. Writing none
+    is what keeps it small enough to read whole on every apply.
+    """
+    zone = withdrawal_zone(tmp_path)
+    raw_zone.write_withdrawals(TABLE, "20260802T000000Z", [{GRAIN: WITHDRAWN}], zone)
+
+    assert prune_raw.run(zone, keep=2, only=[DATASET], apply=True) == 0
+    capsys.readouterr()
+    assert len(list((zone / TABLE / raw_zone.WITHDRAWALS_DIRNAME).glob("*.json"))) == 1
+    assert not (zone / TABLE / f"{raw_zone.PARTITION_KEY}={OLD}").exists()
+
+
+def test_every_snapshot_staging_model_reads_only_the_newest_keys():
+    """The precondition ADR-21 rests on, checked on every PR.
+
+    A withdrawn key may lose its partitions only because no model can return
+    it already. A snapshot dataset whose staging model unions every partition
+    would still be returning it, and the prune would then move a row count.
+    """
+    models = Path(__file__).resolve().parent.parent / "dbt" / "models"
+    missing = []
+    for name, cfg in dataset_registry.snapshot_datasets().items():
+        (path,) = models.rglob(f"{cfg['staging_model']}.sql")
+        if "restrict_to_newest_snapshot(" not in path.read_text():
+            missing.append(name)
+    assert not missing, f"snapshot staging models not restricted to the newest keys: {missing}"

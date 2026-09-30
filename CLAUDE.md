@@ -306,6 +306,15 @@ reclaims nothing: whether the prune may now treat older partitions as
 unreachable is a separate ADR with its own acceptance test, because "no model's
 row count moves" is trivially true for a partition staging already ignores.
 
+**ADR-21 (active, 2026-09-28) is that separate ADR.** A key absent from the survivor is read
+as a withdrawal only when nothing is behind, no key is NULL, the survivor is not
+SHORT, the candidate lost at most 2% of its keys, and, with `--apply`, the
+withdrawal ledger `<table>/_withdrawals/*.json` reads back holding every such
+key before the first delete (exit 5 otherwise). Report mode on the bucket that
+day: 21 partitions prunable, 27 keys to ledger, 1420.4 MB to 325.1 MB, exit 4
+rather than 3. The ledger is JSON on purpose: a Parquet file anywhere
+under `<table>/` is read as rows by both engines.
+
 **A dataset the registry does not name is nobody's job until someone makes it
 one (ADR-18).** ADR-10 cut `city_budget` and `street_trees` on 2026-08-04 and
 left 55.5 MB of their Parquet in the bucket, where it sat for five days while
