@@ -73,6 +73,10 @@ export DBT_PROFILES_DIR := $(CURDIR)/$(DBT_DIR)
 # absolute value here means every tool opens the same file.
 export DUCKDB_PATH := $(CURDIR)/$(DATA_DIR)/sf.duckdb
 
+# Every target under .phony is a command, not a file it builds. Phony means Make always
+# runs it, even if a file or dir of the same name exists (e.g. docs/), and skips
+# the implicit-rule search for it, which saves time on every call.
+# Add any new target to this list.
 .PHONY: help setup all ingest spatial load load-bigquery build build-bigquery \
         publish test test-python docs docs-serve lint fmt leak-check compile-duckdb \
         compile-bigquery ci-build rebuild clean clean-warehouse clean-derived check check-derived \

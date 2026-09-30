@@ -52,7 +52,27 @@ hold:
      key, so a superset that is behind on a key would silently change what the
      model returns, and a row-count acceptance test would not see it.
 
-A candidate that fails either is not deleted, is reported by name, and exits
+**The first limb may fail as a withdrawal, and only as one (ADR-21).** The city
+withdraws records from `business_locations` with no tombstone (ADR-19), so a
+complete later partition is not a superset of an earlier one, and since
+2026-08-24 no partition older than the last withdrawal could be proven. A key
+absent from the survivor is read as withdrawn, and the candidate prunable, when
+every one of these holds:
+
+  - the second limb holds: nothing present in the survivor is behind;
+  - no row of the candidate has a NULL `grain_key`;
+  - the survivor is not SHORT by `check_snapshots.py`, and the candidate lost
+    no more of its keys to it than the same tolerance, which is what tells a
+    withdrawal (tens of keys) from a run that died mid-fetch (whole files);
+  - with `--apply`, the withdrawal ledger (`<table>/_withdrawals/`) reads back
+    holding the last-seen row of every such key, before anything is deleted.
+
+It rests on `restrict_to_newest_snapshot`: every snapshot staging model keeps
+only the newest partition's keys, so a withdrawn key is already in no model,
+and the delete removes only the record that it existed, which the ledger keeps.
+`tests/test_prune_raw.py` asserts that precondition on every PR.
+
+A candidate that fails is not deleted, is reported by name, and exits
 UNPROVEN_EXIT. That is the point: this refuses rather than guesses, on the same
 principle as `check_derived.py`. Deleting nothing is always a correct outcome
 here and deleting the wrong partition never is.
@@ -95,6 +115,7 @@ import shutil
 import sys
 from pathlib import Path
 
+import check_snapshots
 import dataset_registry
 import raw_zone
 import remote
@@ -111,6 +132,9 @@ import remote
 # invite exactly the action the expensive one forbids.
 UNPROVEN_EXIT = 3
 OVER_BUDGET_EXIT = 4
+# The ledger did not read back holding every key about to lose its last
+# record. Apply only, raised before any delete, and nothing was deleted.
+UNRECORDED_EXIT = 5
 
 # Partitions retained per dataset regardless of what can be proven, newest
 # first. Two rather than one because a rollback is worth about 50 MB: the
@@ -175,17 +199,93 @@ def supersession(con, table: str, grain_key: str, candidate: str, keeper: str, *
                 where newer.grain_key is null),
             (select count(*) from older
                 join newer on older.grain_key = newer.grain_key
-                where newer.watermark < older.watermark)
+                where newer.watermark < older.watermark),
+            (select count(*) from older where grain_key is null)
         """
     ).fetchone()
-    candidate_keys, keeper_keys, unreachable, regressed = row
+    candidate_keys, keeper_keys, unreachable, regressed, null_keys = row
     return {
         "candidate_keys": candidate_keys,
         "keeper_keys": keeper_keys,
         "unreachable": unreachable,
         "regressed": regressed,
+        "null_keys": null_keys,
         "proven": unreachable == 0 and regressed == 0,
     }
+
+
+def keeper_is_short(con, table: str, grain_key: str, keeper: str, *, root) -> bool:
+    """Is the surviving partition one `check_snapshots.py` would call SHORT?
+
+    The precondition for reading a missing key as a withdrawal at all (ADR-21).
+    A run that died mid-fetch and a city that withdrew a record leave the same
+    trace, a key in an older partition and not in the newer one, and nothing
+    inside the pair can tell them apart. The guard can, at the scale that
+    matters: a death loses whole multiples of `ROWS_PER_FILE`, a withdrawal
+    loses tens of keys. Same constant as the build gate, so the prune and the
+    build cannot disagree about whether the newest partition is the dataset.
+    """
+    counts = check_snapshots.key_counts(con, table, grain_key, root)
+    found = check_snapshots.shortfalls(counts, check_snapshots.SHORTFALL_TOLERANCE)
+    return any(entry["partition"] == keeper for entry in found)
+
+
+def withdrawn_keys(con, table: str, grain_key: str, candidates: list[str], keeper: str, *, root):
+    """Distinct `grain_key`s in `candidates` that `keeper` does not hold.
+
+    Two columns of the partitions involved and nothing wider, because this
+    runs in report mode too and the retention job reads the bucket from a
+    runner, where every byte is egress.
+    """
+    rows = con.execute(
+        f"""
+        select distinct {grain_key}
+        from {raw_zone.read_sql(table, root, partitions=candidates)}
+        where {grain_key} is not null
+          and {grain_key} not in (
+              select {grain_key}
+              from {raw_zone.read_sql(table, root, partitions=[keeper])}
+              where {grain_key} is not null)
+        """
+    ).fetchall()
+    return {str(value) for (value,) in rows}
+
+
+def last_seen_rows(
+    con, table: str, grain_key: str, keys: set[str], partitions: list[str], *, root
+) -> list[dict]:
+    """The newest version of each key in `keys`, as the ledger records it.
+
+    Found in two passes so that only the partitions actually holding a
+    last-seen row are read at full width: the first reads two columns to find
+    where each key was last seen, the second reads those partitions only.
+    """
+    if not keys:
+        return []
+    literals = ", ".join(f"'{raw_zone._sql_literal(key)}'" for key in sorted(keys))
+    newest = con.execute(
+        f"""
+        select distinct max({raw_zone.PARTITION_KEY})
+        from {raw_zone.read_sql(table, root, partitions=partitions)}
+        where {grain_key} in ({literals})
+        group by {grain_key}
+        """
+    ).fetchall()
+    holding = sorted(str(partition) for (partition,) in newest)
+    cursor = con.execute(
+        f"""
+        select *
+        from {raw_zone.read_sql(table, root, partitions=holding)}
+        where {grain_key} in ({literals})
+        qualify row_number() over (
+            partition by {grain_key}
+            order by {raw_zone.PARTITION_KEY} desc, {raw_zone.WATERMARK_COLUMN} desc
+        ) = 1
+        order by {grain_key}
+        """
+    )
+    columns = [column[0] for column in cursor.description]
+    return [dict(zip(columns, values, strict=True)) for values in cursor.fetchall()]
 
 
 def runs_wholly_within(con, table: str, partitions: list[str], root) -> list[str]:
@@ -243,21 +343,59 @@ def plan_for(con, name: str, cfg: dict, root, keep: int) -> dict:
 
     prunable: list[dict] = []
     unproven: list[dict] = []
+    # Proven against a partition that survives, and against the newest of
+    # them. Proving it against another candidate would be proving it against
+    # something about to be deleted, which proves nothing.
+    keeper = retained[-1] if retained else None
+    short = bool(candidates) and keeper_is_short(con, table, cfg["grain_key"], keeper, root=root)
     for candidate in candidates:
-        # Proven against a partition that survives, and against the newest of
-        # them. Proving it against another candidate would be proving it
-        # against something about to be deleted, which proves nothing.
-        keeper = retained[-1]
         result = supersession(con, table, cfg["grain_key"], candidate, keeper, root=root)
         entry = {"dataset": name, "table": table, "partition": candidate, "keeper": keeper}
         entry.update(result)
-        (prunable if result["proven"] else unproven).append(entry)
+        entry["withdrawn"] = 0
+        if result["proven"]:
+            prunable.append(entry)
+            continue
+        # ADR-21. The first limb may fail as a withdrawal and only as one: every
+        # missing key is a real key, the survivor is not a run that died
+        # mid-fetch, and the second limb holds, which is what makes the keys
+        # the survivor does have reachable at the same values. Staging reads
+        # only the newest partition's keys (`restrict_to_newest_snapshot`), so
+        # a key absent from it is already absent from every model; what the
+        # delete removes is the record that it was ever there, and the ledger
+        # is written before the delete so it removes nothing.
+        #
+        # The guard compares each partition with the one before it, so two
+        # short runs in a row pass it on the second. Hence the loss is also
+        # bounded per candidate against the survivor, at the guard's own
+        # tolerance: a withdrawal is tens of keys out of 366,000, and a loss
+        # the guard would call SHORT is never read as one.
+        lost = result["unreachable"] / result["candidate_keys"] if result["candidate_keys"] else 0
+        if result["regressed"]:
+            entry["reason"] = f"{result['regressed']} present at an older _socrata_updated_at"
+        elif result["null_keys"]:
+            entry["reason"] = f"{result['null_keys']} row(s) with a NULL grain_key"
+        elif short:
+            entry["reason"] = f"{keeper} is SHORT by check_snapshots, so absence proves nothing"
+        elif lost > check_snapshots.SHORTFALL_TOLERANCE:
+            entry["reason"] = (
+                f"{lost:.1%} of its keys absent, over the "
+                f"{check_snapshots.SHORTFALL_TOLERANCE:.0%} a withdrawal may account for"
+            )
+        else:
+            entry["withdrawn"] = result["unreachable"]
+            prunable.append(entry)
+            continue
+        unproven.append(entry)
 
     return {
         "dataset": name,
         "table": table,
+        "grain_key": cfg["grain_key"],
         "partitions": found,
         "retained": retained,
+        "keeper": keeper,
+        "keeper_short": short,
         "prunable": prunable,
         "unproven": unproven,
     }
@@ -298,15 +436,22 @@ def report(plan: dict) -> None:
         f"retaining {', '.join(plan['retained'])}"
     )
     for entry in plan["prunable"]:
-        print(
-            f"    {entry['partition']}  superseded by {entry['keeper']}: "
-            f"all {entry['candidate_keys']} grain_key(s) present, none behind"
-        )
+        if entry["withdrawn"]:
+            print(
+                f"    {entry['partition']}  superseded by {entry['keeper']}: "
+                f"{entry['withdrawn']} of {entry['candidate_keys']} grain_key(s) withdrawn "
+                "and ledgered before any delete, none behind"
+            )
+        else:
+            print(
+                f"    {entry['partition']}  superseded by {entry['keeper']}: "
+                f"all {entry['candidate_keys']} grain_key(s) present, none behind"
+            )
     for entry in plan["unproven"]:
         print(
             f"    {entry['partition']}  NOT superseded by {entry['keeper']}: "
             f"{entry['unreachable']} of {entry['candidate_keys']} grain_key(s) absent, "
-            f"{entry['regressed']} present at an older _socrata_updated_at"
+            f"{entry['reason']}"
         )
 
 
@@ -389,6 +534,90 @@ def headroom(root, removable: int, limit: int) -> bool:
     return True
 
 
+def prepare_withdrawals(con, plan: dict, apply: bool, root) -> None:
+    """Find one plan's withdrawn keys, and with `apply` the rows to ledger.
+
+    Report mode counts the keys and reads nothing wider. Keys an earlier apply
+    already ledgered are not fetched again.
+    """
+    withdrawing = [entry["partition"] for entry in plan["prunable"] if entry["withdrawn"]]
+    plan["withdrawn_keys"] = (
+        withdrawn_keys(
+            con, plan["table"], plan["grain_key"], withdrawing, plan["keeper"], root=root
+        )
+        if withdrawing
+        else set()
+    )
+    plan["ledger"] = []
+    if apply and plan["withdrawn_keys"]:
+        already = raw_zone.recorded_withdrawals(plan["table"], plan["grain_key"], root)
+        elsewhere = [p for p in plan["partitions"] if p != plan["keeper"]]
+        plan["ledger"] = last_seen_rows(
+            con,
+            plan["table"],
+            plan["grain_key"],
+            plan["withdrawn_keys"] - already,
+            elsewhere,
+            root=root,
+        )
+
+
+def record_withdrawals(plans: list[dict], root) -> bool:
+    """Write each plan's ledger, then read the ledger back. True when it is complete.
+
+    ADR-21's acceptance test, and it runs before the first delete rather than
+    after it, because afterwards there is nothing left to check against. The
+    read-back is of the whole ledger and not of the file just written: a key
+    an earlier apply already recorded is not written twice, so the question is
+    whether the union holds every key, and the file alone does not answer it.
+    True is the only answer that lets the deletes proceed.
+    """
+    stamp = raw_zone.new_run_id()
+    for plan in plans:
+        if not plan["ledger"]:
+            continue
+        for record in plan["ledger"]:
+            record["_last_seen_ingest_date"] = record.pop(raw_zone.PARTITION_KEY)
+            record["_absent_from_ingest_date"] = plan["keeper"]
+            record["_ledgered_at"] = stamp
+        path = raw_zone.write_withdrawals(plan["table"], stamp, plan["ledger"], root)
+        print(f"  ledgered {len(plan['ledger'])} withdrawn grain_key(s) in {path}")
+
+    unrecorded: dict[str, set[str]] = {}
+    for plan in plans:
+        if not plan["withdrawn_keys"]:
+            continue
+        recorded = raw_zone.recorded_withdrawals(plan["table"], plan["grain_key"], root)
+        missing = plan["withdrawn_keys"] - recorded
+        if missing:
+            unrecorded[plan["table"]] = missing
+
+    if unrecorded:
+        print("\nERROR: the withdrawal ledger does not hold every key about to lose its record:")
+        for table, keys in unrecorded.items():
+            print(f"  {table}: {len(keys)} key(s), e.g. {', '.join(sorted(keys)[:5])}")
+        print(
+            "\nNothing was deleted. The ledger is the only record of these keys once the "
+            "partitions go, so the delete waits on it reading back complete (ADR-21)."
+        )
+    return not unrecorded
+
+
+def summary(plans: list[dict], apply: bool, removed_objects: int, removed_bytes: int) -> None:
+    deltas = sorted(set(dataset_registry.DATASETS) - set(dataset_registry.snapshot_datasets()))
+    verb = "removed" if apply else "would remove"
+    print(
+        f"\nsummary\n  {verb} {removed_objects} object(s), {removed_bytes / 1e6:.1f} MB\n"
+        f"  {sum(len(plan['prunable']) for plan in plans)} partition(s) and "
+        f"{sum(len(plan['runs']) for plan in plans)} run manifest(s)"
+    )
+    withdrawn = sum(len(plan["withdrawn_keys"]) for plan in plans)
+    if withdrawn:
+        ledgered = "recorded in the ledger" if apply else "would be recorded in the ledger"
+        print(f"  {withdrawn} withdrawn grain_key(s) {ledgered} (ADR-21)")
+    print(f"  delta sources are not considered: {', '.join(deltas)}")
+
+
 def run(raw_root, keep: int, only: list[str], apply: bool, max_bytes: int | None = None) -> int:
     root = raw_root if raw_root is not None else raw_zone.raw_root()
     is_remote = remote.is_remote(root)
@@ -413,6 +642,13 @@ def run(raw_root, keep: int, only: list[str], apply: bool, max_bytes: int | None
                 runs_wholly_within(con, plan["table"], partitions, root) if partitions else []
             )
 
+        # The ledger's contents too, while the rows are still there.
+        for plan in plans:
+            prepare_withdrawals(con, plan, apply, root)
+
+    if apply and not record_withdrawals(plans, root):
+        return UNRECORDED_EXIT
+
     removed_bytes = 0
     removed_objects = 0
     for plan in plans:
@@ -432,14 +668,7 @@ def run(raw_root, keep: int, only: list[str], apply: bool, max_bytes: int | None
                     )
 
     unproven = [entry for plan in plans for entry in plan["unproven"]]
-    deltas = sorted(set(dataset_registry.DATASETS) - set(dataset_registry.snapshot_datasets()))
-    verb = "removed" if apply else "would remove"
-    print(
-        f"\nsummary\n  {verb} {removed_objects} object(s), {removed_bytes / 1e6:.1f} MB\n"
-        f"  {sum(len(plan['prunable']) for plan in plans)} partition(s) and "
-        f"{sum(len(plan['runs']) for plan in plans)} run manifest(s)"
-    )
-    print(f"  delta sources are not considered: {', '.join(deltas)}")
+    summary(plans, apply, removed_objects, removed_bytes)
 
     # After the deletes, so `--apply --max-bytes` weighs the zone it is leaving
     # behind rather than the one it found. In report mode nothing has moved, so
@@ -453,15 +682,17 @@ def run(raw_root, keep: int, only: list[str], apply: bool, max_bytes: int | None
         for entry in unproven:
             print(
                 f"  {entry['table']} ingest_date={entry['partition']}: "
-                f"{entry['unreachable']} grain_key(s) are in it and not in {entry['keeper']}, "
-                f"{entry['regressed']} are in both but newer here"
+                f"{entry['unreachable']} grain_key(s) are in it and not in {entry['keeper']}; "
+                f"{entry['reason']}"
             )
         print(
-            "\nNothing about them was deleted. Either the run that wrote one was not a "
-            "complete snapshot, in which case the zone is correct and this partition is "
-            "simply not prunable, or the dataset is not the current-state registry the "
-            "registry says it is, in which case `refresh` is wrong. Deleting it on the "
-            "strength of the registry alone is what this refuses to do."
+            "\nNothing about them was deleted. A key absent from the survivor is read as a "
+            "withdrawal only when the survivor passes check_snapshots and no key is behind "
+            "in it (ADR-21), and one of those did not hold. A key behind means the dataset "
+            "is not the current-state registry the registry says it is, and `refresh` is "
+            "wrong. A SHORT survivor is a run that died mid-fetch: re-run `make ingest` for "
+            "the dataset. Deleting on the strength of the registry alone is what this "
+            "refuses to do."
         )
         return UNPROVEN_EXIT
 

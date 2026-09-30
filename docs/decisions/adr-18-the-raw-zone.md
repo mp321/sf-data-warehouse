@@ -6,6 +6,11 @@ related: [adr-1-warehouse-targets, adr-4-raw-zone-layout, adr-9-cloud-raw-zone, 
 
 # ADR-18. The raw zone: what it is, and everything that may delete from it
 
+> **Amended by ADR-21 (2026-09-28).** Section 4's first limb may now fail as a
+> withdrawal, under four conditions, once the withdrawn keys are in the
+> `_withdrawals/` ledger. The second limb, the keep window and every refusal
+> in section 5 are unchanged.
+
 > **Amended by ADR-19 on 2026-09-07.** One line of the Revisit clause is
 > reversed. "A snapshot dataset starts failing its proof regularly ... means
 > the upstream stopped republishing wholesale and `refresh` has become a lie"
