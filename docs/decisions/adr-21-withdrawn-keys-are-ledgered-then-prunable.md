@@ -6,6 +6,13 @@ related: [adr-18-the-raw-zone, adr-19-withdrawn-registrations, adr-20-registry-h
 
 # ADR-21. A withdrawn key is ledgered, and then its partitions are prunable
 
+> **In plain terms.** A *withdrawal* is a record the city removed from its
+> registry without notice: a closed business, a duplicate, a test entry. The
+> *ledger* lists them, each as it last looked, in
+> `raw/<table>/_withdrawals/*.json`. The prune writes it and reads it back
+> before deleting the old copies that were the only other record. First
+> applied 2026-09-30: 27 records saved, raw zone 1420 MB to 330 MB.
+
 Amends ADR-18 section 4, the first limb of the superset proof. Takes the
 decision ADR-19 deferred in so many words: "whether staging reading only the
 newest partition is enough to tell `prune_raw.py` that an older one is

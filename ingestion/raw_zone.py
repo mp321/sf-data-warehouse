@@ -46,18 +46,16 @@ import pyarrow.parquet as pq
 
 import remote
 
-# Directory names. The leading underscore on _runs is load bearing: DuckDB's
-# **/*.parquet glob ignores it because it holds JSON, and pyarrow's dataset
-# discovery ignores "_" and "." prefixes by default. Renaming it to something
-# without the underscore would make it look like a partition.
+# Directory names. Two guards keep _runs out of the data: the `.json`
+# extension escapes the *.parquet globs of DuckDB and BigQuery, and the leading
+# underscore escapes pyarrow's dataset discovery. Both are needed.
 RUNS_DIRNAME = "_runs"
 PARTITION_KEY = "ingest_date"
 
-# The withdrawal ledger (ADR-21). JSON and not Parquet, and that is the load
-# bearing choice rather than the underscore: `read_sql` globs `**/*.parquet`
-# over the whole table and BigQuery's external tables glob `<table>/*.parquet`,
-# whose `*` crosses directories, so a Parquet ledger here would be read as rows
-# of the dataset by both engines.
+# The withdrawal ledger (ADR-21): each record the city removed from a snapshot
+# dataset, as it last looked, saved before the prune deletes older copies.
+# JSON, not Parquet: both engines glob *.parquet across subdirectories, so a
+# Parquet ledger would be read as rows of the dataset.
 WITHDRAWALS_DIRNAME = "_withdrawals"
 
 # Socrata's :updated_at, after sanitize_column(). The watermark column.
