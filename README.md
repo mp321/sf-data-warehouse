@@ -8,16 +8,16 @@ the query engine, tested dbt models, scheduled CI, a published Parquet export,
 and a generated contract that lets a language model query the result
 correctly. Every design decision is recorded in `docs/decisions/`.
 
-| As of 2026-09-27 | |
+| As of 2026-10-23 | |
 |---|---|
 | **Runs on a fresh clone** | `make setup && make ci-build`. No cloud account, no credentials, no cost. |
-| **Tested** | 150 dbt tests and 283 Python tests, on every pull request. |
+| **Tested** | 150 dbt tests and 292 Python tests, on every pull request. |
 | **Reproducible** | CI drops the warehouse and rebuilds it from Parquet, to prove the files are the source of truth. |
 | **Two engines** | Every model compiles on DuckDB and BigQuery. Running both found five defects that compiling could not. |
 | **Spatial** | About 610k points placed in 733 boundaries by Python, not SQL (last full build, 2026-09-13). |
 | **Published** | 6 Parquet files, one per mart, plus a manifest. |
 | **LLM-ready** | A generated context pack tells a model what this warehouse holds and what it must refuse to answer. |
-| **Documented** | 20 ADRs (12 active), 9 closed plans plus PLAN-10 (active), and an append-only session log. |
+| **Documented** | 21 ADRs (13 active), 9 closed plans plus PLAN-10 (active), and an append-only session log. |
 
 ---
 
@@ -217,10 +217,10 @@ timestamp alone breaks when thousands of rows share one timestamp across a page
 boundary. Paging orders by the total key `(:updated_at, :id)`, and every run's
 manifest is reconciled against the Parquet it wrote (ADR-18).
 
-**An append-only zone grows without limit.** Storage was the only free-tier
-limit this project could realistically reach. The prune deletes a partition
-only when a later one provably holds every key at values no older, and refuses
-what it cannot prove. The proof runs weekly; the deletion is manual (ADR-18).
+**An append-only zone grows without limit.** The prune deletes a partition only
+when a later one provably holds every key at values no older, or when every key
+it lacks is a withdrawal already saved to a ledger. It refuses what it cannot
+prove. The proof runs weekly; the deletion is manual (ADR-18, ADR-21).
 
 **A language model given a schema answers questions the data cannot support.**
 311 volume reads like a measure of street conditions. It measures who reports.
@@ -392,13 +392,15 @@ Each limit below has a recorded reason.
   311 or permits removes rows the API cannot serve again. **A bucket lifecycle
   rule would be simpler and is the wrong mechanism**, because it deletes by
   object age and knows nothing about which partitions are snapshots (ADR-18).
-- **The raw zone cannot shrink below about 1.3 GB, and that floor rises.** The
-  city withdraws registrations: a business that closes simply disappears from
-  the next copy. So a partition written before the latest withdrawal holds keys
-  no later partition has, the prune can never prove it redundant, and it stays.
-  The Monday retention job fails because the zone is over 1 GB. That is correct,
-  and it stays red until a new ADR decides whether older partitions may be
-  treated as unreachable (ADR-19).
+- **The city deletes records without notice, so the prune keeps a ledger.**
+  A closed business or a cleaned-up test entry simply vanishes from the next
+  copy of the registry. That left every older copy unprovable, and from
+  2026-08-24 the zone could only grow, reaching 1.4 GB (ADR-19). The
+  **withdrawal ledger** fixes it: before deleting old copies, the prune writes
+  each vanished record, as it last looked, to a small JSON file in the raw
+  zone, reads it back, and only then deletes (ADR-21). The first apply, on
+  2026-09-30, cut the zone from 1420 MB to 330 MB and saved 27 records: 19 city
+  test entries and 8 erroneous registrations.
 - **Editing the spatial code invalidates the entire derived zone.** Its manifest
   hashes the source of every module that computes it, so `make check-derived`
   can report "built by code that no longer exists" rather than only "behind".
@@ -447,14 +449,15 @@ conventions.
 
 What is open:
 
-- **A withdrawal ledger.** A dbt snapshot of the business registry was refused
-  (ADR-20) because the warehouse is rebuilt from scratch, so only the old raw
-  partitions record which registrations the city withdrew. A ledger in the raw
-  zone needs its own ADR.
-- **The deferred prune decision.** Whether the prune may treat older snapshot
-  partitions as unreachable, now that staging keeps only the keys in the newest
-  one. ADR-19 leaves it to a later ADR with its own acceptance test, after the
-  ledger.
+- **A reader for the withdrawal ledger.** The ledger exists (ADR-21) and
+  nothing queries it. Closures by neighborhood and month is the obvious mart;
+  it needs a registry entry for the ledger first.
+- **A raw zone that stays within the free tier.** The zone grows about
+  90 MB a day. About 50 MB is another full copy of `business_locations`,
+  whose freshness target is a week, and the prune can reclaim it. About
+  36 MB is 311 history: since 2026-10-04 the city re-sends 120k+ cases a day,
+  and delta partitions are never pruned. The daily run's network reads grow
+  with the zone and will exceed the free tier in October 2026.
 - **A public, always-on view of the published export.** Everything needed for
   one exists: `published/` is one Parquet file per mart with a manifest, and
   `dim_neighborhood` carries GeoJSON. Nothing renders it yet.

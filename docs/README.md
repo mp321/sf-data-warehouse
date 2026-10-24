@@ -7,7 +7,7 @@
 | `decisions/` | 13 active ADRs, plus six superseded ones that stay: ADR-14, 16 and 17 beside ADR-18 while the consolidation is new, ADR-2 and ADR-7 because `prose.yml` cites them and the resolver only looks here, and ADR-20, refused 2026-09-13 |
 | `plans/` | PLAN-10 (active), plus a template. All nine earlier plans are done and archived |
 | `specs/` | `context-pack.md`, the contract the generated pack is built against |
-| `dev-notes/` | 2026-08-09, 2026-08-10, 2026-08-25, 2026-09-07, 2026-09-10, 2026-09-11, 2026-09-12, 2026-09-13, 2026-09-17, 2026-09-27, 2026-09-28 and 2026-09-29, plus `ARCHIVE-2026-07.md` for everything before them |
+| `dev-notes/` | 15 dated notes, 2026-08-09 to 2026-10-23, plus `ARCHIVE-2026-07.md` for everything before them |
 | `archive/` | superseded ADR-3 and ADR-4, all nine closed plans, and an index of what each was and what replaced it |
 
 | ADR | Status |

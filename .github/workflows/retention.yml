@@ -40,16 +40,11 @@ jobs:
       # the derived zone, which is a pure function of this one and is rebuilt
       # rather than retained.
       RAW_ZONE_URI: gs://${{ secrets.GCS_BUCKET }}/raw
-      # 1 GB against a 5 GB always-free allowance, and the number is chosen so
-      # that a breach means one thing only.
-      #
-      # With the prune being run the zone sits near a floor of about 170 MB and
-      # grows at the delta rate of 4.86 MB/day, so delta growth alone needs over
-      # 170 days to reach this. Without it the snapshot churn is about 50 MB/day
-      # and reaches it in roughly 15. So this cannot fire because the project
-      # grew; it fires because the apply stopped being run, which is the only
-      # thing it is trying to say. It still leaves about 70 days of runway to
-      # the allowance at the neglected rate, which is three more Mondays.
+      # 1 GB against a 5 GB always-free allowance, chosen so a breach meant one
+      # thing: the apply stopped being run. That held while 311 grew about
+      # 5 MB/day. Since 2026-10-04 upstream re-sends 120k+ rows a day, so delta
+      # history alone passes 1 GB and an apply no longer clears this (dev note
+      # 2026-10-23). Re-deriving the threshold is open.
       MAX_RAW_BYTES: "1000000000"
     steps:
       - uses: actions/checkout@v4
@@ -93,11 +88,10 @@ jobs:
           fi
           echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/sa.json" >> "$GITHUB_ENV"
 
-      # Exit 3 and exit 4 mean different things and want different responses,
-      # so the failure message says which rather than leaving the reader to
-      # open the log. 3 is a snapshot dataset that failed its proof, which
-      # ADR-14 answers with "stop pruning until it is understood". 4 is the
-      # zone over the threshold, which a human answers with the apply.
+      # The failure message names the exit code's meaning so nobody has to open
+      # the log. Exit 4 (over the threshold) is routine: run the apply. Exit 3
+      # (a failed proof) is not: stop pruning and read the log (ADR-18).
+      # Withdrawals no longer cause exit 3; the apply ledgers them (ADR-21).
       - name: Prove what is superseded and weigh the zone
         run: |
           set +e
@@ -106,7 +100,7 @@ jobs:
           set -e
           case "$status" in
             0) echo "Raw zone is under $MAX_RAW_BYTES bytes and every partition outside the keep window is proven." ;;
-            3) echo "::error::A snapshot dataset failed its supersession proof. Do not prune. Read the log, then ADR-14's revisit clause: this usually means the upstream stopped republishing wholesale and \`refresh\` has become a lie." ;;
+            3) echo "::error::A snapshot dataset failed its supersession proof. Do not prune. The log names each partition and the reason: a key behind in the newest copy (ADR-18's revisit clause; \`refresh\` may no longer be true), a NULL grain_key, a SHORT newest copy (re-run the ingest), or more missing keys than withdrawals explain (ADR-21)." ;;
             4) echo "::error::The raw zone is over $MAX_RAW_BYTES bytes. Nothing was deleted. Run \`set -a; source .env; set +a\` then \`make prune-raw\` to read the plan and \`make prune-raw-apply\` to act on it." ;;
             *) echo "::error::prune_raw.py exited $status, which is neither of its two verdicts. This is a fault in the check rather than in the zone." ;;
           esac

@@ -52,7 +52,9 @@ hold:
      key, so a superset that is behind on a key would silently change what the
      model returns, and a row-count acceptance test would not see it.
 
-**The first limb may fail as a withdrawal, and only as one (ADR-21).** The city
+**The first limb may fail as a withdrawal, and only as one (ADR-21).** A
+withdrawal is a record the city removed from its registry; the ledger saves
+each one before the old copies go. The city
 withdraws records from `business_locations` with no tombstone (ADR-19), so a
 complete later partition is not a superset of an earlier one, and since
 2026-08-24 no partition older than the last withdrawal could be proven. A key
