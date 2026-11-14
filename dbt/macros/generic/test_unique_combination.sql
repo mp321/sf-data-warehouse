@@ -19,11 +19,13 @@
          expression. The same test would be `..._as_varchar_` on one target and
          `..._as_string_` on the other, so `meta_dbt_run_results` and the
          committed manifest would disagree about which tests exist.
-      3. `a || '|' || b` is ambiguous anyway. Any value containing the
-         separator lets two distinct rows produce one key, so the test passes
-         where it should fail. A group by cannot have that bug.
-      4. Nulls. Concatenation with a null is null on both engines, so a row
-         with a null grain column silently drops out of the test.
+      3. `a || '|' || b` is ambiguous anyway. A value containing the separator
+         lets two distinct rows produce one key, so the test fails where it
+         should pass. A group by cannot have that bug.
+      4. Nulls. Concatenation with a null is null on both engines, and `unique`
+         skips nulls, so a duplicate with a null grain column goes unreported:
+         the test passes where it should fail. Of the four, only this one
+         hides a real duplicate.
 
     A group by with `having count(*) > 1` has none of those properties: no
     cast, no separator, no null collapse, and a name that does not depend on

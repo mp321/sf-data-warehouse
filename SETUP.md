@@ -1,12 +1,12 @@
 # Setup guide
 
 `CLAUDE.md` is the source of truth on architecture. Where this guide disagrees
-with it, this guide is the one that is wrong.
+with it, this guide is wrong.
 
-**The credential-free path is the default and needs no Google account.** DuckDB
-is the canonical warehouse (ADR-1) and both Parquet zones are local unless you
-point them somewhere else, so the whole pipeline and the entire CI gate run on a
-fresh clone at no cost.
+**The default path needs no Google account.** DuckDB is the canonical
+warehouse (ADR-1) and both Parquet zones are local unless you point them
+elsewhere, so the whole pipeline and the CI gate run on a fresh clone at no
+cost.
 
 ```bash
 git clone <this repo> && cd sf-data-warehouse
@@ -14,9 +14,9 @@ make setup        # venv, requirements, dbt deps, pre-commit hooks
 make ci-build     # whole pipeline from committed fixtures. No network, no account.
 ```
 
-If `make ci-build` is green, everything below is optional. Prerequisites are
-Python 3.10 or newer, git and about 2 GB of disk: `make setup` installs DuckDB
-as a Python package and there is no database server to run.
+If `make ci-build` is green, everything below is optional. You need Python
+3.10 or newer, git and about 2 GB of disk; DuckDB installs as a Python package,
+so there is no database server.
 
 ## The pipeline, in order
 
@@ -31,14 +31,13 @@ make build      # dbt run + test against DuckDB                   no network, no
 make publish    # marts -> published/ with a manifest             no network, no credentials needed
 ```
 
-**Do not skip `make spatial`.** Skipping it does not raise an error: the
-spatial models build empty and the marts build with no rows. A derived zone
-that exists but is behind the raw zone fails less visibly again, so
-`make build` runs `make check-derived` first and stops if it is stale.
+**Do not skip `make spatial`.** Skipping it raises no error: the spatial
+models build empty and the marts have no rows. A derived zone that is behind
+fails less visibly still, so `make build` runs `make check-derived` first and
+stops if it is stale.
 
-The full target list with one line each is in `CLAUDE.md` under "How to run
-everything". `make check` runs the pull request gate locally; it and `ci.yml`
-differ by a few steps, which `CLAUDE.md` lists.
+The full target list is in `CLAUDE.md` under "Commands", along with the few
+steps where `make check` and `ci.yml` differ.
 
 ## The two targets that need credentials
 
@@ -49,11 +48,10 @@ key. Put both in `.env` (copy `.env.example`) and load them with
 `set -a; source .env; set +a` in each new shell. `keys/` and `.env` are
 gitignored and `make leak-check` blocks a commit carrying either.
 
-Pointing the zones at a bucket also requires them: with `RAW_ZONE_URI` and
-`DERIVED_ZONE_URI` set, `ingest`, `spatial` and `load` read and write GCS using
-the same key. `RAW_ZONE_DIR` takes precedence over `RAW_ZONE_URI`, and the same
-for the derived pair, which is what keeps `make ci-build` local and
-credential-free in a shell that has sourced `.env`.
+Pointing the zones at a bucket needs them too: with `RAW_ZONE_URI` and
+`DERIVED_ZONE_URI` set, `ingest`, `spatial` and `load` read and write GCS with
+the same key. `RAW_ZONE_DIR` beats `RAW_ZONE_URI`, and likewise for the derived
+pair, which keeps `make ci-build` local in a shell that has sourced `.env`.
 
 **Where the bucket layout is documented:** ADR-18 for what the raw zone is and
 what may delete from it, ADR-9 for where the files live and how BigQuery reads
@@ -62,14 +60,14 @@ them, `.env.example` for the variables, and `CLAUDE.md` for `data/raw`,
 
 ## Google Cloud checklist
 
-Only needed for the BigQuery target, and for putting the two Parquet zones in a
-bucket. Follow Google's own documentation for the click paths. What is below is
-the set of choices that keep this project inside the always-free tier.
+Only needed for the BigQuery target and for keeping the zones in a bucket.
+Follow Google's documentation for the click paths; below are the choices that
+keep the project inside the always-free tier.
 
 - **Project and BigQuery sandbox.** Sandbox tables expire after 60 days until
-  billing is attached. The `raw_datasf` dataset still carries that 60 day
-  default partition expiry, which is inert only because nothing in it is a
-  partitioned native table.
+  billing is attached, and a dataset created in the sandbox keeps a 60-day
+  default partition expiry after that. Clear it:
+  `bq update --default_partition_expiration 0 "${GCP_PROJECT_ID}:<dataset>"`.
 - **Service account and JSON key.** Put the key in `keys/`, which is
   gitignored, and point `GOOGLE_APPLICATION_CREDENTIALS` at it as an absolute
   path.
@@ -89,7 +87,10 @@ the set of choices that keep this project inside the always-free tier.
   `serviceAccountTokenCreator` on your own account.
 - **Four repository secrets** for the scheduled workflows: `GCP_PROJECT_ID`,
   `GCP_SA_KEY`, `GCS_BUCKET` (bare name, no `gs://`) and `SOCRATA_APP_TOKEN`.
-  `ci.yml` uses none of them, and should continue to use none.
+  `ci.yml` uses none of them and must stay that way.
+- **Watch egress, not storage.** Internet egress is the free-tier limit this
+  project reaches first: 100 GB a month, mostly the daily ingest reading the
+  zone. Set a budget with alerts on forecasted as well as actual spend.
 
 ## Optional: a Socrata app token
 
