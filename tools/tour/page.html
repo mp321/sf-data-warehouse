@@ -1,0 +1,618 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Inside sf-data-warehouse</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="A guided tour of sf-data-warehouse, an analytics warehouse over seven San Francisco open datasets, built by Michael Phipps.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,500..900&family=IBM+Plex+Mono:wght@400;500&family=Public+Sans:ital,wght@0,400;0,600;0,700;1,400&display=swap">
+<style>
+/* Layout: a city planning sheet. A narrow reading column, with the map and lineage breaking out to full figure width. */
+:root{
+  --paper:#F3F5F4; --surface:#FFFFFF; --ink:#15202B; --ink-2:#47535F; --ink-3:#6B7783; --rule:#D8DEE2;
+  --accent:#B93A0E; --accent-soft:#FBE7DD;
+  --seq-1:#b7d3f6; --seq-2:#86b6ef; --seq-3:#5598e7; --seq-4:#2a78d6; --seq-5:#184f95; --seq-none:#E3E7EA;
+  --display:'Archivo','Arial Narrow',system-ui,sans-serif;
+  --body:'Public Sans',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --mono:'IBM Plex Mono',ui-monospace,'SF Mono',Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --paper:#0E151C; --surface:#151F29; --ink:#E5EBF0; --ink-2:#A8B5C1; --ink-3:#7F8D9A; --rule:#273440;
+  --accent:#FF8A4C; --accent-soft:#3A2218;
+  --seq-1:#104281; --seq-2:#1c5cab; --seq-3:#2a78d6; --seq-4:#6da7ec; --seq-5:#b7d3f6; --seq-none:#1D2833; color-scheme:dark } }
+:root[data-theme="dark"]{
+  --paper:#0E151C; --surface:#151F29; --ink:#E5EBF0; --ink-2:#A8B5C1; --ink-3:#7F8D9A; --rule:#273440;
+  --accent:#FF8A4C; --accent-soft:#3A2218;
+  --seq-1:#104281; --seq-2:#1c5cab; --seq-3:#2a78d6; --seq-4:#6da7ec; --seq-5:#b7d3f6; --seq-none:#1D2833; color-scheme:dark }
+
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--paper);color:var(--ink);font:400 16px/1.6 var(--body);-webkit-font-smoothing:antialiased;
+  padding-left:max(16px, env(safe-area-inset-left, 0px));padding-right:max(16px, env(safe-area-inset-right, 0px))}
+a{color:var(--accent);text-underline-offset:2px}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+code,.mono{font-family:var(--mono);font-size:.88em}
+.wrap{max-width:760px;margin-inline:auto}
+.wide{max-width:1180px;margin-inline:auto}
+section{padding-block:56px 8px;scroll-margin-top:12px}
+h1,h2,h3{font-family:var(--display);text-wrap:balance;margin:0}
+h2{font-size:clamp(26px,3.4vw,34px);font-weight:800;font-stretch:112%;line-height:1.1;letter-spacing:-.01em}
+h3{font-size:18px;font-weight:700;font-stretch:105%;line-height:1.25}
+.eyebrow{font:500 12px/1.4 var(--mono);text-transform:uppercase;letter-spacing:.12em;color:var(--ink-3);margin:0 0 10px}
+.lede{font-size:19px;color:var(--ink-2);margin:14px 0 0;max-width:62ch}
+p{margin:12px 0 0;max-width:68ch}
+.muted{color:var(--ink-3)}
+
+/* hero */
+.hero{padding-block:56px 8px}
+.hero h1{font-size:clamp(34px,6.4vw,64px);font-weight:900;font-stretch:108%;letter-spacing:-.02em;line-height:.95}
+.byline{display:flex;flex-wrap:wrap;gap:4px 16px;margin-top:18px;font-size:14px;color:var(--ink-2)}
+.facts{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:0;margin:32px 0 0;border-block:1px solid var(--rule)}
+.facts div{padding:14px 14px 12px 0;min-width:0}
+.facts div + div{padding-left:14px;border-left:1px solid var(--rule)}
+.facts dt{font:800 30px/1 var(--display);font-stretch:110%;font-variant-numeric:tabular-nums}
+.facts dd{margin:6px 0 0;font-size:13px;color:var(--ink-2);line-height:1.35}
+.toc{display:flex;flex-wrap:wrap;gap:8px 18px;margin-top:20px;font-size:14px}
+.toc a{color:var(--ink-2);text-decoration:none;border-bottom:1px solid var(--rule)}
+.toc a:hover{color:var(--accent);border-color:var(--accent)}
+
+/* controls */
+.controls{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:center;margin-top:22px}
+.seg{display:flex;flex-wrap:wrap;border:1px solid var(--rule);border-radius:8px;background:var(--surface);overflow:hidden}
+.seg button{border:0;background:none;padding:8px 12px;font:600 13px/1.2 var(--body);color:var(--ink-2);cursor:pointer}
+.seg button + button{border-left:1px solid var(--rule)}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--paper)}
+.select{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink-3)}
+.select select{font:600 13px/1.2 var(--body);color:var(--ink);background:var(--surface);border:1px solid var(--rule);border-radius:8px;padding:8px 10px}
+
+/* map + ranking */
+.mapgrid{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:28px;margin-top:20px;align-items:start}
+.mapfig{margin:0;position:relative}
+.mapfig svg{width:100%;height:auto;display:block}
+.mapfig path.n{stroke:var(--paper);stroke-width:1.6;cursor:pointer;transition:fill .45s}
+.mapfig path.n[data-b="0"]{fill:var(--seq-1)} .mapfig path.n[data-b="1"]{fill:var(--seq-2)} .mapfig path.n[data-b="2"]{fill:var(--seq-3)}
+.mapfig path.n[data-b="3"]{fill:var(--seq-4)} .mapfig path.n[data-b="4"]{fill:var(--seq-5)} .mapfig path.n[data-b="x"]{fill:var(--seq-none)}
+#hl{fill:none;stroke:var(--ink);stroke-width:2.6;pointer-events:none}
+.toplabel{font:700 24px var(--body);fill:var(--ink);paint-order:stroke;stroke:var(--paper);stroke-width:6px;stroke-linejoin:round;pointer-events:none}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:10px;font-size:12px;color:var(--ink-2);align-items:center}
+.legend i{display:inline-block;width:14px;height:14px;border-radius:3px;vertical-align:-2px;margin-right:5px}
+.tip{position:absolute;pointer-events:none;background:var(--surface);border:1px solid var(--rule);border-radius:8px;padding:10px 12px;font-size:13px;line-height:1.45;box-shadow:0 6px 24px rgba(0,0,0,.12);min-width:200px;z-index:2}
+.tip b{display:block;font-size:14px}
+.tip .r{display:flex;justify-content:space-between;gap:16px;color:var(--ink-2)} .tip .r span:last-child{color:var(--ink);font-variant-numeric:tabular-nums}
+.rank{margin:0;padding:0;list-style:none;max-height:600px;overflow:auto;border-top:1px solid var(--rule);position:relative}
+.rank li{display:grid;grid-template-columns:28px minmax(0,1fr) auto;gap:2px 10px;align-items:center;padding:7px 4px;border-bottom:1px solid var(--rule);cursor:default;font-size:14px;background:var(--paper)}
+.rank li.on{background:var(--surface)}
+.rank .no{font:500 12px var(--mono);color:var(--ink-3);font-variant-numeric:tabular-nums;text-align:right}
+.rank .nm{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rank .val{font:500 13px var(--mono);font-variant-numeric:tabular-nums;text-align:right}
+.rank .bar{grid-column:2 / 4;height:4px;border-radius:2px;background:var(--seq-3);transform-origin:left;transition:transform .45s}
+.rank .was{font:400 11px var(--mono);color:var(--ink-3);margin-left:6px}
+.rank .was.up{color:var(--accent)}
+.finding{margin-top:22px;padding:16px 18px;border-left:3px solid var(--accent);background:var(--surface);border-radius:0 8px 8px 0}
+.finding p{margin:0}
+
+/* trace */
+.steps{list-style:none;margin:28px 0 0;padding:0;counter-reset:s;display:grid;gap:0}
+.step{position:relative;padding:0 0 30px 52px;counter-increment:s}
+.step::before{content:counter(s);position:absolute;left:0;top:0;width:34px;height:34px;border-radius:50%;background:var(--ink);color:var(--paper);display:grid;place-items:center;font:800 15px/1 var(--display)}
+.step::after{content:"";position:absolute;left:16.5px;top:40px;bottom:6px;width:1px;background:var(--rule)}
+.step:last-child::after{display:none}
+.step .where{font:500 12px/1.4 var(--mono);color:var(--ink-3);margin-top:3px}
+.step p{margin-top:8px}
+.kv{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:4px 16px;margin:12px 0 0;padding:12px 14px;background:var(--surface);border:1px solid var(--rule);border-radius:8px;font-size:13px}
+.kv dt{font-family:var(--mono);color:var(--ink-3)}
+.kv dd{margin:0;font-family:var(--mono);min-width:0;overflow-wrap:anywhere}
+.kv dd .t{color:var(--ink-3);font-size:11px;margin-left:6px}
+.tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.tag{font:500 12px/1 var(--mono);padding:5px 8px;border-radius:5px;border:1px solid var(--rule);color:var(--ink-2);text-decoration:none;background:var(--paper)}
+a.tag:hover{border-color:var(--accent);color:var(--accent)}
+.copies{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.copies span{font:400 11px/1 var(--mono);padding:5px 7px;border-radius:4px;background:var(--accent-soft);color:var(--ink)}
+.funnel{display:grid;gap:6px;margin-top:12px;font-size:13px}
+.funnel div{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 12px;align-items:center}
+.funnel i{grid-column:1 / 3;height:8px;border-radius:0 4px 4px 0;background:var(--seq-4)}
+.funnel b{font:500 13px var(--mono);font-variant-numeric:tabular-nums}
+
+/* lineage */
+.graphwrap{overflow-x:auto;margin-top:22px;border:1px solid var(--rule);border-radius:10px;background:var(--surface)}
+.graph{position:relative;display:grid;grid-template-columns:repeat(5,max-content);gap:0 40px;padding:18px 20px 22px;min-width:max-content}
+.graph svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible}
+.graph svg path{fill:none;stroke:var(--ink-3);stroke-opacity:.28;stroke-width:1.2;transition:stroke-opacity .2s}
+.graph svg path.on{stroke:var(--accent);stroke-opacity:.95;stroke-width:1.8}
+.col{display:flex;flex-direction:column;gap:5px;position:relative;z-index:1}
+.col h4{margin:0 0 6px;font:500 11px/1.3 var(--mono);text-transform:uppercase;letter-spacing:.1em;color:var(--ink-3)}
+.col h5{margin:10px 0 2px;font:500 10px/1.3 var(--mono);text-transform:uppercase;letter-spacing:.08em;color:var(--ink-3)}
+.node{display:block;text-align:left;border:1px solid var(--rule);background:var(--paper);border-radius:6px;padding:4px 8px;font:500 11px/1.35 var(--mono);color:var(--ink);cursor:pointer;transition:opacity .2s,border-color .2s}
+.node small{display:block;font:400 10.5px/1.3 var(--body);color:var(--ink-3)}
+.graph.focus .node{opacity:.32}
+.graph.focus .node.on{opacity:1}
+.node.sel{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.detail{margin-top:14px;display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:16px 28px}
+.detail h3{font-family:var(--mono);font-size:16px;font-weight:500;overflow-wrap:anywhere}
+.detail .meta{font-size:13px;color:var(--ink-3);margin-top:4px}
+.chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
+.chips button{font:400 11.5px/1 var(--mono);padding:5px 7px;border-radius:4px;border:1px solid var(--rule);background:var(--surface);color:var(--ink-2);cursor:pointer}
+.chips button:hover{border-color:var(--accent);color:var(--accent)}
+.label{font:500 11px/1.4 var(--mono);text-transform:uppercase;letter-spacing:.1em;color:var(--ink-3);margin-top:10px}
+
+/* decisions */
+.cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-top:24px}
+.card{background:var(--surface);border:1px solid var(--rule);border-radius:10px;padding:18px 20px;display:grid;gap:8px;align-content:start;min-width:0}
+.card .adr{font:500 12px var(--mono);color:var(--accent);text-decoration:none}
+.card .adr:hover{text-decoration:underline}
+.card p{margin:0;font-size:15px}
+.card ul{margin:0;padding-left:18px;font-size:14px;color:var(--ink-2)}
+.card .k{font:500 11px/1.4 var(--mono);text-transform:uppercase;letter-spacing:.1em;color:var(--ink-3)}
+
+/* checks */
+.checks{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:28px;margin-top:22px}
+.bars{display:grid;gap:9px}
+.bars div{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:3px 10px;font-size:13px}
+.bars code{font-size:12.5px}
+.bars b{font:500 13px var(--mono);font-variant-numeric:tabular-nums}
+.bars i{grid-column:1 / 3;height:10px;border-radius:0 4px 4px 0;background:var(--seq-4)}
+.passline{display:flex;align-items:center;gap:10px;margin-top:16px;font-size:14px}
+.ok{display:inline-flex;align-items:center;gap:6px;font:600 12px/1 var(--body);padding:5px 9px;border-radius:999px;background:#E3F3E8;color:#1E6B3A}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .ok{background:#163222;color:#8FD6A6} }
+:root[data-theme="dark"] .ok{background:#163222;color:#8FD6A6}
+.checklist{margin:0;padding:0;list-style:none;display:grid;gap:0;font-size:14px}
+.checklist li{padding:8px 0;border-bottom:1px solid var(--rule);display:grid;grid-template-columns:18px minmax(0,1fr);gap:8px}
+.checklist li::before{content:"";width:8px;height:8px;margin-top:8px;border-radius:2px;background:var(--seq-4)}
+
+.status{margin-top:20px;display:grid;gap:10px;padding:18px 20px;border:1px solid var(--rule);border-radius:10px;background:var(--surface)}
+.pill{justify-self:start;font:600 12px/1 var(--body);padding:6px 10px;border-radius:999px;background:var(--accent-soft);color:var(--accent)}
+footer{padding-block:48px 40px;margin-top:40px;border-top:1px solid var(--rule);font-size:13px;color:var(--ink-3)}
+footer p{max-width:none}
+
+@media (max-width:860px){
+  .facts{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .facts div:nth-child(4){border-left:0;padding-left:0}
+  .facts div:nth-child(n+4){border-top:1px solid var(--rule)}
+  .mapgrid,.checks,.detail,.cards{grid-template-columns:minmax(0,1fr)}
+  .rank{max-height:420px}
+}
+@media (max-width:480px){
+  .facts dt{font-size:24px}
+  .step{padding-left:44px}
+  .step::before{width:30px;height:30px;font-size:13px}
+  .step::after{left:14.5px}
+}
+@media (prefers-reduced-motion:reduce){ html{scroll-behavior:auto} .mapfig path.n,.rank .bar{transition:none} }
+</style>
+</head>
+<body>
+
+<header class="hero wrap">
+  <p class="eyebrow">Analytics engineering case study</p>
+  <h1>sf-data-warehouse</h1>
+  <p class="lede">Seven public San Francisco datasets, ingested, geocoded and modelled into a tested warehouse that anyone can rebuild from scratch, with no cloud account and no cost.</p>
+  <div class="byline"><span>Michael Phipps</span><span>Python, dbt, DuckDB, BigQuery, H3</span><a href="https://github.com/mp321/sf-data-warehouse" target="_blank" rel="noopener">github.com/mp321/sf-data-warehouse</a></div>
+  <dl class="facts">
+    <div><dt>7</dt><dd>public datasets, every one spatial</dd></div>
+    <div><dt id="f-models">19</dt><dd>dbt models, staging to marts</dd></div>
+    <div><dt id="f-tests">150</dt><dd>dbt tests, all passing</dd></div>
+    <div><dt>292</dt><dd>Python tests on every pull request</dd></div>
+    <div><dt>2</dt><dd>engines from one codebase: DuckDB and BigQuery</dd></div>
+    <div><dt id="f-adrs">21</dt><dd>decision records, with the options rejected</dd></div>
+  </dl>
+  <nav class="toc" aria-label="Sections">
+    <a href="#map">Count or rate</a><a href="#trace">One case, end to end</a><a href="#lineage">The model graph</a><a href="#decisions">Decisions</a><a href="#checks">How it is checked</a><a href="#status">Status</a>
+  </nav>
+</header>
+
+<section id="map" class="wide">
+  <div class="wrap" style="margin-inline:0">
+    <p class="eyebrow">The question the marts are built to answer</p>
+    <h2>Count or rate: the ranking flips</h2>
+    <p>Rank neighborhoods by 311 volume and you mostly get a map of where people live. So every count in the warehouse ships beside four rates. Switch the measure and watch the order change.</p>
+  </div>
+  <div class="controls">
+    <div class="seg" role="group" aria-label="Measure" id="measure">
+      <button type="button" data-m="count" aria-pressed="true">Count</button>
+      <button type="button" data-m="res" aria-pressed="false">Per 1,000 residents</button>
+      <button type="button" data-m="biz" aria-pressed="false">Per 1,000 businesses</button>
+      <button type="button" data-m="km2" aria-pressed="false">Per sq km</button>
+    </div>
+    <label class="select" for="cat">311 category <select id="cat"></select></label>
+  </div>
+  <div class="mapgrid">
+    <figure class="mapfig" id="mapfig">
+      <svg id="svg" role="img" aria-label="Map of San Francisco's 41 analysis neighborhoods, shaded by the selected measure"></svg>
+      <div class="tip" id="tip" hidden></div>
+      <figcaption class="legend" id="legend"></figcaption>
+    </figure>
+    <div>
+      <ol class="rank" id="rank" aria-label="Neighborhoods ranked by the selected measure"></ol>
+    </div>
+  </div>
+  <div class="finding wrap" style="margin-inline:0" id="finding"></div>
+</section>
+
+<section id="trace" class="wrap">
+  <p class="eyebrow">Lineage, by example</p>
+  <h2>One 311 case, end to end</h2>
+  <p id="trace-intro"></p>
+  <ol class="steps" id="steps"></ol>
+</section>
+
+<section id="lineage" class="wide">
+  <div class="wrap" style="margin-inline:0">
+    <p class="eyebrow">Read from dbt's manifest</p>
+    <h2>The model graph</h2>
+    <p>Every source, model and output in the project. Select one to see what it reads and what reads it. Geography arrives as columns from the derived zone, so no model uses a spatial function, which is what lets the same SQL run on both engines.</p>
+  </div>
+  <div class="graphwrap"><div class="graph" id="graph"><svg id="edges" aria-hidden="true"></svg></div></div>
+  <div class="detail" id="detail" aria-live="polite"></div>
+</section>
+
+<section id="decisions" class="wide">
+  <div class="wrap" style="margin-inline:0">
+    <p class="eyebrow">From the decision records</p>
+    <h2>Problems that were not obvious up front</h2>
+    <p>Each design choice is written up as a decision record before the work, with the options considered and the costs accepted. Six of them, in brief.</p>
+  </div>
+  <div class="cards" id="cards"></div>
+</section>
+
+<section id="checks" class="wide">
+  <div class="wrap" style="margin-inline:0">
+    <p class="eyebrow">Testing and CI</p>
+    <h2>How it is checked</h2>
+  </div>
+  <div class="checks">
+    <div>
+      <h3>dbt tests by type</h3>
+      <div class="bars" id="bars" style="margin-top:14px"></div>
+      <div class="passline" id="passline"></div>
+    </div>
+    <div>
+      <h3>On every pull request, with no credentials</h3>
+      <ul class="checklist" style="margin-top:10px">
+        <li>Credential leak scan, blocking the merge</li>
+        <li>292 Python tests over geometry, the dataset registry, the retention proof and the pack generator</li>
+        <li>Raw zone built from committed fixtures, end to end</li>
+        <li>Each ingest run's manifest reconciled against the Parquet it wrote</li>
+        <li>dbt tests: grain, not null, ranges, relationships and three spatial assertions</li>
+        <li>Warehouse dropped and rebuilt from the Parquet zones alone</li>
+        <li>Every model compiled as BigQuery SQL</li>
+        <li>Context pack drift check, plus ruff and sqlfluff</li>
+      </ul>
+      <p class="muted" style="font-size:14px">By hand: row-for-row parity between DuckDB and BigQuery. Running both engines found five defects that compiling alone could not.</p>
+    </div>
+  </div>
+</section>
+
+<section id="status" class="wrap">
+  <p class="eyebrow">Operations</p>
+  <h2>Current status</h2>
+  <div class="status">
+    <span class="pill">Scheduled jobs paused since 23 Oct 2026</span>
+    <p style="margin:0">Since 4 October the city has re-sent more than 120,000 311 records a day, about four times the usual volume. 311 history is never pruned, so the raw zone and the daily run's network reads grew past what the free tier allows. The data is current to the pause.</p>
+    <p style="margin:0">Resuming waits on a decision record for bounding that growth. The options on the table: deduplicate re-sent 311 rows, compact delta history, or fetch snapshot datasets on their weekly freshness target instead of daily.</p>
+  </div>
+</section>
+
+<footer class="wrap">
+  <p id="provenance"></p>
+  <p>Source data: DataSF (data.sf.gov) and the US Census Bureau, public domain. Code: MIT. <a href="https://github.com/mp321/sf-data-warehouse" target="_blank" rel="noopener">Read the repo</a>.</p>
+</footer>
+
+<script>
+const D = /*DATA*/null;
+</script>
+<script>
+(() => {
+'use strict';
+const $ = s => document.querySelector(s);
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+const fmtN = new Intl.NumberFormat('en-US');
+const fmtV = v => v == null ? 'n/a' : v >= 100 ? fmtN.format(Math.round(v)) : v.toFixed(1);
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const REPO = 'https://github.com/mp321/sf-data-warehouse/blob/main/';
+const ADR = {
+  1: 'adr-1-warehouse-targets.md', 5: 'adr-5-h3-computation.md', 6: 'adr-6-polygon-membership.md', 8: 'adr-8-published-exports.md',
+  10: 'adr-10-narrowed-scope.md', 12: 'adr-12-published-export-layout.md', 13: 'adr-13-context-pack-format.md',
+  18: 'adr-18-the-raw-zone.md', 21: 'adr-21-withdrawn-keys-are-ledgered-then-prunable.md',
+};
+const adrLink = n => { const a = el('a', 'tag', 'ADR-' + n); a.href = REPO + 'docs/decisions/' + ADR[n]; a.target = '_blank'; a.rel = 'noopener'; return a; };
+const monthName = ym => new Date(ym + '-15').toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+
+/* ---------- 1. count or rate ---------- */
+const MEASURES = {
+  count: { label: 'Count', den: null },
+  res: { label: 'Per 1,000 residents', den: h => h.pop, k: 1000 },
+  biz: { label: 'Per 1,000 businesses', den: h => h.biz, k: 1000 },
+  km2: { label: 'Per sq km', den: h => h.km2, k: 1 },
+};
+const S = { m: 'count', cat: -1, hover: null };
+const svg = $('#svg'), NS = 'http://www.w3.org/2000/svg';
+svg.setAttribute('viewBox', `0 0 1000 ${D.viewH}`);
+const paths = new Map();
+for (const h of D.hoods) {
+  const p = document.createElementNS(NS, 'path');
+  p.setAttribute('d', h.d); p.setAttribute('class', 'n'); p.dataset.name = h.name;
+  p.addEventListener('pointerenter', e => setHover(h.name, e));
+  p.addEventListener('pointermove', e => moveTip(e));
+  p.addEventListener('pointerleave', () => setHover(null));
+  svg.append(p); paths.set(h.name, p);
+}
+const hl = document.createElementNS(NS, 'path'); hl.id = 'hl'; svg.append(hl);
+const topLabel = document.createElementNS(NS, 'text'); topLabel.setAttribute('class', 'toplabel'); topLabel.setAttribute('text-anchor', 'middle'); svg.append(topLabel);
+
+const sel = $('#cat');
+sel.append(new Option('All categories', '-1'));
+D.cats.forEach((c, i) => sel.append(new Option(c, String(i))));
+sel.onchange = () => { S.cat = +sel.value; render(); };
+document.querySelectorAll('#measure button').forEach(b => b.onclick = () => {
+  S.m = b.dataset.m;
+  document.querySelectorAll('#measure button').forEach(x => x.setAttribute('aria-pressed', x === b));
+  render();
+});
+
+const countOf = (h, cat) => (cat < 0 ? h.all : h.c[cat]);
+function valueOf(h, m, cat) {
+  const n = countOf(h, cat), M = MEASURES[m];
+  if (!M.den) return n;
+  const d = M.den(h);
+  return d > 0 ? n * M.k / d : null;
+}
+function ranking(m, cat) {
+  const rows = D.hoods.map(h => ({ h, v: valueOf(h, m, cat) }));
+  rows.sort((a, b) => (b.v ?? -1) - (a.v ?? -1));
+  const rank = new Map(); rows.forEach((r, i) => rank.set(r.h.name, r.v == null ? null : i + 1));
+  return { rows, rank };
+}
+
+const rankEl = $('#rank'), rowEls = new Map();
+for (const h of D.hoods) {
+  const li = el('li'); li.dataset.name = h.name;
+  li.append(el('span', 'no'), el('span', 'nm'), el('span', 'val'), el('i', 'bar'));
+  li.addEventListener('pointerenter', () => setHover(h.name));
+  li.addEventListener('pointerleave', () => setHover(null));
+  rowEls.set(h.name, li); rankEl.append(li);
+}
+
+let cur = null;
+function render() {
+  const { rows, rank } = ranking(S.m, S.cat);
+  const byCount = ranking('count', S.cat).rank;
+  const valid = rows.filter(r => r.v != null), n = valid.length, max = valid.length ? valid[0].v : 1;
+  // quintile bins by rank, so each colour step holds about a fifth of the neighborhoods
+  const bin = new Map(); valid.forEach((r, i) => bin.set(r.h.name, Math.min(4, Math.floor((n - 1 - i) / n * 5))));
+  for (const [name, p] of paths) p.dataset.b = bin.has(name) ? bin.get(name) : 'x';
+  // legend
+  const lg = $('#legend'); lg.replaceChildren();
+  for (let b = 0; b < 5; b++) {
+    const vs = valid.filter(r => bin.get(r.h.name) === b).map(r => r.v);
+    if (!vs.length) continue;
+    const s = el('span'); const sw = el('i'); sw.style.background = `var(--seq-${b + 1})`;
+    s.append(sw, `${fmtV(Math.min(...vs))} to ${fmtV(Math.max(...vs))}`); lg.append(s);
+  }
+  if (valid.length < rows.length) { const s = el('span'); const sw = el('i'); sw.style.background = 'var(--seq-none)'; s.append(sw, 'no denominator'); lg.append(s); }
+  // label the leader
+  const lead = valid[0];
+  if (lead) { const bb = paths.get(lead.h.name).getBBox(); topLabel.setAttribute('x', bb.x + bb.width / 2); topLabel.setAttribute('y', bb.y + bb.height / 2 + 8); topLabel.textContent = '1. ' + lead.h.name; }
+  // list, animated reorder
+  const first = new Map(); if (!reduce) for (const [k, li] of rowEls) first.set(k, li.getBoundingClientRect().top);
+  rows.forEach((r, i) => {
+    const li = rowEls.get(r.h.name);
+    li.querySelector('.no').textContent = r.v == null ? '' : i + 1;
+    const nm = li.querySelector('.nm'); nm.textContent = r.h.name;
+    const was = byCount.get(r.h.name);
+    if (S.m !== 'count' && r.v != null && was !== i + 1) { const w = el('span', 'was' + (was > i + 1 ? ' up' : ''), `was ${was}`); nm.append(w); }
+    li.querySelector('.val').textContent = fmtV(r.v);
+    li.querySelector('.bar').style.transform = `scaleX(${r.v == null ? 0 : Math.max(0.004, r.v / max)})`;
+    rankEl.append(li);
+  });
+  if (!reduce) for (const [k, li] of rowEls) {
+    const dy = first.get(k) - li.getBoundingClientRect().top;
+    if (dy) li.animate([{ transform: `translateY(${dy}px)` }, { transform: 'none' }], { duration: 520, easing: 'cubic-bezier(.2,.7,.2,1)' });
+  }
+  cur = { rank, byCount };
+  if (S.hover) setHover(S.hover);
+}
+const tip = $('#tip');
+function setHover(name, e) {
+  S.hover = name;
+  for (const [k, li] of rowEls) li.classList.toggle('on', k === name);
+  if (!name) { hl.removeAttribute('d'); tip.hidden = true; return; }
+  hl.setAttribute('d', paths.get(name).getAttribute('d'));
+  const h = D.hoods.find(x => x.name === name), cat = S.cat;
+  const rRes = ranking('res', cat).rank.get(name);
+  tip.replaceChildren(el('b', null, name));
+  const row = (a, b) => { const r = el('div', 'r'); r.append(el('span', null, a), el('span', null, b)); tip.append(r); };
+  row((cat < 0 ? '311 cases' : D.cats[cat]), fmtN.format(countOf(h, cat)));
+  row('Rank by count', '#' + cur.byCount.get(name));
+  row('Per 1,000 residents', fmtV(valueOf(h, 'res', cat)) + (rRes ? `  (#${rRes})` : ''));
+  row('Residents', fmtN.format(h.pop));
+  if (e) { tip.hidden = false; moveTip(e); } else tip.hidden = true;
+}
+function moveTip(e) {
+  const r = $('#mapfig').getBoundingClientRect();
+  let x = e.clientX - r.left + 14, y = e.clientY - r.top + 14;
+  if (x + 230 > r.width) x = e.clientX - r.left - 240;
+  tip.style.left = x + 'px'; tip.style.top = y + 'px';
+}
+render();
+
+// the finding, computed from the same data the map uses
+(() => {
+  const c = ranking('count', -1), p = ranking('res', -1);
+  const get = name => D.hoods.find(h => h.name === name);
+  const first = c.rows[0].h, perFirst = p.rows[0].h;
+  const months = (() => { const [a, b] = D.window.map(s => s.split('-').map(Number)); return (b[0] - a[0]) * 12 + b[1] - a[1] + 1; })();
+  const bv = get('Bayview Hunters Point');
+  const f = $('#finding');
+  const t = el('p');
+  const span = months === 2 && D.window[0].slice(0, 4) === D.window[1].slice(0, 4)
+    ? `In ${monthName(D.window[0]).split(' ')[0]} and ${monthName(D.window[1])}` : `Over ${months} months (${monthName(D.window[0])} to ${monthName(D.window[1])})`;
+  t.append(`${span}, ${first.name} logged the most 311 cases, ${fmtN.format(first.all)}, and ranks ${p.rank.get(first.name)} per resident. ` +
+    `${perFirst.name} ranks ${c.rank.get(perFirst.name)} by count and 1 per resident, because only ${fmtN.format(perFirst.pop)} people live there. ` +
+    (bv ? `Bayview Hunters Point goes from ${c.rank.get(bv.name)} by count to ${p.rank.get(bv.name)} per resident. ` : '') +
+    `Neither ranking is the answer on its own, which is why the marts carry both and the context pack tells a language model never to rank by raw count.`);
+  f.append(t);
+})();
+
+/* ---------- 2. one case, end to end ---------- */
+(() => {
+  const T = D.trace;
+  const opened = new Date(T.stg[0].replace(' ', 'T'));
+  const closed = new Date(T.stg[1].replace(' ', 'T'));
+  const day = d => d.toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' });
+  $('#trace-intro').textContent = `Case ${T.id}, filed under ${T.stg[4]} (${T.stg[5]}), on ${T.raw.street.replace(/\b\w+/g, w => w[0] + w.slice(1).toLowerCase())} in the ${T.geo[2]}. Reported ${day(opened)}, closed ${day(closed)}. Here is the same case at each layer, with real values from the warehouse.`;
+  const total = T.methods.filter(m => m[0]).reduce((a, m) => a + m[1], 0);
+  const pct = name => Math.round(100 * (T.methods.find(m => m[0] === name) || [0, 0])[1] / total);
+  const kv = pairs => { const d = el('dl', 'kv'); for (const [k, v, t] of pairs) { d.append(el('dt', null, k)); const dd = el('dd', null, v); if (t) dd.append(el('span', 't', t)); d.append(dd); } return d; };
+  const tags = (tests, adrs) => { const w = el('div', 'tags'); if (tests) w.append(el('span', 'tag', `${tests} tests`)); adrs.forEach(n => w.append(adrLink(n))); return w; };
+  const node = id => D.nodes.find(n => n.id === id) || {};
+  const steps = [
+    { h: 'Land it untouched', where: 'raw_datasf.raw_311_cases  ·  Parquet raw zone, append only',
+      p: `${T.raw_copies.length} copies of this case landed in the raw zone, carrying API update stamps from ${new Date(T.raw_copies[0]).toLocaleDateString('en-US', { day: 'numeric', month: 'short' })} to ${new Date(T.raw_copies.at(-1)).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })}. Each is stored exactly as the API sent it, every column a string. Raw is never edited; everything downstream can be rebuilt from it.`,
+      body: [kv([['service_request_id', `"${T.id}"`, 'string'], ['requested_datetime', `"${T.raw.requested_datetime}"`, 'string'], ['lat', `"${T.raw.lat}"`, 'string'], ['service_name', `"${T.raw.service_name}"`], ['service_subtype', `"${T.raw.service_subtype}"`]])],
+      copies: T.raw_copies, adrs: [1, 18] },
+    { h: 'Keep the latest version, cast the types', where: 'stg_datasf__311_cases  ·  view',
+      p: 'The copies collapse to one row: the newest version of each case wins. Columns are renamed and cast, so a timestamp is a timestamp and a coordinate is a number.',
+      body: [kv([['case_id', T.id], ['opened_at', T.stg[0], 'timestamp'], ['closed_at', T.stg[1], 'timestamp'], ['status', T.stg[2]], ['agency', T.stg[3]], ['latitude', String(T.stg[6]), 'double']]), 'funnel'],
+      tests: node('stg_datasf__311_cases').tests, adrs: [] },
+    { h: 'Place it once, in Python', where: 'derived zone  →  stg_spatial__point_geography  ·  view',
+      p: `A Python step computed the case's H3 cells and exact boundaries before any SQL ran, so both engines read plain integers and strings. Its cell lies wholly inside the ${T.geo[2]}, so the cell decided. That covers ${pct('interior_cell')}% of 311 points; the other ${pct('exact_refinement')}% sit in cells that straddle a boundary and get an exact point-in-polygon test.`,
+      body: [kv([['h3_r8', T.geo[0], 'about 460 m'], ['h3_r10', T.geo[1], 'about 66 m'], ['analysis_neighborhood', T.geo[2]], ['supervisor_district_id', T.geo[3]], ['census_block_group_geoid', T.geo[4]], ['assignment_method', T.geo[5]]])],
+      tests: node('stg_spatial__point_geography').tests, adrs: [5, 6] },
+    { h: 'One spine for every event', where: 'int_point_activity  ·  view',
+      p: '311 cases, building permits and business registrations reduced to one shape, so both activity marts are built from the same rows.',
+      body: [kv([['dataset', '311_cases'], ['event_month', T.month], ['category', T.stg[4]], ['analysis_neighborhood', T.geo[2]]])],
+      tests: node('int_point_activity').tests, adrs: [] },
+    { h: 'Count it, beside four rates', where: 'mart_activity_by_neighborhood  ·  table',
+      p: `The case is one of ${fmtN.format(T.mart[0])} ${T.stg[4]} cases in the ${T.geo[2]} in ${monthName(T.month.slice(0, 7))}. The row carries the count and a rate against each of four denominators, so nobody has to rank by raw volume.`,
+      body: [kv([['event_count', fmtN.format(T.mart[0])], ['events_per_1000_residents', String(T.mart[1])], ['events_per_1000_housing_units', String(T.mart[2])], ['events_per_1000_businesses', String(T.mart[3])], ['events_per_sq_km', String(T.mart[4])]])],
+      tests: node('mart_activity_by_neighborhood').tests, adrs: [10] },
+    { h: 'Ship it with its limits', where: 'published/  ·  context pack',
+      p: 'The mart is exported as one Parquet file with a manifest, and described in a generated context pack that tells a language model what the warehouse holds and what it must refuse. One of its 20 refusals: 311 counts measure who reports, not how the streets are.',
+      body: [], adrs: [8, 12, 13] },
+  ];
+  const ol = $('#steps');
+  for (const s of steps) {
+    const li = el('li', 'step');
+    li.append(el('h3', null, s.h), el('div', 'where', s.where), el('p', null, s.p));
+    for (const b of s.body) {
+      if (b === 'funnel') {
+        const [raw, cases, counted] = T.funnel, f = el('div', 'funnel');
+        for (const [label, v] of [['raw rows for 311', raw], ['distinct cases after dedup', cases], ['counted in the neighborhood mart', counted]]) {
+          const r = el('div'); r.append(el('span', null, label), el('b', null, fmtN.format(v))); const bar = el('i'); bar.style.width = (100 * v / raw).toFixed(1) + '%'; r.append(bar); f.append(r);
+        }
+        li.append(f);
+      } else li.append(b);
+    }
+    if (s.copies) { const c = el('div', 'copies'); s.copies.forEach(t => c.append(el('span', null, 'updated ' + t.slice(0, 16).replace('T', ' ')))); li.append(c); }
+    li.append(tags(s.tests, s.adrs));
+    ol.append(li);
+  }
+})();
+
+/* ---------- 3. lineage ---------- */
+(() => {
+  const nodes = D.nodes, byId = new Map(nodes.map(n => [n.id, n]));
+  const down = new Map(nodes.map(n => [n.id, []]));
+  nodes.forEach(n => n.deps.forEach(d => down.get(d) && down.get(d).push(n.id)));
+  const graph = $('#graph'), edgeSvg = $('#edges');
+  const COLS = [
+    { title: 'Parquet zones', groups: [['raw', 'raw'], ['derived', 'derived']] },
+    { title: 'Staging', groups: [['staging']] },
+    { title: 'Intermediate', groups: [['intermediate']] },
+    { title: 'Marts', groups: [['marts']] },
+    { title: 'Outputs', groups: [['outputs']] },
+  ];
+  const btns = new Map();
+  const kindLabel = n => n.layer === 'raw' || n.layer === 'derived' ? `${n.layer} zone` : n.kind;
+  for (const c of COLS) {
+    const col = el('div', 'col'); col.append(el('h4', null, c.title));
+    for (const [layer, sub] of c.groups) {
+      if (sub) col.append(el('h5', null, sub === 'raw' ? 'raw, from the APIs' : 'derived, from Python'));
+      for (const n of nodes.filter(x => x.layer === layer).sort((a, b) => a.id.localeCompare(b.id))) {
+        const b = el('button', 'node', n.id); b.type = 'button';
+        b.append(el('small', null, `${kindLabel(n)}${n.tests ? ` · ${n.tests} tests` : ''}`));
+        b.onclick = () => select(n.id);
+        b.onpointerenter = () => focus(n.id); b.onpointerleave = () => focus(S2.sel);
+        btns.set(n.id, b); col.append(b);
+      }
+    }
+    graph.append(col);
+  }
+  const edges = [];
+  nodes.forEach(n => n.deps.forEach(d => { if (byId.has(d)) { const p = document.createElementNS(NS, 'path'); edgeSvg.append(p); edges.push({ from: d, to: n.id, p }); } }));
+  function layout() {
+    const g = graph.getBoundingClientRect();
+    for (const e of edges) {
+      const a = btns.get(e.from).getBoundingClientRect(), b = btns.get(e.to).getBoundingClientRect();
+      const x1 = a.right - g.left, y1 = a.top + a.height / 2 - g.top, x2 = b.left - g.left, y2 = b.top + b.height / 2 - g.top, mx = (x1 + x2) / 2;
+      e.p.setAttribute('d', `M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}`);
+    }
+  }
+  const walk = (start, map) => { const seen = new Set([start]), st = [start]; while (st.length) for (const x of map(st.pop()) || []) if (!seen.has(x)) { seen.add(x); st.push(x); } return seen; };
+  const S2 = { sel: 'mart_activity_by_neighborhood' };
+  function focus(id) {
+    if (!id) { graph.classList.remove('focus'); edges.forEach(e => e.p.classList.remove('on')); return; }
+    const up = walk(id, x => byId.get(x)?.deps), dn = walk(id, x => down.get(x)), all = new Set([...up, ...dn]);
+    graph.classList.add('focus');
+    for (const [k, b] of btns) { b.classList.toggle('on', all.has(k)); b.classList.toggle('sel', k === S2.sel); }
+    for (const e of edges) e.p.classList.toggle('on', (up.has(e.to) && up.has(e.from)) || (dn.has(e.from) && dn.has(e.to)));
+  }
+  function select(id) {
+    S2.sel = id; focus(id);
+    const n = byId.get(id), det = $('#detail'); det.replaceChildren();
+    const left = el('div');
+    left.append(el('h3', null, n.id), el('div', 'meta', [kindLabel(n), n.cols ? `${n.cols} documented columns` : '', n.tests ? `${n.tests} tests` : 'no tests attached'].filter(Boolean).join(' · ')));
+    left.append(el('p', null, n.desc || (n.layer === 'outputs' ? 'A dbt exposure: something outside the warehouse that depends on these marts.' : 'Registered as a dbt source.')));
+    const right = el('div');
+    const chipRow = (label, ids) => { right.append(el('div', 'label', label)); const w = el('div', 'chips'); if (!ids.length) w.append(el('span', 'muted', 'nothing')); ids.forEach(x => { const b = el('button', null, x); b.type = 'button'; b.onclick = () => select(x); w.append(b); }); right.append(w); };
+    chipRow('Reads', n.deps.filter(d => byId.has(d)));
+    chipRow('Read by', down.get(id));
+    det.append(left, right);
+  }
+  const ro = new ResizeObserver(layout); ro.observe(graph);
+  (document.fonts ? document.fonts.ready : Promise.resolve()).then(layout);
+  layout(); select(S2.sel);
+  $('#f-models').textContent = nodes.filter(n => !['raw', 'derived', 'outputs'].includes(n.layer)).length;
+})();
+
+/* ---------- 4. decisions ---------- */
+(() => {
+  const C = [
+    { q: 'A count per area mostly tracks population', d: 'Every count mart carries rate columns against four denominators: residents, housing units, businesses and land area.', alt: [], adr: 10 },
+    { q: 'The two engines share no geography function', d: 'BigQuery has no H3 support, so H3 cells are computed once in a separate Python step and stored as BIGINTs that both engines read.', alt: ['The DuckDB h3 extension, called from dbt models', 'Python h3 during ingestion, writing cells into the raw zone'], adr: 5 },
+    { q: 'Exact point-in-polygon is expensive', d: 'Covering cells filter first, and exact refinement runs at precompute time only against the two or three boundaries a cell touches. A test checks the result against an independent oracle.', alt: ['Exact geometry at query time, as first designed', 'Cell-based membership only, with no exact test'], adr: 6 },
+    { q: 'Paging a bulk-refreshed API drops rows silently', d: 'Ordering by update time alone breaks when thousands of rows share a timestamp across a page boundary. Paging uses the total key (updated_at, id), and every run\'s manifest is reconciled against the Parquet it wrote.', alt: [], adr: 18 },
+    { q: 'An append-only zone grows without limit', d: 'The prune deletes a partition only when a later one provably holds every key, or when every missing key is a withdrawal already saved to a ledger and read back. It refuses what it cannot prove.', alt: ['Keep refusing to delete', 'A tolerance on the proof, with nothing else', 'A dbt snapshot for registry history'], adr: 21 },
+    { q: 'A language model given a schema answers questions the data cannot support', d: 'A generated context pack carries 20 refusals, 6 mandatory disclosures and 6 executed examples. CI checks the committed pack against a fixture warehouse on every pull request.', alt: ['CI regenerates the pack and fails on any diff', 'No CI gate, only a pre-commit hook on a machine with the real data'], adr: 13 },
+  ];
+  const wrap = $('#cards');
+  for (const c of C) {
+    const card = el('article', 'card');
+    const a = el('a', 'adr', `ADR-${c.adr}`); a.href = REPO + 'docs/decisions/' + ADR[c.adr]; a.target = '_blank'; a.rel = 'noopener';
+    card.append(a, el('h3', null, c.q), el('p', null, c.d));
+    if (c.alt.length) { card.append(el('div', 'k', 'Also considered')); const ul = el('ul'); c.alt.forEach(x => ul.append(el('li', null, x))); card.append(ul); }
+    wrap.append(card);
+  }
+})();
+
+/* ---------- 5. checks ---------- */
+(() => {
+  const bars = $('#bars'), max = D.testTypes[0][1], total = D.testTypes.reduce((a, t) => a + t[1], 0);
+  for (const [name, n] of D.testTypes) {
+    const r = el('div'); r.title = `${n} of ${total} tests (${Math.round(100 * n / total)}%)`;
+    r.append(el('code', null, name), el('b', null, n)); const i = el('i'); i.style.width = (100 * n / max).toFixed(1) + '%'; r.append(i); bars.append(r);
+  }
+  const R = D.testRun, pl = $('#passline');
+  pl.append(el('span', 'ok', `${R.passed} of ${R.total} passed`), el('span', 'muted', `last full local build, ${new Date(R.at).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })}, ${R.secs} s of test time on DuckDB`));
+  $('#f-tests').textContent = total;
+  $('#f-adrs').textContent = D.adrs;
+  $('#provenance').textContent = `Figures on this page are read from the project's dbt manifest (${D.built}) and a local build of the warehouse; the map covers ${monthName(D.window[0])} to ${monthName(D.window[1])}, the complete months in that build.`;
+})();
+})();
+</script>
+</body>
+</html>

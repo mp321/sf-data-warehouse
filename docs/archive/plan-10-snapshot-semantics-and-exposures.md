@@ -1,10 +1,15 @@
 ---
-status: active
+status: done
 date: 2026-09-10
-related: [adr-18-the-raw-zone, adr-19-withdrawn-registrations, adr-20-registry-history-as-dbt-snapshot]
+related: [adr-18-the-raw-zone, adr-19-withdrawn-registrations, adr-20-registry-history-as-dbt-snapshot, adr-21-withdrawn-keys-are-ledgered-then-prunable]
 ---
 
 # PLAN-10. Finish snapshot semantics, record registry history, declare consumers
+
+> **Closed 2026-10-23.** Steps 1 to 4, 6 and 8 are done; step 5 was skipped
+> when ADR-20 was refused; step 7 is deferred (see its status). Registry
+> history, out of scope here, landed separately as ADR-21's withdrawal ledger.
+> Two Done-when boxes stay unticked on purpose.
 
 First of three monthly milestones under the 2026-09-10 career roadmap
 (outside this repo). Written as a stub so the first working session starts
@@ -94,10 +99,10 @@ snapshots, exposures, tests) are exactly this work.
    zone. Write the numbers in the dev note. Expected outcome: stay a table,
    because the full rebuild is cheap at this scale and incremental adds a
    correctness surface. Only write an ADR if the measurement says otherwise.
-   Status: not started. Still aligned. The zone has been stale since 09-08
-   (the Socrata 403), which is fine for timing; record the zone date.
-   `int_point_activity` is a view, so compare dbt node time as well as wall
-   time.
+   Status: deferred, 2026-10-23. Not run, and the plan closed without it:
+   scheduled ingest is paused (dev note 2026-10-23), and the expected outcome
+   was no change. Measure it if build time ever matters; `int_point_activity`
+   is a view, so compare dbt node time as well as wall time.
 8. **Docs.** CLAUDE.md current-state rows for staging, the guard, and the
    snapshot; README metrics (test count will move); `docs/README.md` ADR
    table; dev note.
@@ -141,7 +146,10 @@ snapshots, exposures, tests) are exactly this work.
 - [x] Exposures render in `make docs`. Done 2026-09-13,
       `docs/dev-notes/2026-09-13.md`.
 - [ ] The materialization measurement is written down with numbers.
+      Not done: step 7 was deferred at close.
 - [ ] `make check` green; `make build-bigquery` green; both recorded.
+      Recorded for steps 2 to 6 (dev notes 2026-09-12 and 2026-09-13); not
+      re-recorded at close, since step 7 did not run.
 - [x] Docs match the code (step 8). Done 2026-09-27,
       `docs/dev-notes/2026-09-27.md`.
 
@@ -159,95 +167,3 @@ option C. They are kept so the successor ADR can see what was asked.
 - Is `_socrata_updated_at` reliable enough for a `timestamp` strategy, or
   does the `check` strategy over the columns that matter cost less in
   false changes? Measure on the bucket zone before choosing.
-
-## Session kickoff (temporary, delete this section when the plan is done)
-
-Added 2026-09-11 so a session can start without reading the whole repo.
-
-### Before the first session, by hand
-
-1. The working tree on branch `ra33` holds the 2026-09-07 session's work
-   (ADR-19, `check_snapshots.py`, the watermark change) plus this plan and
-   ADR-20. On 2026-09-11 `pytest tests -q` passed 240 and `ruff check` was
-   clean over all of it. **Keep the watermark change.** It is ADR-19 step 2,
-   the ADR is `active`, and dropping it would leave an accepted decision
-   describing code that does not exist. Commit in two commits (the
-   2026-09-07 work, then the PLAN-10 and ADR-20 files), push `ra33`, open a
-   pull request so `ci.yml` runs the credential-free gate on it, merge to
-   `main`.
-   Note 2026-09-13: steps 2 to 4 are uncommitted in the working tree on
-   `main`, so `ci.yml` has not run on them.
-2. Decide whether the scheduled jobs keep running while the plan is idle.
-   See the next section.
-
-### Pause and resume the scheduled jobs
-
-Cost today is zero: Actions minutes are free on a public repository, the
-zones sit near 1.3 GB against Google Cloud's 5 GB always-free storage
-allowance, and BigQuery reads external tables (no stored raw bytes) with one
-weekly build far inside the 1 TB free query tier. At 55 MB/day the raw zone
-crosses the allowance around 2026-11-13, after which storage bills cents per
-month. The reason to pause is not money. It is that every daily ingest adds
-a partition the proof cannot clear until step 3 lands.
-
-Pause (stops zone growth, the BigQuery load, and the weekly build):
-
-    gh workflow disable ingest.yml
-    gh workflow disable dbt.yml
-    gh workflow disable retention.yml
-    gh workflow list
-
-Resume, the morning step 1 starts:
-
-    gh workflow enable ingest.yml
-    gh workflow enable dbt.yml
-    gh workflow enable retention.yml
-    gh workflow run ingest.yml
-
-Same thing in the browser: repository, Actions, pick the workflow, the
-"..." menu, Disable workflow; Enable workflow reverses it. Pausing loses
-nothing: delta datasets fetch everything updated since the watermark on
-resume, and snapshot datasets fetch in full every run (ADR-19 step 2).
-Safety net either way: Google Cloud console, Billing, Budgets and alerts,
-create a $1 budget with email alerts at 50, 90 and 100 percent.
-
-### Prompt for a session
-
-Paste into Claude Code (or Gemini CLI) opened at the repository root,
-replacing N. Sonnet for implementation steps; Opus for step 4.
-
-    Read CLAUDE.md (only the working agreement and the current-state
-    table), docs/plans/plan-10-snapshot-semantics-and-exposures.md, and
-    docs/decisions/adr-19-withdrawn-registrations.md. Read nothing else
-    unless a step names it. Do step N of PLAN-10 and nothing after it.
-    Write the tests before the change. Stop when `make check` is green,
-    tick the step's box in the plan, and append to
-    docs/dev-notes/<today>.md following docs/dev-notes/TEMPLATE.md. Never
-    run git add, commit, push, merge, rebase or reset. Ask before touching
-    the bucket or BigQuery. Under the step in the plan, add one line:
-    "Status: complete" or "Status: incomplete", with the date and a reason.
-    Before starting, confirm the earlier steps' status lines still match the
-    repo and the later steps still fit; fix the plan if not. Keep the dev
-    note, findings and edits short, and open the note with one or two
-    sentences on what was done, why, and the trade-off.
-
-For step 4 add: "Argue ADR-20 against its own Options section before
-implementing anything. If the case against option C wins, set the ADR to
-superseded with the reason in a dated note and skip to step 6."
-
-Step 7 needs the bucket zone (steps 1 and 5 are done or skipped). Run
-`set -a; source .env; set +a` first and say so in the prompt.
-
-### Session map
-
-Run one session per step, each in a fresh context. The plan and the dev note
-carry state between sessions, so nothing needs to stay in chat.
-
-| Order | Step | Model | Needs | Why it gets its own session |
-|---|---|---|---|---|
-| done 2026-09-13 | 8, the CLAUDE.md rows and ADR table | Sonnet | nothing | the canonical file had been wrong since step 2 |
-| done 2026-09-13 | 6, exposures | Sonnet | nothing | credential-free, and `make docs` is the check |
-| done 2026-09-27 | 8, the rest (README metrics, dev-notes list) | Sonnet | nothing | test counts settled at 150 dbt and 283 pytest |
-| next, last | 7, materialization | Sonnet | bucket zone | timings should come from a quiet session. Also record `make build-bigquery`, then close the plan: `status: done`, move to `docs/archive/`, delete Session kickoff |
-| outside the plan | the Socrata 403 | none | nothing | a DataSF host move, not a token: fixed in code 2026-09-27, confirm with the 2026-09-28 ingest. The ledger ADR needs a working daily ingest |
-| outside the plan | the successor ADR (ledger) | Opus | nothing to argue it | it is a decision, not implementation |

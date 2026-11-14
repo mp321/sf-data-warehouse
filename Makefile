@@ -253,7 +253,7 @@ prune-raw-apply: ## (destructive) Delete the raw partitions prune-raw proved sup
 load: ## Load data/raw and data/derived into the local DuckDB file
 	$(PY) ingestion/load.py --all --target duckdb
 
-load-bigquery: ## (creds) Load data/raw into BigQuery
+load-bigquery: ## (creds) Point BigQuery at both zones
 	$(PY) ingestion/load.py --all --target bigquery
 
 # ---------------------------------------------------------------------------
@@ -549,7 +549,7 @@ ci-build: ## Full pipeline from fixtures, isolated. No network, no creds.
 	}; \
 	echo "check-runs passes on the short zone and make build refuses it at check-snapshots."
 
-check: test-python lint leak-check compile-bigquery ci-build ## Everything CI runs on a PR, locally
+check: test-python lint leak-check compile-bigquery ci-build ## Most of the PR gate, locally. CLAUDE.md lists the differences
 
 # ---------------------------------------------------------------------------
 # Housekeeping

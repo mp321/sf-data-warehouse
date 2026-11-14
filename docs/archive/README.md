@@ -14,8 +14,12 @@ archived one is doing its job.
 |---|---|
 | ADR-3 dataset scope: four datasets around a headline question about city spending | ADR-7, then ADR-10. Two supersessions ago. Its one live line, why the budget-to-311 crosswalk was never built, is in README.md under "What it does not do" |
 | ADR-4 raw zone layout, and loading as a separate step | ADR-9 on where the files are and how BigQuery reads them, and ADR-18 on everything else. ADR-18 restates the layout, the all-STRING contract, the run manifests, the watermark and the append-only rule, so ADR-9's "read ADR-4 first" now means read ADR-18 |
+| ADR-14 raw zone retention: a superseded snapshot partition may be deleted | ADR-18, which restates it. Moved here 2026-10-23 |
+| ADR-16 a cut dataset leaves the zone by hand | ADR-18, which restates it. Moved here 2026-10-23 |
+| ADR-17 the retention proof runs on a schedule, the deletion never does | ADR-18, which restates it. Moved here 2026-10-23 |
+| ADR-20 registry history as a dbt snapshot | Refused 2026-09-13: the warehouse is rebuilt from scratch, so a snapshot table cannot last. ADR-21's withdrawal ledger took its place. Moved here 2026-10-23 |
 
-**Five superseded ADRs are deliberately not here, for two different reasons.**
+**Two superseded ADRs are deliberately not here.**
 
 **ADR-2 and ADR-7 cannot move, and the constraint is code rather than
 judgement.** `tools/context_pack/pack_prose.py` resolves an `evidence` citation
@@ -29,12 +33,6 @@ would surface only when someone next regenerated. Archiving either of them is a
 code change to the resolver, and that is the decision to take before moving
 them.
 
-**ADR-14, ADR-16 and ADR-17 could move and are held back on judgement.** They
-were superseded on 2026-08-10 in the same pass that wrote ADR-18, and a reader
-checking a one-day-old consolidation against its sources should not have to
-change directory to do it. Move them here when ADR-18 has been read a few times
-without anyone reaching for them.
-
 ## References into here from live documents
 
 ADR-1 is `active` and cites `docs/plans/plan-1-duckdb-parquet.md` twice. That
@@ -45,7 +43,7 @@ immutable and a broken link is a smaller cost than the precedent of editing one.
 
 ## Plans
 
-All nine are `status: done`. A plan is intent, and intent that has been executed
+All ten are `status: done`. A plan is intent, and intent that has been executed
 is history.
 
 | Was | Outcome |
@@ -59,10 +57,11 @@ is history.
 | PLAN-7 pipeline-assurance | Reconcile run manifests against the data; assert the BigQuery column sets against DuckDB's. PLAN-4 residue carried forward three times. Closed 2026-08-05, both steps the same day |
 | PLAN-8 remaining-context-packs | The `published` and `bigquery` packs. Closed 2026-08-07 at two packs rather than three; ADR-15 struck the third |
 | PLAN-9 raw-zone-retention | Bound what the two buckets accumulate. Closed 2026-08-07, all eight steps, recorded in ADR-14. Its two loose ends closed 2026-08-09 as ADR-16 and ADR-17, and all three are now restated in ADR-18 |
+| PLAN-10 snapshot-semantics-and-exposures | Snapshot staging restricted to the newest partition, the completeness guard gating the build, exposures. Closed 2026-10-23 with step 7 (a materialization timing) deferred and ADR-20 refused. Recorded in ADR-19; registry history landed separately as ADR-21 |
 
 ## What is not here
 
 Dev notes. They are append-only and their archive is
 `docs/dev-notes/ARCHIVE-2026-07.md`, which is a fold rather than a move: the
 findings are preserved verbatim under a heading per date and the chronology is
-dropped. The two most recent notes stay in `docs/dev-notes/` as loose files.
+dropped. Later notes stay in `docs/dev-notes/` as loose files.

@@ -3,8 +3,8 @@
 Why this repo is built the way it is, and where each reason lives in the code.
 
 `CLAUDE.md` is the canonical context and wins on any disagreement. ADRs are
-immutable once accepted: each iteration wrote a new ADR after review
-and did not edit previous one. Every claim cites the file that implements it.
+immutable once accepted, so each change is a new ADR. Every claim cites the
+file that implements it.
 
 ---
 
@@ -39,9 +39,9 @@ Pipeline: `make ingest`, `make spatial`, `make load`, `make build`,
 
 Five hops for one 311 record:
 
-1. `ingest.py` reads its watermark from the zone alone (:218), pages by
+1. `ingest.py` reads its watermark from the zone alone (:311), pages by
    `(:updated_at, :id)` because a non-unique order lost rows, and turns every
-   value into a string (:84).
+   value into a string (:97).
 2. `spatial.py` needs no network. It computes H3 at r8 and r10 as BIGINT
    (`h3_points.py:36`) and assigns each point a boundary: interior r10 cells
    are inherited, the rest get a point-in-polygon test (`boundaries.py:56`).
@@ -58,8 +58,8 @@ Five hops for one 311 record:
 
 ## 2. Decision record
 
-ADR-3 and ADR-4 are archived. Superseded ADRs stay in `docs/decisions/` when
-`prose.yml` cites them.
+ADR-3, 4, 14, 16, 17 and 20 are in `docs/archive/`. ADR-2 and ADR-7 stay in
+`docs/decisions/` because `prose.yml` cites them.
 
 **ADR-1. Warehouse targets.** Active. Parquet is the record, DuckDB the default
 target, BigQuery a second target over the same files, every model runs on both.
@@ -134,8 +134,8 @@ counts, and regenerating against an untouched warehouse produced a 40-line diff
 of clock values. The check compares target, prose revision, spec version and
 schema hash, so a month-old pack passes.
 
-**ADR-14. A superseded snapshot partition may be deleted.** Superseded by
-ADR-18. The raw prefix was 511.9 MB against a 5 GB allowance and would have hit
+**ADR-14. A superseded snapshot partition may be deleted.** Archived,
+superseded by ADR-18. The raw prefix was 511.9 MB against a 5 GB allowance and would have hit
 it by early October. A lifecycle rule deletes by object age and would destroy
 311 and permit history.
 
@@ -145,24 +145,44 @@ refusals and 13 joins word for word. What differs is type names, row counts and
 freshness, which nothing checks, so it would be the only committed file nothing
 could prove current.
 
-**ADR-16. A cut dataset is deleted from the zone by hand.** Superseded by
-ADR-18. ADR-10 left 55.5 MB in the bucket for five days while two tools warned
+**ADR-16. A cut dataset is deleted from the zone by hand.** Archived,
+superseded by ADR-18. ADR-10 left 55.5 MB in the bucket for five days while two tools warned
 on every run. The prune cannot do this job: its proof is that a surviving
-partition holds every key, and a cut dataset has none (`prune_raw.py:278`).
+partition holds every key, and a cut dataset has none (`prune_raw.py:418`).
 
-**ADR-17. The proof runs on a schedule, the deletion never does.** Superseded
-by ADR-18. In the two days after ADR-14 nobody ran the prune and the daily
+**ADR-17. The proof runs on a schedule, the deletion never does.** Archived,
+superseded by ADR-18. In the two days after ADR-14 nobody ran the prune and the daily
 crons took the zone from 214.1 MB to 323.4 MB. `retention.yml` runs the
 read-only proof weekly and refuses to grow an `--apply`.
 
 **ADR-18. The raw zone, and everything that may delete from it.** Active,
 supersedes ADR-4, ADR-14, ADR-16 and ADR-17. Hive layout, all-STRING contract,
 run manifests, watermark from the zone, append-only with three exceptions:
-`--full-refresh`, refused against a bucket (`ingest.py:349`); the prune, which
-exits 3 rather than delete what it cannot prove (`prune_raw.py:281`); and the
+`--full-refresh`, refused against a bucket (`ingest.py:439`); the prune, which
+exits 3 rather than delete what it cannot prove (`prune_raw.py:699`); and the
 scope deletion, which has no code by design. Acceptance test is prune, `make
-rebuild`, no row count moves. It held on 2026-08-07 and has not been run clean
-since.
+rebuild`, no row count moves. It held cleanly on 2026-08-07, and the 2026-09-30
+apply reconciled exactly with one day of new data in between.
+
+**ADR-19. Withdrawn registrations.** Active, amends ADR-18. The city removes
+closed businesses from `business_locations` with no tombstone, so a later copy
+is complete and still not a superset, and from 2026-08-24 nothing older than
+the last withdrawal could be proven. ADR-19 kept the proof and made snapshot
+data trustworthy instead: snapshot datasets refetch in full every run
+(`ingest.py:265`), `check_snapshots.py` stops the build on a short partition,
+and snapshot staging keeps only the newest partition's keys
+(`newest_snapshot.sql:99`).
+
+**ADR-20. Registry history as a dbt snapshot.** Archived, refused 2026-09-13.
+The warehouse is rebuilt from scratch, so a snapshot table could not outlive a
+rebuild.
+
+**ADR-21. Withdrawn keys are ledgered, then prunable.** Active, amends ADR-18
+section 4. A key missing from the newest copy counts as withdrawn when nothing
+is behind, no key is NULL, the survivor is not short and at most 2% of keys
+went missing. The apply writes each to a JSON ledger and reads it back before
+deleting anything. First apply, 2026-09-30: 1420 MB to 330 MB, 27 records
+saved.
 
 ---
 
@@ -229,7 +249,8 @@ denominators instead (`:248`). No historical data before 2024
 - A pack's numbers can be stale and nothing says so.
 - 178 columns have no description in the yml.
 - The remote publish path and the partitioned export path are unexercised.
-- The prune's acceptance test has not run clean since 2026-08-07.
+- 311 delta history is never pruned, and since 2026-10-04 upstream re-sends
+  120k+ rows a day. Scheduled ingest is paused until that growth is bounded.
 - Three rules have no mechanism: nothing forbids a geometry function or an H3
   call in a model, nothing tests `DIR` beating `URI`, and nothing keeps
   `--apply` out of a workflow file.
@@ -241,12 +262,8 @@ denominators instead (`:248`). No historical data before 2024
 The ADR is immutable and stays as written. These are the mechanical
 differences.
 
-- `CLAUDE.md` calls `make check` "everything CI runs on a PR". The two
-  context-pack drift checks are not reachable from it, so a PR can be green
-  locally and red in CI.
-- `CLAUDE.md` says three of the four first-build defects are uncatchable by
-  compiling. The three counts type errors; defect four is also uncatchable,
-  because both engines accept the SQL and return different numbers.
+- ADR-1 cites `docs/plans/plan-1-duckdb-parquet.md`, which now lives in
+  `docs/archive/`.
 - ADR-6 says boundary sets are a closed list in `datasets.py`. That file is now
   `ingestion/dataset_registry.py` and the registry is at
   `dbt/dbt_project.yml:134`.

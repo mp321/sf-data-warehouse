@@ -1,12 +1,14 @@
 # CLAUDE.md
 
-Canonical context for this repo. Read this before answering anything
-architectural. If this file disagrees with README.md or SETUP.md, this file
-wins and the other should be corrected.
+Canonical context for this repo. Read it before answering anything
+architectural. Where README.md or SETUP.md disagree with it, this file wins and
+the other should be corrected. History lives in `docs/decisions/` and
+`docs/dev-notes/`; this file states what is true now.
 
 ## Working agreement (applies to every session)
 
-- Plans live in `docs/plans/`, decisions in `docs/decisions/`, session notes in `docs/dev-notes/`. When we agree on a plan, write it to `docs/plans/` as a
+- Plans live in `docs/plans/`, decisions in `docs/decisions/`, session notes in
+  `docs/dev-notes/`. When we agree on a plan, write it to `docs/plans/` as a
   numbered file rather than leaving it in chat. Refer to documents as `ADR-1`
   and `PLAN-2`; see `docs/README.md` for the conventions.
 - ADRs are immutable once accepted. To change a decision, write a new ADR and
@@ -16,185 +18,99 @@ wins and the other should be corrected.
   incident. Mixing them makes the plan unexecutable later.
 - End a working session by appending to `docs/dev-notes/YYYY-MM-DD.md`.
 - Never run `git commit`, `git push`, `git merge`, `git rebase`, `git reset`
-  or anything else that writes to git history or a remote. Leave every change in the
-  working tree and say what is there. Never stage files with `git add`.
+  or anything else that writes to git history or a remote. Leave every change
+  in the working tree and say what is there. Never stage files with `git add`.
 
 ## What this project is
 
-An analytics engineering project built on San Francisco open data. Python
-pulls records from the DataSF Socrata API and writes them untyped to a Parquet
-raw zone, a separate step loads that zone into a warehouse, and dbt models it
-into staging views and mart tables with tests and docs. Everything is sized
-for free tiers. GCS internet egress is the binding limit, and October 2026 is
-the first month projected to exceed it (dev note 2026-10-23).
+An analytics engineering project on San Francisco open data. Python pulls
+records from the DataSF Socrata API and TIGERweb and writes them, untyped, to a
+Parquet raw zone. A separate step loads the zones into a warehouse, and dbt
+models them into staging views and mart tables with tests and docs.
 
-The design goal is ELT, not ETL: raw stays raw and is never mutated, and all
-typing, renaming, and deduplication happens in dbt where it is versioned and
-tested.
+It is ELT, not ETL: raw is never mutated, and all typing, renaming and
+deduplication happen in dbt, where they are versioned and tested.
+
+Everything is sized for free tiers. GCS internet egress is the binding limit,
+and all three scheduled jobs are paused because October 2026 was on course to
+exceed it (dev note 2026-10-23).
 
 ## Stack
 
 - Ingestion: Python 3.10+, `requests`, `pyarrow`, `duckdb`,
   `google-cloud-bigquery`
-- Geometry: `h3` and `numpy`, used only in `ingestion/spatial.py`. Neither
-  engine computes H3; both read precomputed BIGINTs. See ADR-5.
-- Warehouse: DuckDB is canonical, BigQuery secondary, Parquet is the durable
-  raw zone. See `docs/decisions/adr-1-warehouse-targets.md` and
-  `docs/decisions/adr-18-the-raw-zone.md`
-- Transformation: dbt, `dbt-duckdb` and `dbt-bigquery` adapters
+- Geometry: `h3` and `numpy`, in `ingestion/spatial.py` and its modules only.
+  Neither engine computes H3; both read precomputed BIGINTs (ADR-5).
+- Warehouse: DuckDB canonical, BigQuery secondary, Parquet the durable record
+  (ADR-1, ADR-18)
+- Transformation: dbt, with the `dbt-duckdb` and `dbt-bigquery` adapters
 - Orchestration: GitHub Actions
 - Lint: ruff (Python), sqlfluff (SQL), pre-commit
 
-## Current state versus intended state
+## Current state
 
 Read this before assuming the ADRs describe running code.
 
 | Area | Today | Intended | ADR |
 |---|---|---|---|
-| Default dbt target | DuckDB | DuckDB | ADR-1 |
-| Raw zone | Parquet, read and written in whichever zone is configured: `data/raw`, or `gs://<bucket>/raw` when `RAW_ZONE_URI` is set. Append-only with three exceptions: `--full-refresh`, the prune, and a scope deletion when an ADR cuts a dataset. **1595 MB on 2026-10-23**, after applies on 2026-09-30 (to 330 MB) and 2026-10-12. Growth is about 90 MB a day: about 50 MB is a full `business_locations` copy, which the prune reclaims, and about 36 MB is 311 delta, which it never does, because upstream has re-sent 120k+ rows a day since 2026-10-04. The post-apply floor (two copies of each snapshot plus all delta history) is about 1030 MB and rising | bounded within the free tier; how is open (dev note 2026-10-23) | ADR-18, ADR-19, ADR-21, ADR-9 |
-| Derived zone | Parquet, same arrangement as raw, under `DERIVED_ZONE_URI`. Rebuilt incrementally, and stamped with the code that built it | same | ADR-5, ADR-9, ADR-11 |
-| Warehouse load | `ingestion/load.py`. DuckDB materialises; BigQuery creates external tables over GCS and stores no raw bytes | same | ADR-9 |
-| Parquet durability | written to GCS by `ingest.py` and `spatial.py` themselves | same | ADR-9, PLAN-4 step 6 |
+| Default dbt target | DuckDB | same | ADR-1 |
+| Raw zone | Parquet in `data/raw`, or `gs://<bucket>/raw` when `RAW_ZONE_URI` is set. Append-only with three exceptions (see Hard constraints). **1026 MB after the 2026-10-24 apply**, its floor: 907 MB of 311 delta history, which is never pruned, plus two copies of each snapshot dataset. No growth while ingest is paused | bounded within the free tier; how is open | ADR-9, ADR-18, ADR-19, ADR-21 |
+| Derived zone | Parquet under `data/derived` or `DERIVED_ZONE_URI`. Rebuilt incrementally and stamped with the code that built it | same | ADR-5, ADR-9, ADR-11 |
+| Warehouse load | `ingestion/load.py`. DuckDB materialises; BigQuery gets external tables over GCS and stores no raw bytes | same | ADR-9 |
 | Spatial | H3 cells at r8 and r10, plus exact boundary membership | same | ADR-5, ADR-6, ADR-10 |
-| Staging models | one per source, all seven, plus five spatial. The five `refresh: snapshot` models keep only the `grain_key`s in the newest `ingest_date` (`restrict_to_newest_snapshot`), so the 27 withdrawn registrations are gone from staging and the marts. Landed 2026-09-13: `stg_datasf__business_locations` -27, `int_point_activity` -27, `mart_activity_by_h3` -1 | same | ADR-10, ADR-19 |
-| Snapshot completeness guard | `make check-snapshots` is a `make build` and `make build-bigquery` prerequisite: a SHORT partition stops the build (exit 3). `ci-build` proves it on a fixture. Skip with `SNAPSHOT_CHECK=0` | same | ADR-19, PLAN-10 step 2 |
-| Registry history | **the withdrawal ledger** (ADR-21): each business the city removed from its registry, as it last looked, in `raw_business_locations/_withdrawals/*.json`. 33 records in two files (27 on 2026-09-30, 6 on 2026-10-12). Written by `make prune-raw-apply` before it deletes; read by nothing yet. ADR-20's dbt snapshot was refused because the warehouse is rebuilt from scratch | same. A model over the ledger needs a registry entry first (ADR-21's revisit clause) | ADR-21, ADR-20 (superseded) |
+| Staging | One model per source (seven) plus five spatial. Snapshot models keep only the `grain_key`s in the newest `ingest_date` (`restrict_to_newest_snapshot`), so withdrawn registrations never reach the marts | same | ADR-10, ADR-19 |
+| Snapshot completeness guard | `make check-snapshots` gates `make build` and `make build-bigquery`; `ci-build` proves it on a fixture | same | ADR-19 |
+| Registry history | The withdrawal ledger, `raw_business_locations/_withdrawals/*.json`: 35 records in three files (2026-09-30, 2026-10-12, 2026-10-24). Written by `make prune-raw-apply`; read by nothing yet | same. A model over it needs a registry entry first | ADR-21 |
 | Marts | 3 city marts, 2 dims, 1 metadata mart | same | ADR-10 |
-| Published export | local `published/` on every PR, one file per mart. The bucket holds exactly that export and nothing else as of 2026-08-07: 7 objects, 3.2 MB, `manifest_version` 2 | manual until someone decides to schedule it; the quota reason is gone | ADR-8, ADR-12, PLAN-9 step 6 |
-| Context pack | two, and two is the intended number: the DuckDB one and the published one, generated by hand with `make context-pack [TARGET=published]` and committed under `context-pack/`. CI runs the drift check for both on every PR, against the fixture warehouse and the fixture export, and generates nothing | same. The bigquery target stays declared and is not generated (ADR-15) | PLAN-6 and PLAN-8 closed, ADR-13, ADR-15, `docs/specs/context-pack.md` |
-| BigQuery build | last run by hand 2026-09-13 on external tables, `PASS=173 ERROR=0`, matching DuckDB node for node on the same zone. The weekly `dbt.yml` cron is green, last run 2026-10-19 | same | PLAN-4 step 3, PLAN-10 step 3 |
-| Scheduled ingest | `ingest.yml`, daily at 09:17 UTC, reads and writes the bucket. Green since 2026-09-28, the first run after the host fix. Red on all 19 runs from 2026-09-09 to 2026-09-27 (DataSF moved to `data.sf.gov`; the old host answers 403), so the zone has no partitions for those days | green daily | PLAN-4 step 8 |
-| Scheduled retention | `retention.yml`, Mondays 11:29 UTC, runs the prune's proof and fails when the raw zone exceeds 1 GB. Reports only, never `--apply`. Red exit 3 from 2026-08-24 to 2026-09-28 (ADR-19) until **ADR-21 cleared it**. Red exit 4 every Monday since 2026-10-05, and an apply no longer clears it: the post-apply floor is over 1 GB (see Raw zone). The proof itself passes | a threshold that again means "run the apply" | ADR-18, ADR-19, ADR-21 |
+| Published export | `published/` locally on every PR, one file per mart. The bucket's `published/` holds the 2026-08-07 upload (7 objects, 3.2 MB, `manifest_version` 2) | manual until someone schedules it | ADR-8, ADR-12 |
+| Context pack | Two, DuckDB and published, generated by hand into `context-pack/` and drift-checked in CI. The BigQuery target is declared and never generated | same | ADR-13, ADR-15 |
+| BigQuery build | Last by hand 2026-09-13, `PASS=173 ERROR=0`, matching DuckDB node for node. Weekly `dbt.yml` green through 2026-10-19, **disabled 2026-10-23** | weekly, while ingest runs | ADR-1 |
+| Scheduled ingest | `ingest.yml`, daily 09:17 UTC. **Disabled 2026-10-23** to hold egress inside the free tier; the last run, that morning, was green | daily, within the free tier | ADR-9 |
+| Scheduled retention | `retention.yml`, Mondays 11:29 UTC, report only. **Disabled 2026-10-23.** Red with exit 4 every week from 2026-10-05, because the post-apply floor is over the 1 GB threshold; the proof itself passed | a threshold that again means "run the apply" | ADR-18, ADR-21 |
 
- `dbt build --target bigquery` ran for the first time on 2026-07-31 and found four
-cross-engine defects, three of which `dbt compile --target bigquery` cannot
-catch because compiling never asks the warehouse whether a type exists. All four
-are fixed, both targets build green, and `scripts/parity-check.py` compares the
-point staging models row for row on demand. The zones moved to GCS on
-2026-08-01 (ADR-9), the writer followed the same day (PLAN-4 step 6), and
-`make publish` has uploaded to a real bucket once. PLAN-4 closed on 2026-08-03
-when `ingest.yml` went green on a runner.
+## Before touching the code
 
-A fifth cross-engine defect landed on 2026-08-05 and is worth knowing about
-before touching `load.py` or a staging model's column list, because it is the thing `make check` structurally cannot see. BigQuery external tables
-were built with `autodetect`, which infers one schema for a whole table from a
-sampled file, while DuckDB reads the raw zone with `union_by_name`. Socrata
-omits null fields per record, so the files in one partition genuinely differ,
-and `stg_datasf__building_permits` referenced a column that was in the zone and
-in DuckDB and not in BigQuery. `load.py` now computes the zone's union column
-list and passes an explicit all-STRING schema, and
-`scripts/parity-check.py --columns` is the guard (PLAN-7 step 2). **A green
-`make check` says nothing about the bucket zones or about BigQuery**, by design
-and per ADR-1: it is DuckDB-only and local-zone-only so that a fork pull request
-needs no credentials. Sessions that touch the registry, the zone layout, a
-staging model's column list or `load.py` should carry `make build-bigquery` in
-their checkpoint.
+- **A green `make check` says nothing about the bucket zones or BigQuery.** It
+  is DuckDB-only and local-only so a fork PR needs no credentials (ADR-1).
+  Running both engines found five defects that compiling could not
+  (`docs/orientation.md` section 3). A session that touches the registry, the
+  zone layout, a staging model's column list or `load.py` carries
+  `make build-bigquery` in its checkpoint. `load.py` passes BigQuery an
+  explicit all-STRING schema built from the zone's union of columns, and
+  `make parity-columns` checks it still matches.
+- **There is one zone at a time.** A run reads and writes whichever zone its
+  environment names: `data/raw` and `data/derived` by default, the bucket
+  prefixes when the URIs are set. A bucket run does not also write `data/`, so
+  the local directories are not a cache or a mirror, only whatever the last
+  local run left (ADR-9). To know what is in the zone, point at the zone.
+- **The derived zone records the code that built it (ADR-11).** Editing
+  `spatial.py`, `h3_points.py`, `boundaries.py`, `population.py`,
+  `geometry.py` or `derived_state.py`, even a comment, makes
+  `make check-derived` report RECODED and costs a 23-second rebuild. That is
+  the design. On an unchanged zone, `make spatial` takes 0.3 seconds and
+  writes nothing.
+- **The context pack is generated by hand and checked by CI (ADR-13).**
+  `make context-pack` reads the real warehouse, after `make build`. CI's
+  `--check` compares schema hashes against the fixture warehouse and writes
+  nothing. When it fails, run `make build` then `make context-pack` against
+  the real zone and commit both packs. **Regenerating from fixtures is the one
+  wrong answer**: it commits a pack describing a warehouse nobody reads. Stale
+  numbers are deliberately not gated, because counts move on every ingest.
+- **The published pack is its own document.** Its examples are verified
+  against the export. HUGEINT has no Parquet type, so `publish/export.py`
+  writes those columns as DOUBLE: three marts hash differently in the export,
+  and a count read from it is a float. `published/manifest.json` describes
+  what was exported, not what the file holds.
+- **The uploader copies and never deletes.** `PUBLISH_PRUNE=1` on
+  `make publish` removes objects the destination holds that this export did
+  not write, after the manifest lands, and refuses a destination with no
+  prefix. Run it when
+  `MANIFEST_VERSION` changes or a mart leaves `PUBLISHED_MARTS`, the two ways
+  an orphan is made.
 
-ADR-10 narrowed the project on 2026-08-04: `city_budget` and `street_trees`
-cut, H3 resolution 9 dropped, `mart_activity_by_h3` moved to r8. Nine datasets
-became seven, and every remaining one is spatial. Steps 5 and 6 followed on
-2026-08-03: `ingestion/geometry.py` has direct pytest coverage and
-`ingestion/spatial.py` is four files. Steps 4, 7 and 8 followed on 2026-08-05:
-there is one dataset registry rather than two, `ingestion/datasets.py` is
-`dataset_registry.py` and PLAN-2 is closed, and `meta_dbt_run_results` is
-bounded. Steps 9 and 12 followed later the same day as ADR-11 and ADR-12, and
-are the two paragraphs below. Step 13, the obsolescence sweep, closed PLAN-5
-on 2026-08-05: the stale documents were USER-NOTES.md and SETUP.md rather than
-anything in the code, whose headers had been kept current step by step.
+## The pipeline
 
-**The derived zone now records the code that built it, and `make spatial` no
-longer rebuilds what has not moved (ADR-11).** The stamp is the load-bearing
-half. `_manifest.json` carries a hash over the source of every module that
-decides the zone, so `make check-derived` has a third verdict, `RECODED`, for
-"this zone was built by code that no longer exists". That is the failure of
-2026-08-05, where the bucket held H3 r9 cells ADR-10 had deleted, row counts
-agreed, and nothing noticed until an `accepted_values` test failed in BigQuery.
-The stamp is a source hash and not a version constant on purpose: it fires on a
-comment edit and costs one 23 second rebuild, where a constant fires only when
-someone remembers. **So editing `spatial.py`, `h3_points.py`, `boundaries.py`,
-`population.py`, `geometry.py` or `derived_state.py` invalidates the derived
-zone, comment or code.** That is the design and not a bug. The incremental half
-is keyed on per-partition row and file counts: a second `make spatial` on an
-unchanged zone is 0.3 seconds and writes nothing.
-
-**The publish object count is fixed, and the reason it was ever manual is gone
-(ADR-12).** One publish was 2,280 objects against a free tier of 5,000 Class A
-operations a month, because two marts partitioned 180k rows over 874 monthly
-directories: `business_locations` carries `location_started_at` values from 1849
-to 2028. Marts are now one file each, so a publish is 7 objects and 3.0 MB
-rather than 2,280 and 16 MB, and a daily one would use 210 operations a month.
-The deciding measurement was the bytes rather than the count: month
-partitioning cost 5.8x the bytes of the same data, because the median partition
-held 40 rows and a 5 KB Parquet file is mostly footer. Publishing is still run
-by hand, but now because nobody has decided to schedule it rather than because
-the quota forbids it. Note this changed the published paths, which is a
-breaking change to anything reading the one hand-run upload; `MANIFEST_VERSION`
-is 2.
-
-**The old layout was still in the bucket until 2026-08-07, because the uploader
-copies and never deletes.** ADR-12 changed what a publish writes and nothing
-removed what the previous one had written, so the prefix held 2,885 objects and
-18.6 MB: the 2,879 month partitions, `mart_budget_by_department_year` from
-before ADR-10 cut `city_budget`, and the 6 of the current layout. A consumer
-globbing the old paths found a complete stale export. `--prune` (PLAN-9 step 6)
-is the fix and it ran once: 2,880 objects removed, 7 remain at 3.2 MB. It is off
-by default, it runs after the manifest lands so ADR-8's ordering survives, and
-it refuses a destination with no prefix, because "everything this export did not
-write" under a bare bucket means the raw and derived zones. Run it when
-`MANIFEST_VERSION` changes or a mart leaves `PUBLISHED_MARTS`, which are the two
-ways an orphan is made.
-
-**The context pack is generated by hand and checked by CI, and those are not
-the same command (ADR-13).** `make context-pack` reads the real warehouse and
-writes the two committed artifacts; it runs on a machine with the zone, after
-`make build` and never after `make check`. CI runs
-`generate.py --target duckdb --check` against the warehouse it just built from
-fixtures and writes nothing. That works because the check compares four things
-and only one of them needs a warehouse: a per-model schema hash, which is over
-column names, types and ordinal position and does not care that a fixture table
-has seven rows. All 19 hashes agree between the two warehouses, measured
-2026-08-07. **So when CI fails that step, the fix is `make build` then
-`make context-pack` on a machine with the real zone, and committing both
-artifacts. Regenerating from fixtures to make it green is the one wrong
-answer**: it would commit an artifact describing a warehouse nobody reads. What
-the gate deliberately cannot see is stale numbers, because row counts move on
-every ingest and a gate that fires daily gets switched off.
-
-**The published pack landed on 2026-08-07 and it is a different document, not a
-shorter one (PLAN-8 steps 1 to 4).** It is generated from `$PUBLISH_DIR` after
-`make publish`, checked in CI against the export `make ci-build` writes from
-fixtures, and carries five refusals of a class the warehouse pack has no use
-for: this is in the warehouse and not in this export. **Its examples are its
-own**, because an example is verified against the target whose pack it appears
-in and nowhere else. One fact from building it is worth carrying into anything
-that reads the export: **HUGEINT has no Parquet type, so `publish/export.py`
-writes those columns as DOUBLE**, and three of the six marts therefore hash
-differently in the export than in the warehouse the manifest hashed. A count
-read from the export is a float, the pack records both hashes with the reason,
-and `published/manifest.json` is the authority on what was exported rather than
-on what the file holds. **There is no third pack and there will not be one until
-someone reads BigQuery (ADR-15)**: that target's model set is the DuckDB one, so
-the pack would be the same prose word for word, differing only in the parts a
-missing schema hash means nothing can check.
-
-**There is one zone at a time, and it is never two.** This is the thing to have
-straight before reading anything else about storage. A run reads and writes
-whichever zone its environment names: `data/raw` and `data/derived` with no URI
-set, the bucket prefixes with them set. A remote run does **not** also write
-`data/`, so after one, the local directories hold whatever the last local run
-left there. They are not a cache, not a mirror, and not a stale-but-usable copy;
-they are a different zone that happens to be on this machine. ADR-9 considered
-keeping both in step and rejected it: two copies with nothing to detect
-divergence is the exact failure this project had just spent a session fixing in
-the derived zone, and a mirror written only by the machines that happen to run
-`make ingest` is a worse version of it. If you want to know what is in the zone,
-point at the zone.
-
-## The pipeline is five steps
-
-They are separate on purpose (ADR-18, ADR-5). Only the BigQuery ones need
-credentials; `make publish` needs them only with a remote destination.
+Five separate steps (ADR-5, ADR-18). Only the BigQuery ones need credentials.
 
 ```
 make ingest    APIs      -> raw zone/*.parquet     network, no credentials
@@ -204,585 +120,259 @@ make build     dbt run + test                      no network, no credentials
 make publish   warehouse -> published/             no network, no credentials
 ```
 
-"No credentials" holds for the local zones, which are the default. Point the
-zones at the bucket and the first three need `GOOGLE_APPLICATION_CREDENTIALS`,
-because that is where the Parquet then is. Nothing needs a Google account to run
-the pipeline or the CI gate, which is ADR-1's constraint and is unchanged.
+"No credentials" holds for the local zones. With the zones on the bucket, the
+first three need `GOOGLE_APPLICATION_CREDENTIALS`. `make all` runs the first
+four.
 
-`make all` runs the first four in order. **Forgetting `make spatial` does not
-error**: the spatial models build empty, and the marts come out with no rows.
-`load.py` prints a warning naming the step when the derived zone is missing.
+**Forgetting `make spatial` does not error.** The spatial models build empty
+and the marts come out with no rows. A derived zone that exists but is behind
+is worse: new rows reach staging with null geography, because
+`join_point_geography` is a LEFT join, and the first symptom is a `not_null`
+failure several models downstream. So `make build` runs two checks first.
 
-The worse version of that mistake is a derived zone that exists and is behind,
-which is what `make ingest` then `make build` leaves. The new rows reach
-staging with null geography, because `join_point_geography` is a LEFT join, and
-the first symptom is a `not_null` test failing several models downstream.
-`make build` therefore runs `make check-derived` first. `spatial.py` records
-three things in `data/derived/_manifest.json` and `check_derived.py` compares
-all three against the raw zone and the code as they are now:
+### Checks
 
-| record | verdict when it disagrees | exit |
-|---|---|---|
-| raw row count per dataset | STALE, rows with no geography at all | 3 |
-| the code that built the zone | RECODED, built by code that no longer exists | 4 |
-| the watermark | DRIFT, same rows re-ingested with new values | warns |
+| Command | Compares | Verdict (exit) | Gates |
+|---|---|---|---|
+| `make check-derived` | derived manifest against the raw zone and the code | STALE (3), RECODED (4), DRIFT (warns) | `make build`; skip with `DERIVED_CHECK=0` |
+| `make check-snapshots` | each snapshot partition's distinct `grain_key` count against the one before | SHORT (3) | `make build`, `make build-bigquery`; skip with `SNAPSHOT_CHECK=0` |
+| `make check-runs` | each run manifest against the rows carrying its run id | MISCOUNTED (3), UNRECORDED (4), watermark mismatch (warns) | nothing; runs in CI |
+| `make prune-raw PRUNE_ARGS="--max-bytes 1e9"` | supersession proof and zone size | unproven (3), over threshold (4) | nothing; runs weekly in `retention.yml` |
 
-Override with `make build DERIVED_CHECK=0` if you mean it.
+- Run manifests (`<table>/_runs/`) are the only record of a run that fetched
+  nothing, so nothing can be recomputed to replace them.
+- A run killed mid-fetch reconciles, because `_flush` counts as it writes. A
+  SHORT partition is the only trace it leaves, which is why `check-snapshots`
+  exists and gates the build. It counts distinct keys, not rows, because two
+  runs on one day share a partition.
+- `check-runs` warns when a dataset is in the zone and not in the registry.
+  That warning is what catches a skipped scope deletion; do not soften it.
 
-The raw zone has its own consistency check, `make check-runs`, and it is not a
-prerequisite of anything. `ingest.py` writes a manifest per run under
-`<table>/_runs/`, and those manifests are the only record of a run that fetched
-nothing, so nothing else in the pipeline can be recomputed to replace them.
-`check_runs.py` compares each one against the rows carrying its run id: exit 3
-when they disagree (MISCOUNTED), exit 4 when rows carry a run id no manifest
-describes (UNRECORDED), a warning when a watermark and the data disagree. It
-runs in `ci-build` on the fixture zone, credential-free, which is what makes it
-a PR gate rather than a credentialed by-hand check like `make parity-columns`.
-A run killed mid-fetch does not fire it: `_flush` counts as it writes, so a
-partial run claims exactly what it durably wrote. See PLAN-7 step 1.
+### The prune and the retention check
 
-**`make check-snapshots` is the sibling that does see that run** (ADR-19 step
-3). It compares each `refresh: snapshot` partition's distinct `grain_key` count
-against the partition before it and exits 3 (SHORT) on a cliff, which is the
-only signature a mid-fetch death leaves: the manifest reconciles, so
-`check_runs.py` passes by design. It counts distinct keys rather than rows,
-because two runs on one day share a partition and doubled its rows on
-2026-08-15 without changing its key count. **Unlike `check-runs` it gates
-`make build`** (since 2026-09-12, PLAN-10 step 2), because snapshot staging now
-reads only the newest partition, so a short one would silently drop rows from
-every model. Override with `SNAPSHOT_CHECK=0` if you mean it.
+- **Why it exists.** The city republishes `business_locations` whole, so every
+  run writes another full copy, about 50 MB. Staging keeps the newest row per
+  `grain_key`, so older copies are rows no model can return.
+- **What it deletes.** `make prune-raw` reports and `make prune-raw-apply`
+  deletes, both by hand, and only for `refresh: snapshot` datasets. A
+  partition goes only when a surviving later one holds every `grain_key` at
+  values no older (ADR-18), or when every key it lacks is a withdrawal
+  (ADR-21): nothing is behind, no key is NULL, the survivor is not SHORT, at
+  most 2% of keys are missing, and the ledger reads back holding every such
+  key before the first delete (exit 5 otherwise). Run manifests go with their
+  rows, so `check-runs` stays green.
+- **Acceptance test.** After an apply, `make rebuild` moves no model's row
+  count. That is the whole safety argument.
+- **The ledger is JSON on purpose.** Both engines glob `*.parquet` across
+  `<table>/`, so a Parquet ledger would be read as rows. Read it with
+  `gcloud storage cat gs://<bucket>/raw/raw_business_locations/_withdrawals/*.json`.
+- **Do not relax the proof beyond ADR-21, and keep `--apply` out of every
+  workflow.** A cron that deletes data was refused twice (ADR-14, ADR-17).
+- **Retention.** `retention.yml` runs the report with `--max-bytes 1000000000`
+  on Mondays and deletes nothing. Exit 3 beats exit 4: unproven says stop
+  pruning, over budget says prune. The 1 GB threshold was chosen so a breach
+  meant only "the apply stopped being run". Since 311's upstream churn began on
+  2026-10-04, that no longer holds (dev note 2026-10-23).
+- `make prune-raw` on the local `data/raw` finds nothing, since that zone holds
+  one partition per dataset. Point it at the bucket.
+- The derived zone is a pure function of the raw zone and the code, so it is
+  always safe to delete: `make clean-derived` then `make spatial`, or
+  `make spatial SPATIAL_ARGS=--full`.
 
-**The prune is what keeps the raw zone from growing without limit, and it is the
-one tool here that deletes part of the record (ADR-18).** Measured on
-2026-08-07: the raw prefix was 511.9 MB over 236 objects, of which
-`raw_business_locations` was 397.1 MB, because the city republishes a
-current-state registry and every run then writes another full 415k-row copy into
-a zone that never deleted. Staging deduplicates by `grain_key` to the newest
-`_socrata_updated_at`, so those copies were sediment rather than history: rows no
-model could return, paying storage every month. `make prune-raw` reports and
-`make prune-raw-apply` deletes, both by hand and never on a schedule. It
-considers only `refresh: snapshot` datasets, proves per partition that a
-surviving later one holds every `grain_key` at values no older, deletes the run
-manifests of the runs whose rows go with it so `check_runs.py` stays green, and
-exits 3 naming the partition rather than deleting anything it cannot prove. It
-recovered 297.8 MB on 2026-08-07 and **no model's row count moved**, which is the
-acceptance test and the whole safety argument. `make prune-raw` on the local
-`data/raw` finds nothing, because that zone is one partition per dataset; point
-it at the bucket the way everything else is pointed at it.
-
-**The proof now runs weekly and the deletion still does not (ADR-18).** ADR-14
-answered "where does the prune run" as one question and it is two, which the
-next two days demonstrated: nobody ran the prune, the 08-08 and 08-09 crons each
-wrote another full 49.7 MB copy of `business_locations`, and the raw prefix went
-214.1 MB to 323.4 MB. `.github/workflows/retention.yml` runs
-`prune_raw.py --max-bytes 1000000000` on Mondays, which reports, deletes
-nothing, and fails when the raw zone is over 1 GB. **There is no `--apply` in
-that workflow and there must not be**; a cron that deletes data was refused
-twice, in ADR-14 and again in ADR-17. The threshold was chosen so a breach
-meant one thing only: delta growth alone needed over 170 days to reach 1 GB,
-while unpruned snapshot churn reached it in about 15. **That stopped holding on
-2026-10-04**, when 311 delta growth rose sevenfold; see the 2026-10-23 dev note
-before treating exit 4 as routine. Exit 3 beats
-exit 4 when both hold, because over-budget asks you to prune and unproven says
-stop pruning. Run the same check locally with
-`make prune-raw PRUNE_ARGS="--max-bytes 1e9"`.
-
-**That check was red with exit 3 from 2026-08-24 to 2026-09-28, and the reason
-still matters (ADR-19, then ADR-21).**
-`business_locations` is a current-state registry and **the city withdraws
-records from it**: a location that closes leaves the registry with no tombstone
-row, so a later partition is complete and is still not a superset of an earlier
-one. Every one of the 19 unproven partitions on 2026-09-07 failed the proof's
-*first* limb, keys absent from the survivor, and none failed the second, keys
-present but stale. That is the opposite of what ADR-18's revisit clause
-predicted, so `refresh: snapshot` is still true and the registry needs no fix.
-Under ADR-18's proof alone the refusal was correct and permanent: withdrawn
-keys never come back, so only partitions written between the last withdrawal
-and the keep window are ever provable, which on 2026-09-07 was three days. The
-apply that day recovered 149.6 MB, 1449.5 to 1299.9 MB, and left the zone
-299.9 MB over the threshold with nothing prunable, which is ADR-18's fourth
-revisit clause verbatim. ADR-19's four steps then landed (step 4, restricting
-snapshot staging to the newest `ingest_date`, on 2026-09-13), so staging no
-longer returns withdrawn records. That reclaimed nothing by itself, because
-"no model's row count moves" is trivially true for a partition staging already
-ignores, so letting the prune act on it needed its own ADR.
-
-**ADR-21 (active, 2026-09-28) is that ADR, and it has been applied. Do not
-relax the proof beyond what it allows.** A key absent from the survivor is read
-as a withdrawal only when nothing is behind, no key is NULL, the survivor is
-not SHORT, the candidate lost at most 2% of its keys, and, with `--apply`, the
-withdrawal ledger `<table>/_withdrawals/*.json` reads back holding every such
-key before the first delete (exit 5 otherwise). The first apply, on
-2026-09-30, took the zone from 1420.4 MB to 330.1 MB and ledgered 27 keys; the
-2026-09-29 dev note has the reconciliation. The ledger is JSON on purpose: a
-Parquet file anywhere under `<table>/` is read as rows by both engines. Read it
-with `gcloud storage cat gs://<bucket>/raw/raw_business_locations/_withdrawals/*.json`.
-
-**A dataset the registry does not name is nobody's job until someone makes it
-one (ADR-18).** ADR-10 cut `city_budget` and `street_trees` on 2026-08-04 and
-left 55.5 MB of their Parquet in the bucket, where it sat for five days while
-`make check-runs` warned about both on every run and `make prune-raw` refused to
-touch them. Deleted by hand on 2026-08-09, raw prefix 323.4 MB to 267.9 MB,
-`raw_ingest_runs` 136 manifests to 114, and no model moved because neither was
-ever a declared dbt source. **Cutting a dataset now has a zone step**, and
-`check_runs.py`'s "in the zone and not in the registry" warning is what catches
-it being skipped, so that warning is load bearing and must not be softened.
-
-The derived zone is a pure function of the raw zone plus the code, so unlike
-`data/raw` it is always safe to delete: `make clean-derived` then
-`make spatial`, or `make spatial SPATIAL_ARGS=--full` for the same thing without
-the delete. Re-running it is cheap, because a run only rebuilds what its inputs
-say has moved (ADR-11).
-
-## How to run everything
+## Commands
 
 ```
 make setup            # venv, requirements, dbt deps, pre-commit hooks
-make ci-build         # whole pipeline from fixtures. No network, no creds.
+make ci-build         # whole pipeline from fixtures, isolated. No network, no creds.
+make check            # most of the PR gate, locally (differences below)
 make all              # ingest, spatial, load, build
-make ingest           # pull all datasets from DataSF and TIGERweb into data/raw
-make spatial          # compute H3 cells and boundary membership into data/derived
-make load             # load both zones into the local DuckDB file
-make build            # dbt build against DuckDB (default target)
-make publish          # export marts to published/ with a manifest
+make ingest | spatial | load | build | publish   # one step each
 make rebuild          # drop the warehouse and rebuild it from the zones
 make test             # dbt test only
-make test-python      # pytest over ingestion/. Fastest gate in the set.
-make docs             # dbt docs generate, refresh docs/dbt/ artifacts
-make context-pack     # generate a context pack into context-pack/. TARGET=duckdb
-make context-pack TARGET=published   # ... or the export's, after make publish
-make context-pack-check [TARGET=published] # does the committed pack still describe its target?
-make lint             # ruff + sqlfluff
-make fmt              # auto-fix what ruff and sqlfluff can fix
-make leak-check       # scripts/leak-check.sh, exits nonzero on a hit
+make test-python      # pytest. The fastest gate.
+make lint | fmt       # ruff and sqlfluff; fmt fixes what it can
+make leak-check       # credential scan, nonzero on a hit
+make docs             # dbt docs; refreshes docs/dbt/
 make compile-bigquery # render every model as BigQuery SQL. No credentials.
-make check            # the PR gate, locally. Not identical to ci.yml; see below
-make check-derived    # is data/derived current with data/raw AND with the code?
-make check-runs       # do data/raw's run manifests describe the Parquet beside them?
-make check-snapshots  # is each snapshot partition as complete as the one before it?
-make prune-raw        # which raw partitions does a later one supersede? Deletes nothing.
-make prune-raw PRUNE_ARGS="--max-bytes 1e9"  # ... and fail if the zone is over 1 GB
-make prune-raw-apply  # (destructive) delete those partitions and their manifests
-make clean-derived    # delete data/derived. Always safe; make spatial rebuilds it.
-make load-bigquery    # (creds) load both zones into BigQuery
-make build-bigquery   # (creds) dbt build --target bigquery
-make parity-columns   # (creds) zone column sets vs BigQuery's. Needs no local build.
-make parity-check     # (creds) staging models row for row across both engines
+make context-pack [TARGET=published]        # regenerate a pack
+make context-pack-check [TARGET=published]  # does the committed pack still match?
+make check-derived | check-runs | check-snapshots
+make prune-raw [PRUNE_ARGS="--max-bytes 1e9"]  # report. Deletes nothing.
+make prune-raw-apply  # (destructive) delete what prune-raw proved
+make clean-derived    # always safe; make spatial rebuilds it
+make load-bigquery | build-bigquery         # (creds)
+make parity-columns   # (creds) zone column sets against BigQuery
+make parity-check     # (creds) staging models row for row across engines
 ```
 
-Only `load-bigquery` and `build-bigquery` need `GCP_PROJECT_ID` and
-`GOOGLE_APPLICATION_CREDENTIALS`. Load them with `set -a; source .env; set +a`.
-Everything else, including the full CI gate, runs on a fresh clone with no
+The credentialed targets need `GCP_PROJECT_ID` and
+`GOOGLE_APPLICATION_CREDENTIALS`; load them with `set -a; source .env; set +a`.
+Everything else, the full CI gate included, runs on a fresh clone with no
 Google account.
 
-**`make check` is not all of CI, and CI is not all of `make check`.** `ci.yml`
-skips `check_derived`, `check_snapshots` and the short-snapshot proof, and
-`make check` skips the two context-pack `--check` steps.
+**`make check` and `ci.yml` differ.** `ci.yml` skips `check_derived`,
+`check_snapshots` and the short-snapshot proof; `make check` skips the two
+context-pack `--check` steps. CI runs `make rebuild`'s equivalent on every PR:
+if a dropped warehouse does not rebuild from the zones, the zones are not the
+source of truth.
 
-`make rebuild` is the load-bearing one: if dropping the DuckDB file and
-reloading from `data/raw` does not reproduce every model, the raw zone is not
-the source of truth it claims to be. CI runs it on every PR.
+## Hard constraints
 
-## Four traps that outlived the notes that found them
+- **All data is public.** Everything comes from data.sf.gov and the Census
+  Bureau. A dataset that is not public does not belong here.
+- **No credentials in the repo, ever**: no service account JSON, no `.env`, no
+  tokens, no project ids or bucket names in committed files (write
+  `<bucket>`). Secrets reach code only through environment variables locally
+  and repository secrets in CI. `scripts/leak-check.sh` blocks the merge on a
+  hit; if it fires, rotate the credential first, then clean the tree.
+- `keys/`, `.env`, `data/`, `*.duckdb`, `target/` and `dbt_packages/` are
+  gitignored. Do not add exceptions.
+- **`RAW_ZONE_DIR` beats `RAW_ZONE_URI`, and likewise for the derived pair.**
+  That keeps `make ci-build` local in a shell that has sourced `.env`;
+  reversing it would make `make check` silently test the bucket. See
+  `ingestion/remote.py`.
+- **The raw zone is append-only, with exactly three exceptions, and nothing
+  ever edits a file in it.**
+  1. `ingest.py --full-refresh` swaps a whole tree atomically. Local only:
+     object storage has no rename, so it refuses a `gs://` zone rather than
+     delete-then-copy. Refresh locally and upload.
+  2. The prune (ADR-18, ADR-21), as described above.
+  3. A scope deletion: when an ADR cuts a dataset, its prefix is removed by
+     hand, once, with `gcloud storage rm --recursive`. The prune cannot do
+     this, since a cut dataset has no surviving partition.
+     `tests/test_dataset_registry.py` proves nothing reads it, and the rows
+     can be re-fetched from DataSF.
 
-Each of these is still true about running code, was found once at some cost,
-and is invisible from the place you would look. Moved here on 2026-08-10 when
-the dev notes that held them were folded into
-`docs/dev-notes/ARCHIVE-2026-07.md`.
+  Warehouse raw tables are mirrors rebuilt wholesale by `load.py`; never
+  UPDATE or DELETE them. Deduplication belongs in staging.
+- **Snapshot datasets are prunable and delta datasets never are.**
+  `refresh: snapshot` (`business_locations`, `film_locations`, the three
+  boundary sets) means upstream republishes everything, so one partition can
+  hold it all. `refresh: delta` (`311_cases`, `building_permits`) means a
+  partition holds only rows changed since the watermark, so deleting one loses
+  rows nothing can bring back. **A bucket lifecycle rule is the obvious answer
+  and the wrong one** (ADR-18): it deletes by age and would destroy 311 and
+  permit history. `refresh` is a required registry field.
+- **The dataset registry has one copy: `vars.pipeline_sources` in
+  `dbt/dbt_project.yml`.** Python reads it through
+  `ingestion/dataset_registry.py`. Do not add a Python-side list.
+- **SQL compiles on both BigQuery and DuckDB.** Use the dispatch macros in
+  `dbt/macros/cross_engine.sql`, never `safe_cast`, `float64`, `try_cast` or
+  `json_extract_string` directly. Compare timestamps with `x_utc_now()`, not
+  a bare `current_timestamp`, and read the comment above it first. There are
+  nine macros against ADR-1's revisit threshold of about ten, so the tenth
+  triggers a re-read of ADR-1.
+- **No geometry at query time (ADR-6)**: no `ST_` function, spatial extension
+  or GEOGRAPHY column in any model. **No H3 in SQL (ADR-5)**: BigQuery has no
+  H3 function to dispatch to.
+- Every model description states its grain as "one row per ...", and every
+  model has a grain test plus `not_null` on its keys.
+- Every count mart exposes at least one normalised measure beside each count.
+  A raw count per area mostly maps where people live.
 
-- **dbt re-sources `.env` itself on every invocation**, regardless of your
-  shell: `dbt/cli/main.py` calls `load_dotenv(find_dotenv(usecwd=True),
-  override=False)`, which searches upward from the working directory and finds
-  this repo's `.env` two levels up. So a bare `dbt compile --target bigquery`
-  from anywhere inside the repo passes with real credentials and can never
-  reproduce CI. `make compile-bigquery` is the only local reproduction that
-  means anything, because it exports both variables itself and an exported
-  variable beats the file. Measured 2026-08-03.
-- **`make ci-build` runs entirely inside `data/ci/`**, its own zones and its own
-  DuckDB file, and that isolation is not tidiness. Before it, running the local
-  CI gate appended a fixture row to the real `data/raw`: the coverage record's
-  `:updated_at` was newer than `raw_film_locations`' watermark, so the fixture
-  ingest wrote into the zone and the count went 2,214 to 2,215. The other three
-  datasets escaped by luck of their watermarks. Never point `ci-build` at the
-  default zone.
-- **`raw_datasf` carries `defaultPartitionExpirationMs: 5184000000`**, the 60
-  days from the BigQuery sandbox, and it is inert only by accident: 9 of its 10
-  tables are external and hold no bytes, and `raw_ingest_runs` is not
-  time-partitioned. It will bite the first partitioned native table anyone
-  creates in that dataset. Measured 2026-08-04; `dbt_dev` and `derived_spatial`
-  carry no expiry and their tables are not stamped.
-- **TIGERweb rate-limits with HTTP 200 and an HTML body.** No status code, no
-  `Retry-After`, and `response.json()` fails on character zero mentioning
-  neither the Census Bureau nor rate limiting. `census.py` checks the content
-  type and backs off; the burst that provokes it is regenerating the fixtures.
+## Traps
 
-## Read-first order for a new session
+Each is true of running code and invisible from where you would look.
 
-1. This file.
-2. `docs/decisions/` in number order. These are the constraints you inherit.
-   Everything there is `active` except six. **Read ADR-18 rather than ADR-14,
-   ADR-16 and ADR-17**: it supersedes all three, is the one document for what
-   the raw zone is and what may delete from it, and restates ADR-4 as well.
-   **Read ADR-19 immediately after it**, which amends its first revisit clause
-   and explains why the retention job was red, **then ADR-21**, which amends
-   ADR-18's proof and adds the withdrawal ledger.
-   ADR-2 and ADR-7 are superseded by ADR-6 and ADR-10 and repay a skim only for
-   ADR-2's option B, computing the district label at ingestion, which ADR-5
-   cites as the reason cells are not written into the raw zone; they sit in
-   `decisions/` rather than the archive because `prose.yml` cites both and the
-   context pack's citation resolver globs that directory alone. ADR-20 was
-   refused on 2026-09-13; its dated note is why registry history is a ledger in
-   the raw zone (ADR-21) rather than a dbt snapshot.
-   ADR-3 and ADR-4 are in `docs/archive/` with a line each on what replaced
-   them.
+- **dbt re-sources `.env` on every invocation**, searching upward from the
+  working directory, so a bare `dbt compile --target bigquery` inside the repo
+  runs with real credentials and never reproduces CI. `make compile-bigquery`
+  exports both variables itself and is the only faithful local reproduction.
+  It also relies on `scripts/fake-bq-key.sh` and `--no-populate-cache`; both
+  are needed, so do not remove either to tidy up.
+- **`make ci-build` runs entirely inside `data/ci/`.** Before that isolation, a
+  fixture ingest appended a row to the real `data/raw`. Never point `ci-build`
+  at the default zone.
+- **TIGERweb rate-limits with HTTP 200 and an HTML body.** `census.py` checks
+  the content type and backs off. Regenerating fixtures is what provokes it.
 
-   ADR-5 and ADR-8 are the two to read carefully: both are `active` and both
-   have had one part amended, ADR-5's resolution list and rebuild cost by
-   ADR-10 and ADR-11, and ADR-8's month partitioning by ADR-12. Each carries a
-   note at the top saying which line moved.
-3. `docs/plans/`: PLAN-10 is the one open plan (active). The nine before it
-   are done and in `docs/archive/`.
-4. The newest notes in `docs/dev-notes/`: fifteen dated files as of
-   2026-10-23, beside `ARCHIVE-2026-07.md`.
-5. `vars.pipeline_sources` in `dbt/dbt_project.yml` for what is in scope. That
-   is the dataset registry itself and the only copy of it;
-   `ingestion/dataset_registry.py` is the loader that hands it to Python. Then
-   `ingestion/raw_zone.py` for the raw zone layout, then `ingest.py` and
-   `load.py`.
-6. `dbt/models/staging/datasf/stg_datasf__311_cases.sql`, the reference model.
-7. If the work is spatial: `ingestion/spatial.py`'s header for what the step
-   produces and which of the three modules produces it, then
-   `ingestion/boundaries.py`'s header for the three containment modes, then
-   `dbt/models/staging/spatial/stg_spatial__polygon_h3.sql` for the three
-   flags on the bridge table and why using the wrong one is the easiest
-   mistake available here. `tests/test_geometry.py` is where the contract for
-   points on an edge or a vertex is written down.
+## Where to change things
 
-`SETUP.md` is the human onboarding path and is more detailed than this file on
-Google Cloud setup. It is not authoritative on architecture.
+| To change | Edit | Then |
+|---|---|---|
+| Add a dataset | registry entry, source table in `_<system>__sources.yml`, staging model, fixture | `tests/test_dataset_registry.py` fails if any of the four is missing |
+| Cut a dataset | an ADR, the registry entry and its models, then the zone prefix by hand | `make check-runs` warns until the prefix is gone |
+| Raw zone layout | `ingestion/raw_zone.py`, the only reader and writer of it | `make build-bigquery` |
+| Bucket access | `ingestion/remote.py`, the only module that authenticates or deletes. `publish/export.py` is standalone by design | |
+| Spatial logic or H3 resolutions | the spatial modules, after reading `derived_state.py`'s header | invalidates the derived zone; `make spatial` |
+| A cross-engine SQL function | `dbt/macros/cross_engine.sql` | `make compile-bigquery` |
+| What the prune may delete | an ADR first, then `ingestion/prune_raw.py` and `tests/test_prune_raw.py` | report mode on the bucket before any apply |
+| Context pack wording | `tools/context_pack/prose.yml`, the one hand-written source | `make context-pack` for both targets on the real zone; commit both |
+| Which marts publish | `PUBLISHED_MARTS` and `MANIFEST_VERSION` in `publish/export.py` | `make publish PUBLISH_DEST=<dest> PUBLISH_PRUNE=1` |
+| Retention threshold | `MAX_RAW_BYTES` in `.github/workflows/retention.yml` | re-derive the reasoning in its comment |
+| Scheduled jobs | `.github/workflows/`; pause or resume with `gh workflow disable <file>` or `gh workflow enable <file>` | `gh workflow list` |
 
 ## Directory conventions
 
 ```
-ingestion/          dataset_registry.py loads the dataset registry, which is
-                    not here: it is vars.pipeline_sources in
-                    dbt/dbt_project.yml, one list read by dbt natively and by
-                    this module through PyYAML. There is no second copy, which
-                    is the point (PLAN-5 step 4); the file's docstring has the
-                    argument for why the one copy lives on the dbt side.
-                    raw_zone.py owns the
-                    Parquet layout and is the only thing that reads or writes
-                    it; derived_zone.py is its sibling for the derived zone, and
-                    remote.py is the one place that knows a zone can be a gs://
-                    prefix rather than a directory, the one place that
-                    authenticates to it (ADR-9), and the one place that deletes
-                    an object. Nothing else in ingestion/ should learn to talk
-                    to a bucket. remote.remove deliberately decides nothing
-                    about what to delete; that decision is prune_raw.py's and is
-                    the expensive half.
-                    ingest.py writes the raw zone, census.py is its TIGERweb
-                    transport, spatial.py computes the derived zone,
-                    check_derived.py asserts the derived zone is neither behind
-                    the raw one nor built by code that no longer exists,
-                    check_runs.py asserts the raw zone's run manifests describe
-                    the Parquet beside them (PLAN-7 step 1),
-                    prune_raw.py deletes raw partitions a surviving later one
-                    provably supersedes and refuses when it cannot prove it
-                    (ADR-18). Its `--max-bytes` mode is the half that
-                    runs unattended in .github/workflows/retention.yml: it
-                    weighs the whole zone against a threshold, deletes nothing
-                    whatever it finds, and is the only thing that notices the
-                    prune has stopped being run. And
-                    load.py loads both into a warehouse. The two checks are
-                    neighbours and not one file on purpose: check_derived is
-                    about one zone being current with another and gates
-                    `make build`, check_runs is about one zone agreeing with
-                    itself and gates nothing, because what it catches makes
-                    mart_pipeline_freshness wrong and every model correct.
-                    geometry.py is
-                    pure-Python point-in-polygon and area, used only by the
-                    spatial step and never at query time.
-                    spatial.py is the entry point of four files, split in
-                    PLAN-5 step 6: it owns the CLI, the Arrow schemas, the run
-                    order and the manifest, and calls h3_points.py (coordinate
-                    classification, cells, RESOLUTIONS, the shared dedup read),
-                    boundaries.py (the covering-cell bridge, exact membership,
-                    the pip-sample oracle, and the explanation of the three
-                    containment modes) and population.py (block group
-                    population spread over cells). h3_points.py is the base:
-                    the other two import from it and nothing imports back.
-                    derived_state.py is the fifth, added in PLAN-5 step 9: it
-                    owns everything the manifest records about what the zone was
-                    built from, the code stamp included, and the decision about
-                    what a re-run has to recompute. spatial.py writes those
-                    records and check_derived.py reads them, which is why they
-                    live in neither. Read its header before changing anything
-                    about incrementality; the stamp's tradeoff is argued there
-                    and in ADR-11.
-publish/            export.py writes marts to published/ with a manifest, and
-                    with --prune removes objects the destination holds that this
-                    export did not write, after the manifest lands so ADR-8's
-                    ordering survives (PLAN-9 step 6).
-                    Standalone: it imports nothing from ingestion/, which is why
-                    it does its own bucket listing and deleting rather than
-                    calling ingestion/remote.py.
-dbt/models/staging/ one view per raw or derived table. Rename, cast,
-                    deduplicate. No logic. Subfoldered by source system:
-                    datasf/, census/, spatial/.
-dbt/models/intermediate/
-                    models that are neither staging nor a mart: they union or
-                    reshape staging models and nothing queries them directly.
-                    int_point_activity is the only one.
-dbt/models/marts/   hand-written analysis tables. Reference staging and
-                    intermediate models, except mart_pipeline_freshness,
-                    which is about the pipeline and says why in its header.
-dbt/macros/         cross_engine.sql holds the adapter dispatch macros.
-                    audit_run_results.sql persists dbt's own run results and
-                    prunes them to the last 50 runs, a window its header
-                    explains and which cannot go below 2 without breaking
-                    mart_pipeline_freshness.
-                    point_geography.sql attaches geography to point staging
-                    models. generic/ holds custom generic tests.
-dbt/tests/          singular tests. The three spatial assertions live here
-                    because each compares two models rather than checking a
-                    column.
-tools/context_pack/ the context pack generator (PLAN-6 step 2), verified
-                    against docs/specs/context-pack.md, which was written
-                    before it. generate.py is the entry point and the assembly;
-                    pack_inputs.py is everything the pack derives rather than
-                    reads from prose, pack_target.py is the three targets and
-                    what it means to open one, pack_profile.py is the per-shape
-                    column rules, pack_prose.py is the citation resolver, and
-                    pack_render.py is the markdown and its budget ladder.
-                    prose.yml is the ONE hand-maintained source behind all
-                    three packs: the refusals, disclosures, traps, undeclared
-                    joins and candidate examples. Nothing derivable may appear
-                    in it. Same arrangement as ingestion/, a directory of
-                    scripts rather than a package, and the pack_ prefix is
-                    deliberate: this directory goes on sys.path and `profile`
-                    is in the standard library.
-                    Two targets are generated: duckdb from the warehouse and
-                    published from an in-memory DuckDB with one view per mart
-                    over $PUBLISH_DIR. bigquery is declared in pack_target.py
-                    so the prose validator can reason about its model set, and
-                    open_target raises for it. That third pack is not coming:
-                    ADR-15 decided against generating it, because its model set
-                    is duckdb's and everything that would differ is what the
-                    missing schema hash cannot gate. An entry's
-                    `applies_to` is only checked against the targets that get
-                    generated, which is how 12 entries claiming `published`
-                    sat there unresolvable until the second pack was built.
-context-pack/       the generated artifacts, and the one generated thing in
-                    this repo that IS committed. That is the point: a model
-                    change that moves the pack shows up as a diff in the pull
-                    request rather than as a pack nobody regenerated.
-docs/plans/         plan-<n>-<slug>.md, forward-looking intent. PLAN-10 is
-                    open; the nine before it are in docs/archive/.
-docs/decisions/     adr-<n>-<slug>.md, one decision each, immutable once accepted.
-docs/archive/       superseded ADRs and closed plans, with an index. Moved
-                    rather than deleted, because git history is not a browsing
-                    interface. Nothing here is live.
-docs/dev-notes/     YYYY-MM-DD.md, append-only session log, plus
-                    ARCHIVE-2026-07.md for the folded July notes.
-docs/dbt/           committed manifest.json and catalog.json. Refresh: make docs.
-tests/              the pytest suite, run by `make test-python` and by the
-                    python-tests job in ci.yml, which the end-to-end dbt job
-                    waits on. test_geometry.py covers ingestion/geometry.py
-                    directly, edge and vertex contract included.
-                    test_context_pack.py covers the generator and needs
-                    neither a warehouse nor a dbt manifest, both gitignored:
-                    it profiles a four-row DuckDB built in memory, and the
-                    published target over a six-row Parquet export written into
-                    a tmp directory. The tests
-                    to read first are the two asserting the rules that must
-                    not become warnings, that an entry citing something the
-                    target lacks fails generation and that no rendering at any
-                    budget loses a refusal, then the published one those two
-                    combine into: a refusal citing a staging model is not
-                    rendered into the published pack, by either route.
-                    Tests about "the target" are parameterised over both rather
-                    than duplicated, which is the arrangement to keep.
-                    test_dataset_registry.py checks the registry against the
-                    things that have to agree with it and are not in the same
-                    file: the dbt source tables, the staging models and the
-                    ingest fixtures, in both directions.
-                    test_derived_state.py covers what a run of spatial.py
-                    decides to rebuild. Every branch there is a decision not to
-                    recompute something, and a wrong one leaves a derived zone
-                    that disagrees with the raw zone and looks fine.
-                    test_check_runs.py is its counterpart for the raw zone: the
-                    two branches that stay silent are decisions not to report
-                    something, and a wrong one makes the check either a liar or
-                    a nuisance that gets switched off.
-                    test_prune_raw.py covers the only tool here that deletes
-                    part of the record, so the tests worth having are the four
-                    that assert it refuses: a key the later partition lacks, a
-                    key it has at an older value, a null grain key, and a delta
-                    dataset named on the command line. A wrong answer in any of
-                    them is silent, because the partition is gone and the zone
-                    still looks well formed.
-                    conftest.py is what
-                    puts ingestion/ on sys.path, since it is scripts and not a
-                    package. Everything else here is tested through dbt.
-tests/fixtures/     committed JSON so CI can run without network. Includes
-                    real boundary polygons with thinned vertices, so the
-                    fixture run genuinely exercises the H3 machinery.
-scripts/            leak-check.sh, sqlfluff-lint.sh, check-lint-pins.sh, and
-                    parity-check.py, which compares a model row for row across
-                    DuckDB and BigQuery and needs credentials, so it is run by
-                    hand rather than in CI. Its `--columns` mode
-                    (`make parity-columns`) is the other question and the
-                    cheaper one: it compares the zone's column sets against the
-                    BigQuery tables, so it catches an external table that has
-                    stopped being a view of the whole zone. That is PLAN-7
-                    step 2 and it exists because the drift happened. Note it
-                    compares against THE ZONE and not against the local DuckDB
-                    file, unlike the row mode, whose two sides must both have
-                    been built from one zone or it reports a configuration
-                    difference as a defect; the script header says why.
-                    fake-bq-key.sh mints a throwaway
-                    key so make compile-bigquery needs none; it is the reason
-                    that target is credential-free, and the on-run hook guards
-                    and the profiles.yml oauth fallback are not. It is exactly
-                    half the reason: the other half is --no-populate-cache on
-                    the compile. Both were measured on 2026-08-03 and neither
-                    is redundant, so do not delete one to tidy up. The
-                    Makefile target's header carries the evidence.
-                    These are the real implementation; pre-commit, the
-                    Makefile and CI call them rather than restating the
-                    command, so a hook and a make target cannot disagree
-                    about what the check is. check-lint-pins.sh is the
-                    exception that proves it: ruff genuinely is installed
-                    twice, so something has to assert the two agree.
-data/raw/           the raw zone when no RAW_ZONE_URI is set, which is the
-                    default, all of CI, and every fresh clone. Gitignored,
-                    never committed. Not a copy of the bucket: with a URI set
-                    the bucket is the zone and this directory is only whatever
-                    the last local run left behind.
-data/derived/       the derived zone under the same rule. Gitignored. Always
-                    safe to delete; make spatial rebuilds it exactly.
-published/          the export. Gitignored, regenerated by make publish.
-keys/               service account keys. Gitignored, never committed.
+ingestion/          dataset_registry.py   loads the registry from dbt_project.yml
+                    raw_zone.py           the raw zone's layout; sole reader and writer
+                    derived_zone.py       the same for the derived zone
+                    remote.py             the only code that talks to a bucket
+                    ingest.py, census.py  API ingestion; census.py is the TIGERweb transport
+                    spatial.py            derived-zone entry point: CLI, schemas, run order, manifest
+                    h3_points.py          cells and RESOLUTIONS; the base the next two import
+                    boundaries.py         covering cells, exact membership, the three containment modes
+                    population.py         block-group population spread over cells
+                    derived_state.py      the code stamp and what a re-run must recompute
+                    geometry.py           point-in-polygon and area; never runs at query time
+                    check_derived.py, check_runs.py, check_snapshots.py   the three checks
+                    prune_raw.py          the only tool that deletes from the raw zone
+                    load.py               zones into DuckDB or BigQuery
+publish/            export.py: marts to published/ with a manifest. Imports nothing
+                    from ingestion/, so it does its own bucket I/O.
+dbt/models/staging/ one view per raw or derived table: rename, cast,
+                    deduplicate, no logic. Subfolders datasf/, census/, spatial/.
+dbt/models/intermediate/  int_point_activity, the only model that is neither
+                    staging nor a mart.
+dbt/models/marts/   tables meant to be queried; rules in marts/README.md.
+dbt/macros/         cross_engine.sql (dispatch), point_geography.sql,
+                    newest_snapshot.sql, audit_run_results.sql (keeps the last
+                    50 runs; never below 2), generic/ tests.
+dbt/tests/          singular tests that compare two models.
+tools/context_pack/ the pack generator. generate.py assembles; prose.yml is the
+                    only hand-written input. A directory of scripts, not a
+                    package; the pack_ prefix avoids shadowing `profile`.
+context-pack/       the generated packs, committed so a model change shows up
+                    as a diff in the PR.
+tests/              pytest. conftest.py puts ingestion/ on sys.path. Read
+                    test_prune_raw.py's refusal tests and test_context_pack.py's
+                    refusal-rendering tests first.
+tests/fixtures/     committed JSON so CI runs without network, including real,
+                    thinned boundary polygons. See its README.
+scripts/            leak-check.sh, sqlfluff-lint.sh, check-lint-pins.sh,
+                    fake-bq-key.sh, short-snapshot-fixture.py, parity-check.py.
+                    Hooks, make and CI all call these rather than restating them.
+docs/               decisions/, plans/, dev-notes/, specs/, archive/, dbt/;
+                    orientation.md is the short tour. Index in docs/README.md.
+data/raw/, data/derived/   the local zones. Gitignored.
+published/, keys/   the export and service account keys. Gitignored.
 ```
 
-Naming: staging models are `stg_<source>__<entity>`, intermediate models are
-`int_`, dimensions are `dim_`. `mart_` was originally reserved for metadata
-marts describing the pipeline rather than the city; the marts commissioned in
-PLAN-3 are named `mart_` too, so that rule no longer holds and the prefix now
-means "a table meant to be queried directly". `mart_pipeline_freshness` is
-still the one that describes the pipeline, and its header says so. Source yml
-files are `_<source>__sources.yml`.
+Naming: staging `stg_<source>__<entity>`, intermediate `int_`, dimensions
+`dim_`, and `mart_` for any table meant to be queried directly.
+`mart_pipeline_freshness` is the one that describes the pipeline rather than
+the city. Source yml files are `_<source>__sources.yml`.
 
-## Hard constraints
+## Read-first order for a new session
 
-- **All data in this project is public.** Everything comes from
-  data.sf.gov. If a dataset is not public, it does not belong here.
-- **No credentials in the repo, ever.** No service account JSON, no `.env`, no
-  tokens, no project ids in committed files. Secrets reach code only through
-  environment variables locally and GitHub repository secrets in CI.
-- `keys/`, `.env`, `data/`, `*.duckdb`, `target/`, and `dbt_packages/` are
-  gitignored. Do not add exceptions to those rules.
-- **`RAW_ZONE_DIR` beats `RAW_ZONE_URI`, and the same for the derived pair.**
-  `make ci-build` sets the DIR variables, and it has to stay local, bucket-free
-  and credential-free in a shell that has sourced `.env`. Reversing that
-  precedence makes `set -a; source .env` silently change what `make check`
-  tests. See ingestion/remote.py.
-- `scripts/leak-check.sh` runs in CI on every PR and blocks the merge on a hit.
-  If it fires, rotate the credential first, then clean the tree.
-- **The Parquet raw zone is append-only, with exactly three exceptions.** Files
-  are added, never edited. The first exception is `ingest.py --full-refresh`,
-  which swaps a whole tree atomically, and it is local only: a directory rename
-  is atomic and object storage has no rename, so `--full-refresh` against a
-  `gs://` zone refuses and explains itself rather than doing a delete-then-copy
-  that can leave the zone holding neither tree. Refresh into a local zone and
-  upload the result. The second is `ingestion/prune_raw.py` (ADR-18), which
-  deletes a partition **only** when a surviving later partition provably holds
-  every `grain_key` it holds at values no older, or (ADR-21) when every key it
-  lacks is a withdrawal already in the ledger, and exits 3 rather than
-  deleting anything it cannot prove. The third is a **scope deletion** (ADR-18):
-  when an ADR cuts a dataset from the registry, its prefix is removed from the
-  zone by hand, once, with `gcloud storage rm --recursive`. That is a different
-  act from a prune and the prune is deliberately not the tool for it: with no
-  surviving partition the superset proof is not unavailable but false, and
-  `prune_raw.py` exits on a name the registry does not hold. Its proof is a repo
-  proof instead, that nothing reads the dataset, which
-  `tests/test_dataset_registry.py` checks on every PR, and its safety net is
-  that the rows are re-fetchable from DataSF, which a delta partition's are not.
-  **Nothing edits a file in the zone**, which is the part of the rule that has
-  no exceptions at all. Warehouse raw tables
-  are derived mirrors of the zone, rebuilt wholesale by `load.py`; never write
-  an UPDATE or DELETE against them either. Deduplication belongs in staging.
-- **Snapshot datasets are prunable and delta datasets are never prunable, and
-  the registry says which.** `refresh: snapshot` means upstream republishes the
-  whole dataset, so one run's partition can hold all of it;
-  `business_locations`, `film_locations` and the three boundary sets are those.
-  `refresh: delta` means a partition holds only the rows that changed since the
-  watermark, so deleting one deletes rows nothing can bring back; `311_cases`
-  and `building_permits` are those, and `prune_raw.py` refuses to be pointed at
-  either. **A bucket lifecycle rule is the obvious answer here and is the wrong
-  one**, rejected in ADR-18 for exactly this reason: it deletes by object age
-  and would destroy 311 and permit history, surfacing months later as a hole in
-  a monthly series. `refresh` is a required registry field and a new dataset
-  omitting it fails to load, because the two mistakes do not cost the same.
-- **The dataset registry has one copy, and it is `vars.pipeline_sources` in
-  `dbt/dbt_project.yml`.** Python reads it through
-  `ingestion/dataset_registry.py`. Do not add a Python-side list "for
-  convenience": that is what was there until 2026-08-05, and two lists with
-  nothing checking they agree is how a dataset gets ingested and never
-  reported on. Adding one means an entry there, a source table in the
-  relevant `_<system>__sources.yml`, a staging model, and a fixture;
-  `tests/test_dataset_registry.py` fails on any of the four being missing.
-- SQL must compile on both BigQuery and DuckDB. Use the dispatch macros in
-  `dbt/macros/cross_engine.sql` instead of engine-specific functions such as
-  `safe_cast`, `float64`, `try_cast` or `json_extract_string`. Do not compare
-  a timestamp against a bare `current_timestamp`; use `x_utc_now()`, and read
-  the comment above it before deciding you know better. **Nine macros now,
-  against ADR-1's revisit threshold of about ten**, so the tenth is the one
-  that triggers a re-read of ADR-1 rather than just another macro. Counted as
-  the surface models call: `x_type`, `x_cast`, `x_safe_cast`, `x_safe_int`,
-  `x_json_extract_scalar`, `x_utc_now`, `x_month_start`, `x_safe_divide`,
-  `x_hours_between`. Six of them dispatch per adapter; the rest are wrappers
-  over the ones that do.
-- **No geometry at query time (ADR-6).** No `ST_` function, no spatial
-  extension, no GEOGRAPHY column in any model. Boundary membership is a
-  precomputed column and cell coverage is an integer join. The only geometry
-  code in the project is `ingestion/geometry.py`, which runs in
-  `make spatial` and never in a query.
-- **Do not compute an H3 cell in SQL.** BigQuery has no H3 function at all, so
-  there is nothing to dispatch to. Cells come from the derived zone as
-  BIGINTs (ADR-5).
-- Every model description states its grain as "one row per ...", and every
-  model carries a grain test plus `not_null` on its keys.
-- Every count mart exposes at least one normalised companion measure. A raw
-  count per area is mostly a map of where people live, so a mart offering only
-  counts invites a conclusion the data does not support.
+1. This file.
+2. `docs/decisions/` in number order: every ADR there is active except ADR-2
+   and ADR-7, which stay because `prose.yml` cites them. Read ADR-18, then
+   ADR-19 and ADR-21, which amend it, before touching the prune or the
+   retention job. ADR-5 and ADR-8 each have one part amended (by ADR-10 and
+   ADR-11, and by ADR-12) and say so at the top. Superseded ADRs are in
+   `docs/archive/`.
+3. `docs/plans/`: no plan is open. All ten are done and in `docs/archive/`.
+4. The newest notes in `docs/dev-notes/`.
+5. `vars.pipeline_sources` in `dbt/dbt_project.yml` for what is in scope, then
+   `ingestion/raw_zone.py`, `ingest.py` and `load.py`.
+6. `dbt/models/staging/datasf/stg_datasf__311_cases.sql`, the reference model.
+7. For spatial work: the headers of `spatial.py` and `boundaries.py`, then
+   `stg_spatial__polygon_h3.sql` for the three bridge-table flags, where the
+   wrong one is the easiest mistake here. `tests/test_geometry.py` holds the
+   contract for points on an edge or a vertex.
 
-## Pointers
-
-- Decisions: `docs/decisions/`. ADR-1 warehouse targets, ADR-5 H3 computation
-  (amended by ADR-10 and ADR-11), ADR-6 polygon membership, ADR-8 published
-  exports (amended by ADR-12), ADR-9 cloud raw zone, ADR-10 narrowed scope,
-  ADR-11 derived zone code stamp, ADR-12 published export layout, ADR-13
-  context pack format, ADR-15 the bigquery pack is declared and not generated
-  (amends the spec's section 2 table, not ADR-13), **ADR-18 the raw zone: what
-  it is and everything that may delete from it**, ADR-19 withdrawn
-  registrations (amends ADR-18's first revisit clause; read it beside ADR-18
-  before touching the prune or the retention job), ADR-21 withdrawn keys are
-  ledgered, then prunable (amends ADR-18 section 4; the withdrawal ledger).
-  Six superseded ADRs also sit there and are history, not rules: ADR-2 spatial strategy and ADR-7 dataset
-  scope, which cannot move while `prose.yml` cites them, ADR-14, ADR-16 and
-  ADR-17, which ADR-18 restates, and ADR-20, refused 2026-09-13.
-- Plans: `docs/plans/`, which holds PLAN-10 (active) and a template. The nine
-  earlier plans are done and archived.
-- Archive: `docs/archive/`. Superseded ADR-3 and ADR-4, all nine closed plans,
-  and a one-line index of what each was and what replaced it. Nothing there is
-  live. Its README says which superseded ADRs deliberately did not move and
-  why; one of the two reasons is a code coupling, not taste.
-- Specs: `docs/specs/`. The contract a generated artifact is built against,
-  amendable, and not an ADR. `context-pack.md` is the only one.
-- Session log: `docs/dev-notes/`. Fifteen dated notes as of 2026-10-23, plus
-  `ARCHIVE-2026-07.md`, which is 2026-07-30 to 2026-08-07 folded into one file
-  with the findings verbatim and the chronology dropped.
-- Human onboarding: `SETUP.md`
-- Marts roadmap: `dbt/models/marts/README.md`
-- Fixtures and what they deliberately break: `tests/fixtures/README.md`
+`SETUP.md` is the human onboarding path and covers Google Cloud setup in more
+detail. `docs/orientation.md` is a short tour of why the repo is built this
+way.
