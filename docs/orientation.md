@@ -106,8 +106,8 @@ cannot exercise. The remote path has no automated coverage.
 **ADR-9. Both zones in GCS, BigQuery reads them in place.** Active. Two quotas
 forced it: the zone lived on one laptop behind an Actions cache, and copying
 the all-STRING zone into BigQuery turned 162 MB of Parquet into 8.02 GB against
-a 10 GiB tier. Local stays the default, with `DIR` beating `URI` and no test
-covering that. `ingestion/remote.py` is the only module that authenticates.
+a 10 GiB tier. Local stays the default, with `DIR` beating `URI`
+(`tests/test_hard_constraints.py`). `ingestion/remote.py` is the only module that authenticates.
 
 **ADR-10. Seven datasets, two H3 resolutions.** Active, supersedes ADR-7. Cut
 `city_budget` and `street_trees`, drop r9, move `mart_activity_by_h3` to r8.
@@ -184,6 +184,13 @@ went missing. The apply writes each to a JSON ledger and reads it back before
 deleting anything. First apply, 2026-09-30: 1420 MB to 330 MB, 27 records
 saved.
 
+**ADR-22. The raw zone keeps a 311 version only when the case changed.**
+Draft, not accepted, nothing implements it. 83.2% of the 5.7M 311 rows in the
+zone differ from the previous version of their case only in two load stamps,
+`data_as_of` and `data_loaded_at`, which nothing reads. Not storing them takes
+311 from 907 MB to about 149 MB. Price: raw stops being everything the API
+sent, and a delta table gets its first deletion.
+
 ---
 
 ## 3. What the first cross-engine build found
@@ -250,10 +257,8 @@ denominators instead (`:248`). No historical data before 2024
 - 178 columns have no description in the yml.
 - The remote publish path and the partitioned export path are unexercised.
 - 311 delta history is never pruned, and since 2026-10-04 upstream re-sends
-  120k+ rows a day. Scheduled ingest is paused until that growth is bounded.
-- Three rules have no mechanism: nothing forbids a geometry function or an H3
-  call in a model, nothing tests `DIR` beating `URI`, and nothing keeps
-  `--apply` out of a workflow file.
+  120k+ rows a day. Scheduled ingest is paused until that growth is bounded;
+  ADR-22 is a draft of how.
 
 ---
 

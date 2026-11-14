@@ -42,6 +42,9 @@ permissions:
 jobs:
   ingest:
     runs-on: ubuntu-latest
+    # Normal runs take 11 to 22 minutes. The first run after a long pause
+    # fetches every case touched since, so the limit leaves room for that.
+    timeout-minutes: 120
     env:
       # The zones are the bucket, so every step below reads and writes GCS and
       # nothing is kept on the runner. Deliberately NOT RAW_ZONE_DIR: DIR beats
