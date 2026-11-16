@@ -14,13 +14,13 @@ decision has a written record in [docs/decisions/](docs/decisions/).
 | | |
 |---|---|
 | **Runs on a fresh clone** | `make setup && make ci-build`. No account, no credentials, no cost. |
-| **Tested** | 150 dbt tests and 292 Python tests on every pull request. |
+| **Tested** | 150 dbt tests and 328 Python tests on every pull request. |
 | **Reproducible** | CI drops the warehouse and rebuilds it from the Parquet files. |
 | **Two engines** | One set of SQL for DuckDB and BigQuery. CI compiles both; the full BigQuery build runs by hand. |
 | **Spatial** | About 610k points placed in 733 boundaries, in Python rather than SQL. |
 | **Published** | One Parquet file per mart, plus a manifest. |
 | **LLM-ready** | A generated context pack tells a model what the data holds and what to refuse. |
-| **Documented** | 21 ADRs (13 active), 10 closed plans and a session log. |
+| **Documented** | 22 ADRs (13 active, 1 draft), 10 closed plans and a session log. |
 
 ## Quickstart
 
@@ -150,7 +150,7 @@ is `vars.pipeline_sources` in [dbt/dbt_project.yml](dbt/dbt_project.yml).
 | The derived zone records a hash of the code that built it | Stale geography otherwise passes every row-count check | [ADR-11] |
 | The context pack lists refusals, not only schema | A model given a schema alone answers questions the data cannot support | [ADR-13] |
 
-[docs/orientation.md](docs/orientation.md) summarises all 21 ADRs in one
+[docs/orientation.md](docs/orientation.md) summarises every ADR in one
 sitting, and lists the five defects the first BigQuery build found after
 months of clean compiles.
 
@@ -247,13 +247,14 @@ Paused since 2026-10-23, with the bucket data current to that day. From
 2026-10-04 the city began re-sending 120k+ 311 records a day, about four times
 the usual volume. 311 history is never pruned, so the raw zone and the daily
 job's network reads outgrew the free tier. Resuming the schedule needs a
-decision on how to bound that growth. The measurements are in
+decision on how to bound that growth. [ADR-22] is a draft of one, not yet
+accepted. The measurements are in
 [docs/dev-notes/2026-10-23.md](docs/dev-notes/2026-10-23.md).
 
 Open, none scheduled:
 
-- **Bound raw zone growth.** Deduplicate re-sent 311 rows, compact delta
-  history, or fetch snapshot datasets weekly instead of daily.
+- **Bound raw zone growth.** Accept, change or refuse [ADR-22], which
+  proposes not storing 311 rows the city re-sent with only a new load stamp.
 - **Read the withdrawal ledger.** Business closures by neighborhood and month.
 - **Show the published export.** `dim_neighborhood` already carries GeoJSON
   and nothing renders it.
@@ -281,3 +282,4 @@ US Census Bureau.
 [ADR-18]: docs/decisions/adr-18-the-raw-zone.md
 [ADR-19]: docs/decisions/adr-19-withdrawn-registrations.md
 [ADR-21]: docs/decisions/adr-21-withdrawn-keys-are-ledgered-then-prunable.md
+[ADR-22]: docs/decisions/adr-22-311-load-stamp-resends.md
