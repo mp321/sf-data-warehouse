@@ -24,7 +24,7 @@ graph and the main decisions.
 | **Spatial** | About 610k points placed in 733 boundaries, in Python rather than SQL. |
 | **Published** | One Parquet file per mart, plus a manifest. |
 | **LLM-ready** | A generated context pack tells a model what the data holds and what to refuse. |
-| **Documented** | 22 ADRs (13 active, 1 draft), 10 closed plans and a session log. |
+| **Documented** | 22 ADRs (14 active), 10 closed plans and a session log. |
 
 ## Quickstart
 
@@ -256,16 +256,17 @@ job's network reads outgrew the free tier.
 | Cause | State |
 |---|---|
 | Each run downloaded about 3x the raw zone, because the storage library padded every read to 5 MiB | Fixed 2026-11-16. On a local copy the same reads fetch 0.19x the zone. Not yet run on the schedule |
-| The raw zone grows without limit: 907 MB of 311 history against a 5 GB free tier | Open. [ADR-22] is a draft, not accepted |
+| The raw zone grows without limit: 907 MB of 311 history against a 5 GB free tier | Decided, not built. [ADR-22] is accepted: stop storing 311 rows re-sent with only a new load stamp |
 
-Resuming the schedule needs the second decision. The measurements are in
+The repo is finished as it stands and is not maintained. Resuming the schedule
+means building [ADR-22] first. The measurements are in
 [docs/dev-notes/2026-10-23.md](docs/dev-notes/2026-10-23.md) and
 [2026-11-16.md](docs/dev-notes/2026-11-16.md).
 
 Open, none scheduled:
 
-- **Bound raw zone growth.** Accept, change or refuse [ADR-22], which
-  proposes not storing 311 rows the city re-sent with only a new load stamp.
+- **Build [ADR-22].** The registry field, the comparison at ingest, the
+  one-off removal with its proof, and the `check-runs` and freshness changes.
 - **Read the withdrawal ledger.** Business closures by neighborhood and month.
 - **Show the published export.** `dim_neighborhood` already carries GeoJSON
   and nothing renders it.

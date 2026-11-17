@@ -106,13 +106,23 @@ def test_a_one_column_read_fetches_a_fraction_of_the_zone(
     )
 
 
-def test_the_padding_this_guards_against_is_real(
-    monkeypatch: pytest.MonkeyPatch, zone: Path
-) -> None:
-    """Without `exact_range` the same read fetches most of the file."""
-    bucket = FakeBucket(zone.parent)
-    assert _watermark_through(monkeypatch, bucket, zone) == NEWEST
-    assert bucket.fetched > 0.8 * _zone_bytes(zone)
+def _read_100_bytes(bucket: FakeBucket, zone: Path) -> int:
+    """Bytes fetched when a reader asks for 100 bytes near the start of the file."""
+    path = next(zone.rglob("*.parquet")).relative_to(zone.parent)
+    with bucket.open(f"{BUCKET}/{path}", "rb") as handle:
+        handle.seek(1000)
+        handle.read(100)
+    return bucket.fetched
+
+
+def test_a_small_read_fetches_only_what_it_asked_for(zone: Path) -> None:
+    # No DuckDB here: some versions answer max() from the footer and read no column.
+    assert _read_100_bytes(remote.exact_range(FakeBucket)(zone.parent), zone) == 100
+
+
+def test_the_padding_this_guards_against_is_real(zone: Path) -> None:
+    """Without `exact_range` the same 100 byte read fetches most of the file."""
+    assert _read_100_bytes(FakeBucket(zone.parent), zone) > 0.8 * _zone_bytes(zone)
 
 
 def test_an_explicit_cache_type_still_wins() -> None:

@@ -27,10 +27,9 @@ def _adr_statuses() -> list[str]:
 def test_adr_and_plan_counts() -> None:
     statuses = _adr_statuses()
     plans = len(list(DOCS.glob("archive/plan-*.md")))
-    assert _stated(r"(\d+) ADRs \((\d+) active, (\d+) draft\), (\d+) closed plans") == (
+    assert _stated(r"(\d+) ADRs \((\d+) active\), (\d+) closed plans") == (
         len(statuses),
         statuses.count("active"),
-        statuses.count("draft"),
         plans,
     )
 

@@ -4,7 +4,7 @@
 
 | Folder | What is in it |
 |---|---|
-| `decisions/` | 13 active ADRs, ADR-22 in draft, plus ADR-2 and ADR-7, superseded but kept here because `prose.yml` cites them and the citation resolver looks only here |
+| `decisions/` | 14 active ADRs (ADR-22 accepted, not implemented), plus ADR-2 and ADR-7, superseded but kept here because `prose.yml` cites them and the citation resolver looks only here |
 | `plans/` | the template only. All ten plans are done and archived |
 | `specs/` | `context-pack.md`, the contract the generated packs are built against |
 | `dev-notes/` | dated session notes from 2026-08-09, plus `ARCHIVE-2026-07.md` for everything before |
@@ -27,7 +27,7 @@
 | ADR-18 the raw zone | active, amended by ADR-19 and ADR-21. Supersedes ADR-4, 14, 16 and 17 |
 | ADR-19 withdrawn registrations | active, amends ADR-18's first revisit clause |
 | ADR-21 withdrawn keys are ledgered, then prunable | active, amends ADR-18 section 4. Replaces ADR-20, refused |
-| ADR-22 311 load-stamp re-sends | draft, not accepted. Would amend ADR-18 |
+| ADR-22 311 load-stamp re-sends | active, accepted 2026-11-16, not implemented. Amends ADR-18 |
 
 ## Conventions that are easy to get wrong
 
@@ -40,7 +40,7 @@ reader skip a live rule.
 
 **A fifth amendment means consolidating instead.** ADR-18 replaced four documents that
 together answered "may this file be deleted" (ADR-4, 14, 16, 17). Amendments
-are counted again from ADR-18: ADR-19 and ADR-21 are two of four, and a fifth
+are counted again from ADR-18: ADR-19, ADR-21 and ADR-22 are three of four, and a fifth
 means writing a new consolidation instead.
 
 **ADR-9 is read beside ADR-18, not replaced by it.** It owns where the files

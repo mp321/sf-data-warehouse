@@ -302,7 +302,7 @@ footer p{max-width:none}
     <span class="pill">Scheduled jobs paused since 23 Oct 2026</span>
     <p style="margin:0">Since 4 October the city has re-sent more than 120,000 311 records a day, about four times the usual volume. 311 history is never pruned, so the raw zone and the daily run's network reads grew past what the free tier allows. The data is current to the pause.</p>
     <p style="margin:0">Two things were behind it. Each daily run downloaded about three times the raw zone, because the storage library padded every read to 5 MiB. That is fixed: measured on a local copy, the same reads now fetch about a fifth of the zone. The zone itself still grows without limit.</p>
-    <p style="margin:0">Resuming waits on a decision about that growth. <a id="adr22" target="_blank" rel="noopener">ADR-22</a>, a draft, proposes not storing a re-sent 311 row whose only change is a load stamp, which is five rows in six.</p>
+    <p style="margin:0">The fix for that is decided and not built. <a id="adr22" target="_blank" rel="noopener">ADR-22</a> stops storing a re-sent 311 row whose only change is a load stamp, which is five rows in six. The schedule stays off until that exists; the project is finished as it stands.</p>
   </div>
 </section>
 

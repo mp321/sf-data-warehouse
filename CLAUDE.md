@@ -366,8 +366,8 @@ the city. Source yml files are `_<source>__sources.yml`.
 
 1. This file.
 2. `docs/decisions/` in number order: every ADR there is active except ADR-2
-   and ADR-7, which stay because `prose.yml` cites them, and ADR-22, a draft
-   that nothing implements. Read ADR-18, then
+   and ADR-7, which stay because `prose.yml` cites them. ADR-22 is accepted
+   and nothing implements it yet. Read ADR-18, then
    ADR-19 and ADR-21, which amend it, before touching the prune or the
    retention job. ADR-5 and ADR-8 each have one part amended (by ADR-10 and
    ADR-11, and by ADR-12) and say so at the top. Superseded ADRs are in

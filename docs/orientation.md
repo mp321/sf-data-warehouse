@@ -185,7 +185,7 @@ deleting anything. First apply, 2026-09-30: 1420 MB to 330 MB, 27 records
 saved.
 
 **ADR-22. The raw zone keeps a 311 version only when the case changed.**
-Draft, not accepted, nothing implements it. 83.2% of the 5.7M 311 rows in the
+Accepted 2026-11-16, nothing implements it yet. 83.2% of the 5.7M 311 rows in the
 zone differ from the previous version of their case only in two load stamps,
 `data_as_of` and `data_loaded_at`, which nothing reads. Not storing them takes
 311 from 907 MB to about 149 MB. Price: raw stops being everything the API
@@ -258,7 +258,7 @@ denominators instead (`:248`). No historical data before 2024
 - The remote publish path and the partitioned export path are unexercised.
 - 311 delta history is never pruned, and since 2026-10-04 upstream re-sends
   120k+ rows a day. Scheduled ingest is paused until that growth is bounded;
-  ADR-22 is a draft of how. The run's read cost was cut on 2026-11-16
+  ADR-22 is the accepted answer, not yet built. The run's read cost was cut on 2026-11-16
   (`remote.py`, `exact_range`); storage is the limit that remains.
 
 ---
