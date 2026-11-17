@@ -1,5 +1,5 @@
 ---
-status: draft
+status: active
 date: 2026-11-13
 related: [adr-18-the-raw-zone, adr-19-withdrawn-registrations, adr-21-withdrawn-keys-are-ledgered-then-prunable]
 ---
@@ -9,11 +9,19 @@ related: [adr-18-the-raw-zone, adr-19-withdrawn-registrations, adr-21-withdrawn-
 > **In plain terms.** Every day the city re-sends a large block of 311 cases
 > whose only change is two load stamps, `data_as_of` and `data_loaded_at`.
 > Each re-send lands as a new row, and five in six rows in the zone are these.
-> This ADR proposes not storing them. **Draft: the owner has not accepted it,
-> and no code implements it.**
+> This ADR decides not to store them. **Accepted 2026-11-16 and not
+> implemented: no code does this yet, and the schedule stays paused until it
+> does.**
 
-Would amend ADR-18 (the append-only rule and where the watermark comes from).
-It would be the third amendment of the four `docs/README.md` allows.
+Amends ADR-18 (the append-only rule and where the watermark comes from).
+It is the third amendment of the four `docs/README.md` allows.
+
+> **Measured 2026-11-16, the day of acceptance.** The "three times the raw zone"
+> multiplier below was gcsfs padding each read to 5 MiB, and it is fixed
+> (`remote.exact_range`, dev note 2026-11-16): about 0.19 times the zone on a
+> local copy. That is most of option C. Egress is no longer the forcing
+> constraint; storage is, at about 110 days of daily runs. The egress figures
+> under Context and Buys predate the fix.
 
 ## Context
 
@@ -84,7 +92,10 @@ free tiers.
 
 ## Decision
 
-Proposed, not accepted.
+Accepted by the owner on 2026-11-16: option A, chosen over B because B needs
+a prune by hand every week or two and nobody is maintaining this repo. Not
+implemented. The repo is being left paused, so the work below is what a
+future maintainer has to build before re-enabling `ingest.yml`.
 
 We keep a version of a 311 case in the raw zone only when it differs from the
 stored newest version in a column other than the two load stamps.

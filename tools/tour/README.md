@@ -23,5 +23,7 @@ Reads `data/sf.duckdb` read-only. No network, no credentials.
 | The traced 311 case | `--case <id>`, default `CASE` in `build.py` |
 | The map's month window | `month_window()`: drops the newest month as partial, starts at the first month above half the peak |
 | The map's categories | the `limit 8` query in `neighborhoods()` |
-| Hero numbers not read from data (datasets, Python tests, engines) | `page.html`, the `facts` list |
+| Hero numbers not read from data (datasets, engines) | `page.html`, the `facts` list |
+| Python test, ADR and context pack counts | nothing: `build.py` counts them at build time |
+| The status section and the hero's paused line | `page.html` |
 | Decision cards and ADR links | `ADR` and the decisions block in `page.html` |
