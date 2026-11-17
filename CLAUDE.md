@@ -285,6 +285,11 @@ Each is true of running code and invisible from where you would look.
   at the default zone.
 - **TIGERweb rate-limits with HTTP 200 and an HTML body.** `census.py` checks
   the content type and backs off. Regenerating fixtures is what provokes it.
+- **gcsfs pads every read to 5 MiB.** DuckDB reads a bucket zone through
+  `remote.duckdb_filesystem()`, which turns that off. With it on, one column
+  of an 8 MB file downloads most of the file, and a daily run fetched about
+  three times the raw zone. `tests/test_remote_reads.py` guards it.
+  `remote.filesystem()` keeps the padding for whole-object reads and writes.
 
 ## Where to change things
 
@@ -293,7 +298,7 @@ Each is true of running code and invisible from where you would look.
 | Add a dataset | registry entry, source table in `_<system>__sources.yml`, staging model, fixture | `tests/test_dataset_registry.py` fails if any of the four is missing |
 | Cut a dataset | an ADR, the registry entry and its models, then the zone prefix by hand | `make check-runs` warns until the prefix is gone |
 | Raw zone layout | `ingestion/raw_zone.py`, the only reader and writer of it | `make build-bigquery` |
-| Bucket access | `ingestion/remote.py`, the only module that authenticates or deletes. `publish/export.py` is standalone by design | |
+| Bucket access | `ingestion/remote.py`, the only module that authenticates or deletes. `publish/export.py` is standalone by design | `pytest tests/test_remote_reads.py` |
 | Spatial logic or H3 resolutions | the spatial modules, after reading `derived_state.py`'s header | invalidates the derived zone; `make spatial` |
 | A cross-engine SQL function | `dbt/macros/cross_engine.sql` | `make compile-bigquery` |
 | What the prune may delete | an ADR first, then `ingestion/prune_raw.py` and `tests/test_prune_raw.py` | report mode on the bucket before any apply |
@@ -301,6 +306,7 @@ Each is true of running code and invisible from where you would look.
 | Which marts publish | `PUBLISHED_MARTS` and `MANIFEST_VERSION` in `publish/export.py` | `make publish PUBLISH_DEST=<dest> PUBLISH_PRUNE=1` |
 | Retention threshold | `MAX_RAW_BYTES` in `.github/workflows/retention.yml` | re-derive the reasoning in its comment |
 | Scheduled jobs | `.github/workflows/`; pause or resume with `gh workflow disable <file>` or `gh workflow enable <file>` | `gh workflow list` |
+| The tour page | `tools/tour/page.html` for copy and layout, `build.py` for data | `.venv/bin/python -I tools/tour/build.py`, after `make build` |
 
 ## Directory conventions
 
@@ -333,6 +339,8 @@ dbt/tests/          singular tests that compare two models.
 tools/context_pack/ the pack generator. generate.py assembles; prose.yml is the
                     only hand-written input. A directory of scripts, not a
                     package; the pack_ prefix avoids shadowing `profile`.
+tools/tour/         build.py and page.html generate docs/tour/index.html, the
+                    page GitHub Pages serves. Rebuild it; do not edit the output.
 context-pack/       the generated packs, committed so a model change shows up
                     as a diff in the PR.
 tests/              pytest. conftest.py puts ingestion/ on sys.path. Read

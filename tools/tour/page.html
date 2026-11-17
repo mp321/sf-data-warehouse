@@ -6,6 +6,11 @@
 <title>Inside sf-data-warehouse</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <meta name="description" content="A guided tour of sf-data-warehouse, an analytics warehouse over seven San Francisco open datasets, built by Michael Phipps.">
+<link rel="canonical" href="https://mp321.github.io/sf-data-warehouse/tour/">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Inside sf-data-warehouse">
+<meta property="og:description" content="Seven public San Francisco datasets, ingested, geocoded and modelled into a tested warehouse that rebuilds from a fresh clone with no cloud account.">
+<meta property="og:url" content="https://mp321.github.io/sf-data-warehouse/tour/">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,500..900&family=IBM+Plex+Mono:wght@400;500&family=Public+Sans:ital,wght@0,400;0,600;0,700;1,400&display=swap">
@@ -56,6 +61,8 @@ p{margin:12px 0 0;max-width:68ch}
 .facts div + div{padding-left:14px;border-left:1px solid var(--rule)}
 .facts dt{font:800 30px/1 var(--display);font-stretch:110%;font-variant-numeric:tabular-nums}
 .facts dd{margin:6px 0 0;font-size:13px;color:var(--ink-2);line-height:1.35}
+.state{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin:18px 0 0;font-size:14px;color:var(--ink-2);max-width:none}
+.state code{padding:4px 8px;border:1px solid var(--rule);border-radius:5px;background:var(--surface);color:var(--ink)}
 .toc{display:flex;flex-wrap:wrap;gap:8px 18px;margin-top:20px;font-size:14px}
 .toc a{color:var(--ink-2);text-decoration:none;border-bottom:1px solid var(--rule)}
 .toc a:hover{color:var(--accent);border-color:var(--accent)}
@@ -164,7 +171,7 @@ a.tag:hover{border-color:var(--accent);color:var(--accent)}
 .checklist li::before{content:"";width:8px;height:8px;margin-top:8px;border-radius:2px;background:var(--seq-4)}
 
 .status{margin-top:20px;display:grid;gap:10px;padding:18px 20px;border:1px solid var(--rule);border-radius:10px;background:var(--surface)}
-.pill{justify-self:start;font:600 12px/1 var(--body);padding:6px 10px;border-radius:999px;background:var(--accent-soft);color:var(--accent)}
+.pill{justify-self:start;white-space:nowrap;font:600 12px/1 var(--body);padding:6px 10px;border-radius:999px;background:var(--accent-soft);color:var(--accent)}
 footer{padding-block:48px 40px;margin-top:40px;border-top:1px solid var(--rule);font-size:13px;color:var(--ink-3)}
 footer p{max-width:none}
 
@@ -191,13 +198,15 @@ footer p{max-width:none}
   <h1>sf-data-warehouse</h1>
   <p class="lede">Seven public San Francisco datasets, ingested, geocoded and modelled into a tested warehouse that anyone can rebuild from scratch, with no cloud account and no cost.</p>
   <div class="byline"><span>Michael Phipps</span><span>Python, dbt, DuckDB, BigQuery, H3</span><a href="https://github.com/mp321/sf-data-warehouse" target="_blank" rel="noopener">github.com/mp321/sf-data-warehouse</a></div>
+  <p class="state"><span>Run it from a fresh clone:</span><code>make setup &amp;&amp; make ci-build</code></p>
+  <p class="state"><span class="pill">Scheduled jobs paused since 23 Oct 2026</span><span>The local build above still works. <a href="#status">Why it is paused</a></span></p>
   <dl class="facts">
     <div><dt>7</dt><dd>public datasets, every one spatial</dd></div>
     <div><dt id="f-models">19</dt><dd>dbt models, staging to marts</dd></div>
     <div><dt id="f-tests">150</dt><dd>dbt tests, all passing</dd></div>
-    <div><dt>328</dt><dd>Python tests on every pull request</dd></div>
+    <div><dt id="f-pytests">335</dt><dd>Python tests on every pull request</dd></div>
     <div><dt>2</dt><dd>engines from one codebase: DuckDB and BigQuery</dd></div>
-    <div><dt id="f-adrs">21</dt><dd>decision records, with the options rejected</dd></div>
+    <div><dt id="f-adrs">22</dt><dd>decision records, with the options rejected</dd></div>
   </dl>
   <nav class="toc" aria-label="Sections">
     <a href="#map">Count or rate</a><a href="#trace">One case, end to end</a><a href="#lineage">The model graph</a><a href="#decisions">Decisions</a><a href="#checks">How it is checked</a><a href="#status">Status</a>
@@ -273,7 +282,7 @@ footer p{max-width:none}
       <h3>On every pull request, with no credentials</h3>
       <ul class="checklist" style="margin-top:10px">
         <li>Credential leak scan, blocking the merge</li>
-        <li>328 Python tests over geometry, the dataset registry, the retention proof and the pack generator</li>
+        <li><span id="c-pytests">335</span> Python tests over geometry, the dataset registry, the retention proof and the pack generator</li>
         <li>Raw zone built from committed fixtures, end to end</li>
         <li>Each ingest run's manifest reconciled against the Parquet it wrote</li>
         <li>dbt tests: grain, not null, ranges, relationships and three spatial assertions</li>
@@ -292,7 +301,8 @@ footer p{max-width:none}
   <div class="status">
     <span class="pill">Scheduled jobs paused since 23 Oct 2026</span>
     <p style="margin:0">Since 4 October the city has re-sent more than 120,000 311 records a day, about four times the usual volume. 311 history is never pruned, so the raw zone and the daily run's network reads grew past what the free tier allows. The data is current to the pause.</p>
-    <p style="margin:0">Resuming waits on a decision record for bounding that growth. The options on the table: deduplicate re-sent 311 rows, compact delta history, or fetch snapshot datasets on their weekly freshness target instead of daily.</p>
+    <p style="margin:0">Two things were behind it. Each daily run downloaded about three times the raw zone, because the storage library padded every read to 5 MiB. That is fixed: measured on a local copy, the same reads now fetch about a fifth of the zone. The zone itself still grows without limit.</p>
+    <p style="margin:0">Resuming waits on a decision about that growth. <a id="adr22" target="_blank" rel="noopener">ADR-22</a>, a draft, proposes not storing a re-sent 311 row whose only change is a load stamp, which is five rows in six.</p>
   </div>
 </section>
 
@@ -317,6 +327,7 @@ const ADR = {
   1: 'adr-1-warehouse-targets.md', 5: 'adr-5-h3-computation.md', 6: 'adr-6-polygon-membership.md', 8: 'adr-8-published-exports.md',
   10: 'adr-10-narrowed-scope.md', 12: 'adr-12-published-export-layout.md', 13: 'adr-13-context-pack-format.md',
   18: 'adr-18-the-raw-zone.md', 21: 'adr-21-withdrawn-keys-are-ledgered-then-prunable.md',
+  22: 'adr-22-311-load-stamp-resends.md',
 };
 const adrLink = n => { const a = el('a', 'tag', 'ADR-' + n); a.href = REPO + 'docs/decisions/' + ADR[n]; a.target = '_blank'; a.rel = 'noopener'; return a; };
 const monthName = ym => new Date(ym + '-15').toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
@@ -491,7 +502,7 @@ render();
       body: [kv([['event_count', fmtN.format(T.mart[0])], ['events_per_1000_residents', String(T.mart[1])], ['events_per_1000_housing_units', String(T.mart[2])], ['events_per_1000_businesses', String(T.mart[3])], ['events_per_sq_km', String(T.mart[4])]])],
       tests: node('mart_activity_by_neighborhood').tests, adrs: [10] },
     { h: 'Ship it with its limits', where: 'published/  ·  context pack',
-      p: 'The mart is exported as one Parquet file with a manifest, and described in a generated context pack that tells a language model what the warehouse holds and what it must refuse. One of its 20 refusals: 311 counts measure who reports, not how the streets are.',
+      p: `The mart is exported as one Parquet file with a manifest, and described in a generated context pack that tells a language model what the warehouse holds and what it must refuse. One of its ${D.pack.refusals} refusals: 311 counts measure who reports, not how the streets are.`,
       body: [], adrs: [8, 12, 13] },
   ];
   const ol = $('#steps');
@@ -587,7 +598,7 @@ render();
     { q: 'Exact point-in-polygon is expensive', d: 'Covering cells filter first, and exact refinement runs at precompute time only against the two or three boundaries a cell touches. A test checks the result against an independent oracle.', alt: ['Exact geometry at query time, as first designed', 'Cell-based membership only, with no exact test'], adr: 6 },
     { q: 'Paging a bulk-refreshed API drops rows silently', d: 'Ordering by update time alone breaks when thousands of rows share a timestamp across a page boundary. Paging uses the total key (updated_at, id), and every run\'s manifest is reconciled against the Parquet it wrote.', alt: [], adr: 18 },
     { q: 'An append-only zone grows without limit', d: 'The prune deletes a partition only when a later one provably holds every key, or when every missing key is a withdrawal already saved to a ledger and read back. It refuses what it cannot prove.', alt: ['Keep refusing to delete', 'A tolerance on the proof, with nothing else', 'A dbt snapshot for registry history'], adr: 21 },
-    { q: 'A language model given a schema answers questions the data cannot support', d: 'A generated context pack carries 20 refusals, 6 mandatory disclosures and 6 executed examples. CI checks the committed pack against a fixture warehouse on every pull request.', alt: ['CI regenerates the pack and fails on any diff', 'No CI gate, only a pre-commit hook on a machine with the real data'], adr: 13 },
+    { q: 'A language model given a schema answers questions the data cannot support', d: `A generated context pack carries ${D.pack.refusals} refusals, ${D.pack.disclosures} mandatory disclosures and ${D.pack.examples} executed examples. CI checks the committed pack against a fixture warehouse on every pull request.`, alt: ['CI regenerates the pack and fails on any diff', 'No CI gate, only a pre-commit hook on a machine with the real data'], adr: 13 },
   ];
   const wrap = $('#cards');
   for (const c of C) {
@@ -610,6 +621,8 @@ render();
   pl.append(el('span', 'ok', `${R.passed} of ${R.total} passed`), el('span', 'muted', `last full local build, ${new Date(R.at).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })}, ${R.secs} s of test time on DuckDB`));
   $('#f-tests').textContent = total;
   $('#f-adrs').textContent = D.adrs;
+  $('#f-pytests').textContent = $('#c-pytests').textContent = D.pyTests;
+  $('#adr22').href = REPO + 'docs/decisions/' + ADR[22];
   $('#provenance').textContent = `Figures on this page are read from the project's dbt manifest (${D.built}) and a local build of the warehouse; the map covers ${monthName(D.window[0])} to ${monthName(D.window[1])}, the complete months in that build.`;
 })();
 })();

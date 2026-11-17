@@ -15,6 +15,13 @@ related: [adr-18-the-raw-zone, adr-19-withdrawn-registrations, adr-21-withdrawn-
 Would amend ADR-18 (the append-only rule and where the watermark comes from).
 It would be the third amendment of the four `docs/README.md` allows.
 
+> **Update 2026-11-16, before any decision.** The "three times the raw zone"
+> multiplier below was gcsfs padding each read to 5 MiB, and it is fixed
+> (`remote.exact_range`, dev note 2026-11-16): about 0.19 times the zone on a
+> local copy. That is most of option C. Egress is no longer the forcing
+> constraint; storage is, at about 110 days of daily runs. The egress figures
+> under Context and Buys predate the fix.
+
 ## Context
 
 **The forcing constraint is GCS internet egress, 100 GB a month free.** A

@@ -8,13 +8,17 @@ marts that run on DuckDB and BigQuery.
 It rebuilds from a fresh clone with no cloud account, and every design
 decision has a written record in [docs/decisions/](docs/decisions/).
 
+**[Take the tour](https://mp321.github.io/sf-data-warehouse/)**: one page with
+the count versus rate map, one 311 case traced through every layer, the model
+graph and the main decisions.
+
 > **Status:** not under active development. The scheduled jobs have been
 > paused since 2026-10-23. Everything local still works. See [Status](#status).
 
 | | |
 |---|---|
 | **Runs on a fresh clone** | `make setup && make ci-build`. No account, no credentials, no cost. |
-| **Tested** | 150 dbt tests and 328 Python tests on every pull request. |
+| **Tested** | 150 dbt tests and more than 300 Python tests on every pull request. |
 | **Reproducible** | CI drops the warehouse and rebuilds it from the Parquet files. |
 | **Two engines** | One set of SQL for DuckDB and BigQuery. CI compiles both; the full BigQuery build runs by hand. |
 | **Spatial** | About 610k points placed in 733 boundaries, in Python rather than SQL. |
@@ -215,6 +219,7 @@ ingestion/          API ingestion, the raw and derived zones, the H3 step,
 publish/            export.py: marts to Parquet with a manifest
 dbt/                models (staging, intermediate, marts), macros, tests
 tools/context_pack/ the context pack generator
+tools/tour/         builds docs/tour/, the page GitHub Pages serves
 context-pack/       the generated packs, committed so model changes show in PRs
 tests/              pytest, plus fixtures so CI needs no network
 scripts/            leak check, lint wrappers, the BigQuery parity check
@@ -228,7 +233,7 @@ docs/               decisions, specs, dev notes, archive
 | To find | Read |
 |---|---|
 | Why the repo is built this way, start to finish | [docs/orientation.md](docs/orientation.md) |
-| A visual walkthrough that traces one 311 case through every layer | `docs/tour/index.html`, opened in a browser |
+| A visual walkthrough that traces one 311 case through every layer | [The tour](https://mp321.github.io/sf-data-warehouse/), built by [tools/tour/](tools/tour/) |
 | The current architecture, every command, the hard constraints and a "where to change things" table | [CLAUDE.md](CLAUDE.md) |
 | Setup, including Google Cloud | [SETUP.md](SETUP.md) |
 | One decision, with the alternatives rejected and the costs accepted | [docs/decisions/](docs/decisions/), indexed in [docs/README.md](docs/README.md) |
@@ -246,10 +251,16 @@ README disagrees with it, `CLAUDE.md` is right.
 Paused since 2026-10-23, with the bucket data current to that day. From
 2026-10-04 the city began re-sending 120k+ 311 records a day, about four times
 the usual volume. 311 history is never pruned, so the raw zone and the daily
-job's network reads outgrew the free tier. Resuming the schedule needs a
-decision on how to bound that growth. [ADR-22] is a draft of one, not yet
-accepted. The measurements are in
-[docs/dev-notes/2026-10-23.md](docs/dev-notes/2026-10-23.md).
+job's network reads outgrew the free tier.
+
+| Cause | State |
+|---|---|
+| Each run downloaded about 3x the raw zone, because the storage library padded every read to 5 MiB | Fixed 2026-11-16. On a local copy the same reads fetch 0.19x the zone. Not yet run on the schedule |
+| The raw zone grows without limit: 907 MB of 311 history against a 5 GB free tier | Open. [ADR-22] is a draft, not accepted |
+
+Resuming the schedule needs the second decision. The measurements are in
+[docs/dev-notes/2026-10-23.md](docs/dev-notes/2026-10-23.md) and
+[2026-11-16.md](docs/dev-notes/2026-11-16.md).
 
 Open, none scheduled:
 

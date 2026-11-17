@@ -9,6 +9,8 @@ import json
 import math
 import pathlib
 import re
+import subprocess
+import sys
 
 import duckdb
 
@@ -236,6 +238,28 @@ def trace(con, case):
     }
 
 
+def python_test_count():
+    """How many tests pytest collects, so the page does not carry a typed number."""
+    out = subprocess.run(
+        [sys.executable, "-m", "pytest", "--collect-only", "-q", "tests"],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    return int(re.search(r"(\d+) tests? collected", out).group(1))
+
+
+def pack_counts():
+    """Refusal, disclosure and example counts from the committed DuckDB context pack."""
+    pack = json.loads((REPO / "context-pack/context_pack.duckdb.json").read_text())
+    return {
+        "refusals": len(pack["refusals"]["entries"]),
+        "disclosures": len(pack["disclosures"]),
+        "examples": len(pack["examples"]),
+    }
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--db", default=REPO / "data/sf.duckdb", type=pathlib.Path)
@@ -266,6 +290,8 @@ def main():
         "testTypes": test_types,
         "testRun": {"passed": passed, "total": total, "at": str(at)[:10], "secs": secs},
         "adrs": adrs,
+        "pyTests": python_test_count(),
+        "pack": pack_counts(),
         "trace": trace(con, args.case),
     }
 

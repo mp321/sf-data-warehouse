@@ -39,6 +39,7 @@ is a configuration question answered here.
 """
 
 import argparse
+import functools
 import os
 from pathlib import Path
 
@@ -133,6 +134,32 @@ def filesystem():
 
     credentials = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
     return fsspec.filesystem("gcs", token=credentials or None)
+
+
+@functools.cache
+def exact_range(filesystem_class):
+    """A subclass of an fsspec filesystem that fetches only the bytes asked for.
+
+    gcsfs pads every read to 5 MiB, so DuckDB reading one column of an 8 MB
+    file downloads most of it. Whole-table reads cost the same either way.
+    """
+
+    class ExactRange(filesystem_class):
+        def _open(self, path, mode="rb", **kwargs):
+            if mode == "rb":
+                kwargs.setdefault("cache_type", "none")
+            return super()._open(path, mode, **kwargs)
+
+    return ExactRange
+
+
+def duckdb_filesystem():
+    """The filesystem a DuckDB connection reads a bucket zone through."""
+    import fsspec  # noqa: PLC0415  (import cost only on the remote path)
+
+    credentials = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+    # `filesystem()` keeps readahead: it serves whole-object reads and writes.
+    return exact_range(fsspec.get_filesystem_class("gcs"))(token=credentials or None)
 
 
 def _object_path(uri: "str | Path") -> str:
@@ -230,7 +257,7 @@ def register(con: duckdb.DuckDBPyConnection, *locations: "str | Path") -> None:
     """
     if not any(is_remote(location) for location in locations):
         return
-    fs = filesystem()
+    fs = duckdb_filesystem()
     if con.filesystem_is_registered(_registered_name(fs)):
         return
     con.register_filesystem(fs)

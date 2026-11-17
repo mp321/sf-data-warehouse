@@ -258,7 +258,8 @@ denominators instead (`:248`). No historical data before 2024
 - The remote publish path and the partitioned export path are unexercised.
 - 311 delta history is never pruned, and since 2026-10-04 upstream re-sends
   120k+ rows a day. Scheduled ingest is paused until that growth is bounded;
-  ADR-22 is a draft of how.
+  ADR-22 is a draft of how. The run's read cost was cut on 2026-11-16
+  (`remote.py`, `exact_range`); storage is the limit that remains.
 
 ---
 
